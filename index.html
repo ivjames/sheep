@@ -230,6 +230,26 @@
   }
   .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #c99b13; }
   .keys-note { margin: 18px 0 0; font-size: 12.5px; font-weight: 700; opacity: 0.65; }
+  .build-tag { margin: 10px 0 0; font-size: 10.5px; font-weight: 700; opacity: 0.35; letter-spacing: 0.08em; }
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%) translateY(90px);
+    background: #31204a;
+    color: #fff6e8;
+    font-weight: 800;
+    font-size: 14px;
+    padding: 12px 20px;
+    border-radius: 999px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    transition: transform 0.25s ease;
+    z-index: 40;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.tappable { pointer-events: auto; cursor: pointer; }
   #hidden { display: none !important; }
   .hidden { display: none !important; }
 </style>
@@ -267,6 +287,7 @@
     </div>
     <button class="big-btn" id="start-btn">Let's go!</button>
     <p class="keys-note" id="keys-note">WASD / arrows to move &nbsp;·&nbsp; SPACE to fart &nbsp;·&nbsp; E drops a steak</p>
+    <p class="build-tag" id="build-tag"></p>
   </div>
 </div>
 
@@ -292,11 +313,15 @@
   </div>
 </div>
 
+<div id="toast" role="status"></div>
+
 <script>
 (() => {
   'use strict';
 
   // ---------- constants ----------
+  // Stamped by `sparkle deploy` with the deployed commit; 'dev' in the repo.
+  const BUILD = 'dev';
   const WORLD_W = 2200, WORLD_H = 1600;
   const FUEL_MAX = 9, FART_COST = 3;
   const FART_RADIUS = 150, FART_LIFE = 0.85;
@@ -569,6 +594,96 @@
   canvas.addEventListener('pointerup', joyEnd);
   canvas.addEventListener('pointercancel', joyEnd);
 
+  // ---------- toast ----------
+  const toastEl = document.getElementById('toast');
+  let toastTimer = 0, toastAction = null;
+  toastEl.addEventListener('click', () => {
+    if (toastAction) toastAction();
+    hideToast();
+  });
+  function toast(msg, onTap = null) {
+    clearTimeout(toastTimer);
+    toastEl.textContent = msg;
+    toastAction = onTap;
+    toastEl.classList.toggle('tappable', !!onTap);
+    toastEl.classList.add('show');
+    if (!onTap) toastTimer = setTimeout(hideToast, 3000);
+  }
+  function hideToast() {
+    clearTimeout(toastTimer);
+    toastAction = null;
+    toastEl.classList.remove('show', 'tappable');
+  }
+
+  // ---------- gamepad ----------
+  // Bluetooth controllers (Xbox / PlayStation / MFi) via the Gamepad API —
+  // works in iPad/iPhone Safari too. Controllers only show up in
+  // getGamepads() after a button press, so we poll every frame.
+  const pad = { x: 0, y: 0, prev: [] };
+  addEventListener('gamepadconnected', (e) => {
+    toast('🎮 ' + (e.gamepad.id.split('(')[0].trim() || 'Controller') + ' connected');
+    document.getElementById('keys-note').textContent =
+      '🎮 Stick to scamper · Ⓐ fart · Ⓧ drops a steak';
+  });
+  addEventListener('gamepaddisconnected', () => { pad.x = 0; pad.y = 0; pad.prev = []; });
+
+  function pollGamepad() {
+    let gp = null;
+    for (const g of (navigator.getGamepads ? navigator.getGamepads() : [])) {
+      if (g && g.connected) { gp = g; break; }
+    }
+    pad.x = 0; pad.y = 0;
+    if (!gp) return;
+    const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    if (Math.hypot(ax, ay) > 0.22) { pad.x = ax; pad.y = ay; }
+    const down = gp.buttons.map(b => b.pressed);
+    if (down[14]) pad.x -= 1; // d-pad
+    if (down[15]) pad.x += 1;
+    if (down[12]) pad.y -= 1;
+    if (down[13]) pad.y += 1;
+    const hit = (i) => down[i] && !pad.prev[i];
+    if (state.mode === 'playing') {
+      if (hit(0) || hit(7) || hit(5)) tryFart();       // A / R2 / R1
+      if (hit(1) || hit(2) || hit(6) || hit(4)) tryDropSteak(); // B / X / L2 / L1
+    } else if (hit(0) || hit(9)) {                     // A / Start on a menu
+      const btn = state.mode === 'title' ? startBtn
+        : state.mode === 'clear' ? nextBtn : retryBtn;
+      btn.click();
+    }
+    pad.prev = down;
+  }
+
+  // ---------- update check ----------
+  // nginx serves index.html with no-cache, but a tab that's already open
+  // (an iPad basically never closes Safari) keeps running the old build.
+  // On load and whenever the tab comes back to the foreground, fetch our own
+  // page fresh and compare build stamps.
+  async function checkForUpdate() {
+    if (location.protocol === 'file:') return;
+    try {
+      const res = await fetch(location.pathname, { cache: 'no-store' });
+      if (!res.ok) return;
+      const m = (await res.text()).match(/const BUILD = '([^']+)'/);
+      if (!m || m[1] === BUILD) return;
+      const apply = async () => {
+        // 'reload' refreshes the HTTP cache entry so the reload gets the new build
+        await fetch(location.pathname, { cache: 'reload' }).catch(() => {});
+        location.reload();
+      };
+      const guard = 'sb-autoreload-' + m[1];
+      if (state.mode === 'title' && !sessionStorage.getItem(guard)) {
+        sessionStorage.setItem(guard, '1');
+        apply();
+      } else {
+        toast('✨ New build ' + m[1] + ' — tap to update', apply);
+      }
+    } catch { /* offline or blocked: never mind */ }
+  }
+  checkForUpdate();
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkForUpdate();
+  });
+
   // ---------- steak lure ----------
   function tryDropSteak() {
     if (state.mode !== 'playing') return;
@@ -708,6 +823,7 @@
       const len = Math.hypot(joy.dx, joy.dy);
       if (len > 8) { ix = joy.dx / 70; iy = joy.dy / 70; }
     }
+    ix += pad.x; iy += pad.y;
     const ilen = Math.hypot(ix, iy);
     if (ilen > 1) { ix /= ilen; iy /= ilen; }
 
@@ -884,11 +1000,37 @@
     } catch { /* no atlas: emoji mode */ }
   })();
 
-  const EMOJI = {
-    cat_idle: '🐈', cat_run: '🐈', cat_grumped: '😾',
-    dog_scaredy: '🐕', dog_chill: '🐕', dog_aggro: '🐕', dog_happy: '🐕', dog_munch: '🐕',
-    sparkle: '✨', steak: '🥩', tree: '🌳', rock: '🪨',
-  };
+  // Some platforms are missing individual emoji glyphs, and a missing glyph
+  // draws *nothing* on canvas (the cat becomes an invisible butt-glow orb).
+  // Probe candidates on an offscreen canvas and keep the first that actually
+  // renders in color; a monochrome tofu box painted in our probe color fails.
+  // Add ?noemoji to the URL to preview the vector stand-ins.
+  const forceVector = location.search.includes('noemoji');
+  const probe = document.createElement('canvas');
+  probe.width = probe.height = 32;
+  const ptx = probe.getContext('2d', { willReadFrequently: true });
+  function glyphRenders(g) {
+    ptx.clearRect(0, 0, 32, 32);
+    ptx.font = '26px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+    ptx.textAlign = 'center';
+    ptx.textBaseline = 'middle';
+    ptx.fillStyle = '#00ff00';
+    ptx.fillText(g, 16, 16);
+    const d = ptx.getImageData(0, 0, 32, 32).data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 40 && !(d[i] < 60 && d[i + 1] > 180 && d[i + 2] < 60)) return true;
+    }
+    return false;
+  }
+  const EMOJI = {};
+  for (const [name, cands] of Object.entries({
+    cat_idle: ['🐈', '🐱'], cat_run: ['🐈', '🐱'], cat_grumped: ['😾', '🙀', '🐱'],
+    dog_scaredy: ['🐕', '🐶'], dog_chill: ['🐕', '🐶'], dog_aggro: ['🐕', '🐶'],
+    dog_happy: ['🐕', '🐶'], dog_munch: ['🐕', '🐶'],
+    steak: ['🥩', '🍖'], tree: ['🌳', '🌲'], rock: ['🪨', '🌰'],
+  })) {
+    EMOJI[name] = forceVector ? null : (cands.find(glyphRenders) || null);
+  }
 
   function drawActor(name, x, y, size, flip = false, rot = 0, animT = 0) {
     if (atlas) {
@@ -910,7 +1052,210 @@
         return;
       }
     }
-    drawEmoji(EMOJI[name] || EMOJI[name.replace(/_\d+$/, '')] || name, x, y, size, flip, rot);
+    if (name === 'sparkle') { drawSparkle(x, y, size, animT); return; }
+    const g = EMOJI[name] || EMOJI[name.replace(/_\d+$/, '')];
+    if (g) { drawEmoji(g, x, y, size, flip, rot); return; }
+    // no usable glyph on this device: canvas-drawn stand-ins
+    ctx.save();
+    ctx.translate(x, y);
+    if (rot) ctx.rotate(rot);
+    if (flip) ctx.scale(-1, 1);
+    const base = name.replace(/_\d+$/, '');
+    if (name.startsWith('cat')) drawVectorCat(size, name === 'cat_grumped');
+    else if (name.startsWith('dog')) drawVectorDog(size, name === 'dog_happy');
+    else if (base === 'tree') drawVectorTree(size);
+    else if (base === 'rock') drawVectorRock(size);
+    else if (name === 'steak') drawVectorSteak(size);
+    ctx.restore();
+  }
+
+  // ---------- vector stand-ins & sparkle ----------
+  function starPath(r) {
+    const inner = r * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(0, -r);
+    for (let i = 0; i < 4; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 2;
+      const mid = a + Math.PI / 4, next = a + Math.PI / 2;
+      ctx.quadraticCurveTo(Math.cos(mid) * inner, Math.sin(mid) * inner, Math.cos(next) * r, Math.sin(next) * r);
+    }
+    ctx.closePath();
+  }
+
+  // gold 4-point star with a cream outline and hard drop shadow — reads
+  // against the grass far better than the old ✨ emoji did
+  function drawSparkle(x, y, size, animT) {
+    const r = size / 2, rot = animT * 0.8;
+    ctx.save();
+    ctx.translate(x, y);
+    const glow = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 2.1);
+    glow.addColorStop(0, 'rgba(255, 216, 77, 0.5)');
+    glow.addColorStop(1, 'rgba(255, 216, 77, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 2.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(2, 3.5);
+    ctx.rotate(rot);
+    starPath(r);
+    ctx.fillStyle = 'rgba(30, 70, 22, 0.4)';
+    ctx.fill();
+    ctx.restore();
+    ctx.rotate(rot);
+    starPath(r);
+    ctx.fillStyle = '#ffd84d';
+    ctx.fill();
+    ctx.strokeStyle = '#fff6e8';
+    ctx.lineWidth = Math.max(2, size * 0.08);
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    ctx.fillStyle = '#fffdf5';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawVectorCat(s, grumped) {
+    const u = s / 52;
+    const body = grumped ? '#8a93a5' : '#f5a33b';
+    const dark = grumped ? '#5c667a' : '#c9761e';
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.strokeStyle = body;
+    ctx.lineWidth = 6 * u;
+    ctx.beginPath();
+    ctx.moveTo(16 * u, 4 * u);
+    ctx.quadraticCurveTo(30 * u, 2 * u, 26 * u, -14 * u);
+    ctx.stroke();
+    ctx.fillStyle = dark;
+    for (const lx of [-12, -4, 6, 14]) ctx.fillRect((lx - 2.5) * u, 8 * u, 5 * u, 12 * u);
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.ellipse(2 * u, 2 * u, 19 * u, 12 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 3 * u;
+    ctx.beginPath();
+    ctx.moveTo(6 * u, -8 * u); ctx.quadraticCurveTo(9 * u, -2 * u, 6 * u, 4 * u);
+    ctx.moveTo(14 * u, -6 * u); ctx.quadraticCurveTo(17 * u, -1 * u, 14 * u, 4 * u);
+    ctx.stroke();
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(-26 * u, -14 * u); ctx.lineTo(-23 * u, -27 * u); ctx.lineTo(-16 * u, -16 * u);
+    ctx.moveTo(-14 * u, -16 * u); ctx.lineTo(-9 * u, -27 * u); ctx.lineTo(-6 * u, -14 * u);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-16 * u, -6 * u, 12 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#31204a';
+    ctx.beginPath();
+    ctx.arc(-21 * u, -8 * u, 1.9 * u, 0, Math.PI * 2);
+    ctx.fill();
+    if (grumped) {
+      ctx.strokeStyle = '#31204a';
+      ctx.lineWidth = 1.8 * u;
+      ctx.beginPath();
+      ctx.moveTo(-25 * u, -13 * u); ctx.lineTo(-18 * u, -11 * u);
+      ctx.moveTo(-25 * u, 0); ctx.quadraticCurveTo(-22 * u, -3 * u, -18 * u, -1 * u);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#ff8ae0';
+    ctx.beginPath();
+    ctx.moveTo(-29.5 * u, -5 * u); ctx.lineTo(-25.5 * u, -5 * u); ctx.lineTo(-27.5 * u, -2 * u);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawVectorDog(s, happy) {
+    const u = s / 48;
+    const body = '#b9855a', dark = '#87603e';
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.strokeStyle = body;
+    ctx.lineWidth = 5 * u;
+    ctx.beginPath();
+    ctx.moveTo(17 * u, 0);
+    ctx.quadraticCurveTo(26 * u, -4 * u, 24 * u, -13 * u);
+    ctx.stroke();
+    ctx.fillStyle = dark;
+    for (const lx of [-11, -3, 7, 15]) ctx.fillRect((lx - 2.5) * u, 8 * u, 5 * u, 12 * u);
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.ellipse(3 * u, 2 * u, 18 * u, 11 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-14 * u, -8 * u, 11 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-24 * u, -5 * u, 7 * u, 5 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.ellipse(-8 * u, -12 * u, 4.5 * u, 8 * u, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-30 * u, -6 * u, 2.4 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#31204a';
+    ctx.beginPath();
+    ctx.arc(-17 * u, -11 * u, 1.9 * u, 0, Math.PI * 2);
+    ctx.fill();
+    if (happy) {
+      ctx.fillStyle = '#ff8ae0';
+      ctx.beginPath();
+      ctx.ellipse(-22 * u, 2 * u, 3 * u, 5 * u, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawVectorTree(s) {
+    const u = s / 116;
+    ctx.fillStyle = '#8a5f3c';
+    ctx.fillRect(-7 * u, 10 * u, 14 * u, 42 * u);
+    ctx.fillStyle = '#3e7a2a';
+    for (const [cx, cy, r] of [[-22, -8, 26], [22, -8, 26], [0, -30, 30], [0, 2, 28]]) {
+      ctx.beginPath();
+      ctx.arc(cx * u, cy * u, r * u, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#4f9636';
+    ctx.beginPath();
+    ctx.arc(-8 * u, -22 * u, 20 * u, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawVectorRock(s) {
+    const u = s / 60;
+    ctx.fillStyle = '#9aa2ad';
+    ctx.beginPath();
+    ctx.moveTo(-26 * u, 16 * u);
+    ctx.lineTo(-20 * u, -10 * u);
+    ctx.lineTo(-2 * u, -20 * u);
+    ctx.lineTo(20 * u, -8 * u);
+    ctx.lineTo(26 * u, 16 * u);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#7d8794';
+    ctx.beginPath();
+    ctx.moveTo(-2 * u, -20 * u);
+    ctx.lineTo(20 * u, -8 * u);
+    ctx.lineTo(26 * u, 16 * u);
+    ctx.lineTo(4 * u, 16 * u);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawVectorSteak(s) {
+    const u = s / 32;
+    ctx.fillStyle = '#c0392b';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14 * u, 9 * u, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff6e8';
+    ctx.lineWidth = 3 * u;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14 * u, 9 * u, -0.4, 0.6, 2.6);
+    ctx.stroke();
   }
 
   // ---------- render ----------
@@ -968,11 +1313,7 @@
     // sparkles
     for (const s of state.sparkles) {
       const pulse = 1 + 0.18 * Math.sin(t * 4 + s.phase);
-      ctx.save();
-      ctx.shadowColor = 'rgba(255, 216, 77, 0.9)';
-      ctx.shadowBlur = 14;
       drawActor('sparkle', s.x, s.y + Math.sin(t * 2.5 + s.phase) * 4, 26 * pulse, false, 0, t + s.phase);
-      ctx.restore();
     }
 
     // steak pickups
@@ -1163,9 +1504,13 @@
     steakBtn.classList.toggle('empty', state.steaksHeld <= 0);
   }
 
-  document.getElementById('start-btn').addEventListener('click', () => { ensureAudio(); startLevel(1); });
-  document.getElementById('next-btn').addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
-  document.getElementById('retry-btn').addEventListener('click', () => { ensureAudio(); startLevel(state.level); });
+  const startBtn = document.getElementById('start-btn');
+  const nextBtn = document.getElementById('next-btn');
+  const retryBtn = document.getElementById('retry-btn');
+  startBtn.addEventListener('click', () => { ensureAudio(); startLevel(1); });
+  nextBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
+  retryBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level); });
+  document.getElementById('build-tag').textContent = 'build ' + BUILD;
   fartBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryFart(); });
   steakBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryDropSteak(); });
   document.getElementById('mute-btn').addEventListener('click', (e) => {
@@ -1183,6 +1528,7 @@
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
+    pollGamepad();
     update(dt);
     render(now);
     requestAnimationFrame(frame);

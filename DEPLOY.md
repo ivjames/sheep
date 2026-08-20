@@ -44,8 +44,17 @@ Land changes on `main`, then on the droplet:
 sparkle deploy
 ```
 
-That's a `git fetch` + `git reset --hard origin/main` of the checkout —
-nothing else. No build, no restart, no reload.
+That's a `git fetch` + `git reset --hard origin/main` of the checkout, plus
+one `sed` that stamps the deployed commit into `index.html`'s `BUILD`
+constant (the repo file says `'dev'`; the stamp deliberately dirties the
+checkout — the next deploy's reset wipes and re-stamps it). No build, no
+restart, no reload.
+
+The game shows the stamp on its title screen ("build abc1234") and every
+open tab re-fetches the page on load/foreground and compares stamps — on the
+title screen it auto-reloads onto the new build, mid-game it shows a
+"tap to update" toast. So an iPad that never closes Safari still picks up
+deploys without any manual cache clearing.
 
 ## Shared art store (optional)
 

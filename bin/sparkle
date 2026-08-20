@@ -172,8 +172,17 @@ cmd_deploy() {
     log "$before -> $after"
     git --no-pager log --oneline "$before..$after"
   fi
+  # Stamp the deployed commit into the game (repo says BUILD = 'dev'). The
+  # game shows it on the title screen and open tabs poll it to self-update,
+  # so stale caches can't hide a deploy. Dirties the checkout on purpose;
+  # the next deploy's reset --hard wipes and re-stamps it.
+  # (anchored to the declaration line — an unanchored pattern would also hit
+  # the update-checker's own regex literal further down and corrupt it)
+  sed -i "s/^  const BUILD = '[^']*';/  const BUILD = '$after';/" index.html
+  log "stamped build $after into index.html"
   log "Done. (Static files serve straight from disk — no reload needed;"
-  log " index.html is sent with Cache-Control: no-cache, so it's live now.)"
+  log " index.html is sent with Cache-Control: no-cache, and open tabs"
+  log " see the new build stamp and offer/auto-apply a refresh.)"
 }
 
 # Shared art store: the sprite manager (tools/sprite-manager.html) talks to
@@ -231,9 +240,12 @@ EOF
 cmd_status() {
   cd "$ROOT"
   printf 'checkout:  %s  %s\n' "$(git rev-parse --short HEAD)" "$(git log -1 --format=%s)"
-  local code
-  code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$FQDN/" || true)"
-  printf 'live:      https://%s/  ->  HTTP %s\n' "$FQDN" "${code:-unreachable}"
+  local page code build
+  page="$(curl -s --max-time 10 -w '\n%{http_code}' "https://$FQDN/" || true)"
+  code="$(printf '%s' "$page" | tail -1)"
+  build="$(printf '%s' "$page" | grep -o "const BUILD = '[^']*'" | cut -d"'" -f2)"
+  printf 'live:      https://%s/  ->  HTTP %s  (build %s)\n' \
+    "$FQDN" "${code:-unreachable}" "${build:-unknown}"
   local art
   art="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$FQDN/art/frames/" || true)"
   case "$art" in
