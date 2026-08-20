@@ -331,7 +331,9 @@
   const SHEEP_R = 12, DOG_R = 13;
   const FLEE_RANGE = 235;         // how far a normal sheep feels the dog
   const FLEE_RANGE_DEFIANT = 150; // defiant sheep make you get close
-  const SEP_RANGE = 34, COH_RANGE = 170;
+  const SEP_RANGE = 34, COH_RANGE = 190;
+  const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
+  const MERGE_REACH = 520;        // stray sheep feel the mob's pull out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.55;
   const GATE_W = 112;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -893,11 +895,36 @@
     d.bob += dt * (Math.hypot(d.vx, d.vy) > 40 ? 12 : 3);
   }
 
+  // ---------- flocking helpers ----------
+  // scared sheep bunch much tighter; defiant ones barely flock at all
+  function cohesionWeight(s) {
+    return (s.defiant ? 5 : 20) + s.panic * (s.defiant ? 12 : 64);
+  }
+  // a sheep off on its own feels the mob's pull, so strays and split
+  // groups drift back together and merge instead of scattering for good
+  function mergePull(s, flock) {
+    if (!flock || flock.n < 2 || s.planted) return null;
+    const n = flock.n; // centroid of the *others*, not counting this sheep
+    const mx = (flock.cx * n - s.x) / (n - 1) - s.x;
+    const my = (flock.cy * n - s.y) / (n - 1) - s.y;
+    const ml = Math.hypot(mx, my);
+    if (ml < COH_RANGE) return null; // close enough — cohesion handles it
+    const k = Math.min(1, (ml - COH_RANGE) / (MERGE_REACH - COH_RANGE));
+    const pull = (s.defiant ? 9 : 34) * (0.4 + 0.6 * k) * (1 + s.panic * 1.5);
+    return { x: (mx / ml) * pull, y: (my / ml) * pull };
+  }
+  // fear spreads: one spooked sheep puts its neighbours on edge too
+  function catchPanic(s, nearPanic, dt) {
+    const target = nearPanic * (s.defiant ? 0.5 : 0.85);
+    if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 3);
+  }
+
   function updateSheep(dt) {
     const { w, h } = state.world;
     const d = state.dog;
     const iz = state.pen.inner;
     const grazing = state.mode === 'title';
+    const flock = flockInfo();
     for (const s of state.sheep) {
       s.bob += dt * (2 + s.panic * 9);
       if (s.penned) {
@@ -916,7 +943,7 @@
 
       let fx = 0, fy = 0;
       // --- flocking: separation, cohesion, alignment ---
-      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0;
+      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0;
       for (const o of state.sheep) {
         if (o === s || o.penned) continue;
         const dx = s.x - o.x, dy = s.y - o.y;
@@ -927,21 +954,30 @@
           fx += (dx / dl) * k * 320;
           fy += (dy / dl) * k * 320;
         }
-        if (dd < COH_RANGE * COH_RANGE) { cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy; }
+        if (dd < COH_RANGE * COH_RANGE) {
+          cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy;
+          if (o.panic > nearPanic) nearPanic = o.panic;
+        }
       }
       if (cn && !s.planted) {
-        // scared sheep bunch tighter — defiant ones barely flock at all
-        const cw = (s.defiant ? 4 : 12) + s.panic * (s.defiant ? 10 : 46);
+        const cw = cohesionWeight(s);
         const tx = cx / cn - s.x, ty = cy / cn - s.y;
         const tl = Math.hypot(tx, ty);
-        if (tl > 26) { fx += (tx / tl) * cw; fy += (ty / tl) * cw; }
-        fx += (avx / cn - s.vx) * 0.8;
-        fy += (avy / cn - s.vy) * 0.8;
+        if (tl > 18) { fx += (tx / tl) * cw; fy += (ty / tl) * cw; }
+        // match the mob's heading — sheep steer off each other constantly
+        const aw = s.defiant ? 0.6 : 1.5;
+        fx += (avx / cn - s.vx) * aw;
+        fy += (avy / cn - s.vy) * aw;
+        catchPanic(s, nearPanic, dt);
       }
+      const mp = mergePull(s, flock);
+      if (mp) { fx += mp.x; fy += mp.y; }
       // --- dog pressure ---
       if (!grazing) {
         const range = s.defiant ? FLEE_RANGE_DEFIANT : FLEE_RANGE;
-        const ddx = s.x - d.x, ddy = s.y - d.y;
+        // sheep read the dog's line of travel, not just where it stands
+        const lead = s.defiant ? 0 : 0.3;
+        const ddx = s.x - (d.x + d.vx * lead), ddy = s.y - (d.y + d.vy * lead);
         const dd = Math.hypot(ddx, ddy);
         if (dd < range && dd > 0.01) {
           const k = 1 - dd / range;
@@ -958,6 +994,12 @@
             fy += (ddy / dd) * k * 520 * mult;
           }
           s.panic = Math.max(s.panic, Math.min(1, k * (s.defiant ? 0.8 : 1.15)));
+        } else if (!s.defiant && !s.planted && dd < DOG_AWARE && dd > 0.01) {
+          // noticed but not pressed yet: lift the head, edge away, bunch up
+          const k = 1 - (dd - range) / (DOG_AWARE - range);
+          fx += (ddx / dd) * k * 70;
+          fy += (ddy / dd) * k * 70;
+          s.panic = Math.max(s.panic, k * 0.4);
         }
       }
       // --- bark pulses ---
