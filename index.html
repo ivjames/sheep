@@ -316,16 +316,17 @@
   const PACE_STEP = 0.2;          // WALK ON taps add this, EASY taps shed it
   const PACE_START = 0.6, PACE_MIN = 0.2;
   const SHEEP_R = 12, DOG_R = 13;
-  const FLEE_RANGE = 235;         // how far a normal sheep feels the dog
-  const FLEE_RANGE_DEFIANT = 150; // defiant sheep make you get close
+  const FLEE_RANGE = 235;         // how far the most timid sheep feels the dog
+  const FLEE_RANGE_DEFIANT = 150; // ...and the boldest make you get close
   const SEP_RANGE = 34, COH_RANGE = 190;
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const MERGE_REACH = 520;        // stray sheep feel the mob's pull out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
-  const GATE_W = 112;
-  const GATE_PULL = 260;          // gate suction radius (training wheels, low levels)
+  const GATE_W = 112;             // gate width at level 1...
+  const GATE_MIN = 68;            // ...narrowing 4px a level down to this
+  const GATE_PULL = 260;          // sheep this near the gate mouth drift on in
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
@@ -472,7 +473,7 @@
     pen: { segs: [], inner: null },
     obstacles: [],
     barks: [],    // active bark pressure pulses
-    floaties: [], // rising emoji / command call-outs
+    floaties: [], // rising doodles / command call-outs
     gateClosing: false, // all sheep home: the gate swings shut
     gateT: 0,           // 0 open → 1 closed
     clearWait: 0,
@@ -522,7 +523,11 @@
       fc.fill();
     }
     for (let i = 0; i < 80 * k; i++) {
-      flowers.push({ x: rand(60, w - 60), y: rand(60, h - 60), g: ['🌼','🌸','🌷','🍄','🌻','🌺'][Math.floor(rand(0, 6))], s: rand(13, 21) });
+      flowers.push({
+        x: rand(60, w - 60), y: rand(60, h - 60),
+        c: ['#fff6e8', '#ffb3d9', '#ff8fa3', '#ffd166', '#c69bf5', '#ff9c6b'][Math.floor(rand(0, 6))],
+        s: rand(13, 21),
+      });
     }
     for (let i = 0; i < 170 * k; i++) {
       tufts.push({ x: rand(30, w - 30), y: rand(30, h - 30), s: rand(0.5, 1.15) });
@@ -536,9 +541,11 @@
     const horiz = side === 0 || side === 2;
     const along = horiz ? w : h;
     const W = clamp(210 + count * 9, 250, along - 360);
-    const D = clamp(150 + count * 5, 170, 260);
+    const D = clamp(150 + count * 5, 170, 340);
     const c = rand(HEDGE + 110 + W / 2, along - HEDGE - 110 - W / 2);
-    const ga = c - GATE_W / 2, gb = c + GATE_W / 2;
+    // the gate narrows level by level — late-game pens take real precision
+    const gw = clamp(GATE_W - (state.level - 1) * 4, GATE_MIN, GATE_W);
+    const ga = c - gw / 2, gb = c + gw / 2;
     const seg = (x1, y1, x2, y2) => ({ x1, y1, x2, y2 });
     let rect, segs, gate, out; // out = unit normal from gate into the field
     if (side === 0) {
@@ -568,7 +575,7 @@
     }
     const inset = 16;
     state.pen = {
-      side, rect, segs, gate, out,
+      side, rect, segs, gate, out, gw,
       cx: (rect.x0 + rect.x1) / 2, cy: (rect.y0 + rect.y1) / 2,
       gx: (gate.x1 + gate.x2) / 2, gy: (gate.y1 + gate.y2) / 2,
       inner: { x0: rect.x0 + inset, y0: rect.y0 + inset, x1: rect.x1 - inset, y1: rect.y1 - inset },
@@ -584,6 +591,16 @@
     return x < r.x0 - pad || x > r.x1 + pad || y < r.y0 - pad || y > r.y1 + pad;
   }
 
+  // Every sheep rolls its own temperament: `bold` is how little the dog
+  // worries it (0 timid → 1 stubborn/complacent) and `flocky` is how
+  // keenly it follows the flock's flow. Defiant sheep sit pinned at the
+  // stubborn, unflockable extreme.
+  function rollTemper(defiant) {
+    return defiant
+      ? { bold: rand(0.8, 1), flocky: rand(0, 0.3) }
+      : { bold: rand(0.05, 0.65), flocky: rand(0.35, 1) };
+  }
+
   function startLevel(n) {
     state.level = n;
     state.mode = 'playing';
@@ -594,8 +611,10 @@
     state.world.h = Math.round(state.world.w / ar);
     makeDecor();
 
-    // a random-sized flock, growing with the levels
-    const count = Math.min(randInt(5 + n, 7 + n * 2), 40);
+    // a random-sized flock, growing fast with the levels — the big mobs
+    // are the fun part, so get there quickly, and there's no cap: the
+    // flock keeps growing as long as you keep clearing
+    const count = randInt(4 + n * 3, 6 + n * 4);
     const defiantCount = n < 2 ? 0 : Math.min(1 + Math.floor((n - 2) / 2), Math.floor(count / 3));
     makePen(count);
     const { w, h } = state.world;
@@ -617,12 +636,15 @@
       }
     }
 
-    // the flock spawns bunched, far from the pen
-    let fcx, fcy;
-    do {
+    // the flock spawns bunched, far from the pen. Huge late-game pens can
+    // leave no spot at the full standoff, so relax it until one exists.
+    let fcx, fcy, standoff = Math.hypot(w, h) * 0.45;
+    for (let tries = 0; ; tries++) {
       fcx = rand(HEDGE + 190, w - HEDGE - 190);
       fcy = rand(HEDGE + 190, h - HEDGE - 190);
-    } while (dist2(fcx, fcy, P.cx, P.cy) < (Math.hypot(w, h) * 0.45) ** 2 || !penClear(fcx, fcy, 220));
+      if (dist2(fcx, fcy, P.cx, P.cy) >= standoff * standoff && penClear(fcx, fcy, 220)) break;
+      if (tries % 40 === 39) standoff *= 0.9;
+    }
     state.sheep = [];
     const tempers = [];
     for (let i = 0; i < defiantCount; i++) tempers.push(true);
@@ -641,15 +663,16 @@
       }
       state.sheep.push({
         x, y, vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false,
-        defiant: tempers[i], panic: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
+        defiant: tempers[i], ...rollTemper(tempers[i]),
+        panic: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
     }
 
     // handler stands off to one side of the gate; the dog starts at heel
     const tx = -P.out.y, ty = P.out.x;
-    state.handler.x = clamp(P.gx + P.out.x * 150 + tx * (GATE_W / 2 + 90), HEDGE + 40, w - HEDGE - 40);
-    state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (GATE_W / 2 + 90), HEDGE + 40, h - HEDGE - 40);
+    state.handler.x = clamp(P.gx + P.out.x * 150 + tx * (P.gw / 2 + 90), HEDGE + 40, w - HEDGE - 40);
+    state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (P.gw / 2 + 90), HEDGE + 40, h - HEDGE - 40);
     state.dog.x = state.handler.x + 24; state.dog.y = state.handler.y + 20;
     state.dog.vx = 0; state.dog.vy = 0;
     state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
@@ -829,9 +852,14 @@
       state.dog.cmd = 'lie';
       state.pace = 0;
     } else {
+      // a flank keeps whatever pace the handler has set (a standstill gets
+      // just enough to move off); calling the SAME flank again is the
+      // hurry-up — that lifts the dog back to working pace
+      if (cmd === 'cb' || cmd === 'aw') {
+        state.pace = Math.max(state.pace,
+          state.dog.cmd === cmd ? PACE_START : PACE_MIN);
+      }
       state.dog.cmd = cmd;
-      // a flank called from a standstill goes at working pace
-      if (cmd === 'cb' || cmd === 'aw') state.pace = Math.max(state.pace, PACE_START);
     }
     sfx[CMD_INFO[cmd].whistle]();
     let txt = CMD_INFO[cmd].label;
@@ -855,7 +883,7 @@
     state.barksUsed++;
     state.barks.push({ x: d.x, y: d.y, t: 0 });
     sfx.bark();
-    state.floaties.push({ x: d.x + d.facing * -26, y: d.y - 26, vy: -60, t: 0, life: 0.7, g: '💢', s: 20 });
+    state.floaties.push({ x: d.x + d.facing * -26, y: d.y - 26, vy: -60, t: 0, life: 0.7, d: 'spark', s: 20 });
   }
 
   // ---------- update ----------
@@ -982,9 +1010,10 @@
   }
 
   // ---------- flocking helpers ----------
-  // scared sheep bunch much tighter; defiant ones barely flock at all
+  // scared sheep bunch much tighter; how keenly each one follows is its
+  // own flocky trait — the stubborn end barely flocks at all
   function cohesionWeight(s) {
-    return (s.defiant ? 5 : 20) + s.panic * (s.defiant ? 12 : 64);
+    return (6 + 22 * s.flocky) + s.panic * (14 + 70 * s.flocky);
   }
   // a sheep off on its own feels the mob's pull, so strays and split
   // groups drift back together and merge instead of scattering for good
@@ -996,14 +1025,17 @@
     const ml = Math.hypot(mx, my);
     if (ml < COH_RANGE) return null; // close enough — cohesion handles it
     const k = Math.min(1, (ml - COH_RANGE) / (MERGE_REACH - COH_RANGE));
-    const pull = (s.defiant ? 9 : 34) * (0.4 + 0.6 * k) * (1 + s.panic * 1.5);
+    const pull = (8 + 36 * s.flocky) * (0.4 + 0.6 * k) * (1 + s.panic * 1.5);
     return { x: (mx / ml) * pull, y: (my / ml) * pull };
   }
-  // training wheels: at early levels the gate gently inhales sheep that
-  // wander near its mouth, fading out entirely by level 5
+  // sheep near the mouth of an open gate know what it's for and drift on
+  // in. Strongest at early levels (training wheels) but never gone
+  // entirely — except at the stubborn end of the flock, which couldn't
+  // care less about your pen
   function gateSuction(s) {
-    const ease = clamp(1 - (state.level - 1) / 4, 0, 1);
-    if (!ease || s.planted) return null;
+    const ease = 0.4 + 0.6 * clamp(1 - (state.level - 1) / 4, 0, 1);
+    const willing = ease * (1 - s.bold * 0.85);
+    if (willing < 0.05 || s.planted) return null;
     const P = state.pen;
     // in front of the mouth only — never through the back fence
     if ((s.x - P.gx) * P.out.x + (s.y - P.gy) * P.out.y < -4) return null;
@@ -1012,12 +1044,12 @@
     const tl = Math.hypot(tx, ty);
     if (tl < 0.01 || tl > GATE_PULL) return null;
     const k = 1 - tl / GATE_PULL;
-    const f = ease * (s.defiant ? 0.5 : 1) * (40 + 320 * k * k);
-    return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * ease };
+    const f = willing * (40 + 320 * k * k);
+    return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * willing };
   }
   // fear spreads: one spooked sheep puts its neighbours on edge too
   function catchPanic(s, nearPanic, dt) {
-    const target = nearPanic * (s.defiant ? 0.5 : 0.85);
+    const target = nearPanic * (0.9 - 0.4 * s.bold);
     if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 3);
   }
 
@@ -1045,8 +1077,8 @@
       s.plantCd = Math.max(0, s.plantCd - dt);
 
       let fx = 0, fy = 0;
-      // gate suction (early levels): the pen mouth draws nearby sheep in,
-      // and a sheep caught in the funnel stops answering the mob's pull
+      // gate willingness: sheep near the pen mouth drift on in, and a
+      // sheep caught in the funnel stops answering the mob's pull
       const gs = grazing ? null : gateSuction(s);
       // --- flocking: separation, cohesion, alignment ---
       let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0;
@@ -1071,7 +1103,7 @@
         const tl = Math.hypot(tx, ty);
         if (tl > 18) { fx += (tx / tl) * cw; fy += (ty / tl) * cw; }
         // match the mob's heading — sheep steer off each other constantly
-        const aw = s.defiant ? 0.6 : 1.5;
+        const aw = 0.5 + 1.4 * s.flocky;
         fx += (avx / cn - s.vx) * aw;
         fy += (avy / cn - s.vy) * aw;
         catchPanic(s, nearPanic, dt);
@@ -1079,15 +1111,17 @@
       const mp = gs ? null : mergePull(s, flock);
       if (mp) { fx += mp.x; fy += mp.y; }
       // --- dog pressure ---
+      // fear of the dog is a gradient: the timid end feels it from far
+      // out and bolts; the bold end makes you get close and barely budges
       if (!grazing) {
-        const range = s.defiant ? FLEE_RANGE_DEFIANT : FLEE_RANGE;
+        const range = FLEE_RANGE - (FLEE_RANGE - FLEE_RANGE_DEFIANT) * s.bold;
         // sheep read the dog's line of travel, not just where it stands
-        const lead = s.defiant ? 0 : 0.3;
+        const lead = 0.3 * (1 - s.bold);
         const ddx = s.x - (d.x + d.vx * lead), ddy = s.y - (d.y + d.vy * lead);
         const dd = Math.hypot(ddx, ddy);
         if (dd < range && dd > 0.01) {
           const k = 1 - dd / range;
-          const mult = s.defiant ? 0.55 : 1;
+          const mult = 1 - 0.45 * s.bold;
           if (s.defiant && !s.planted && s.plantCd <= 0 && k > 0.3 && Math.random() < dt * 0.55) {
             // digs in: full stop until barked at (or nearly trodden on)
             s.planted = true;
@@ -1099,10 +1133,11 @@
             fx += (ddx / dd) * k * 520 * mult;
             fy += (ddy / dd) * k * 520 * mult;
           }
-          s.panic = Math.max(s.panic, Math.min(1, k * (s.defiant ? 0.8 : 1.15)));
-        } else if (!s.defiant && !s.planted && dd < DOG_AWARE && dd > 0.01) {
-          // noticed but not pressed yet: lift the head, edge away, bunch up
-          const k = 1 - (dd - range) / (DOG_AWARE - range);
+          s.panic = Math.max(s.panic, Math.min(1, k * (1.15 - 0.35 * s.bold)));
+        } else if (!s.planted && dd < DOG_AWARE && dd > 0.01) {
+          // noticed but not pressed yet: lift the head, edge away, bunch
+          // up — the bolder the sheep, the less it bothers
+          const k = (1 - (dd - range) / (DOG_AWARE - range)) * (1 - s.bold);
           fx += (ddx / dd) * k * 70;
           fy += (ddy / dd) * k * 70;
           s.panic = Math.max(s.panic, k * 0.4);
@@ -1139,7 +1174,7 @@
       s.vy += fy * dt;
       s.vx -= s.vx * 2.4 * dt;
       s.vy -= s.vy * 2.4 * dt;
-      let cap = s.planted ? 10 : 26 + s.panic * (s.defiant ? 180 : 150);
+      let cap = s.planted ? 10 : 26 + s.panic * (150 + 30 * s.bold);
       if (gs) cap = Math.max(cap, 30 + 70 * gs.k); // the funnel pulls at a trot
       const spd = Math.hypot(s.vx, s.vy);
       if (spd > cap) { s.vx *= cap / spd; s.vy *= cap / spd; }
@@ -1164,7 +1199,7 @@
         s.panic = 0;
         s.planted = false;
         sfx.penned();
-        state.floaties.push({ x: s.x, y: s.y - 24, vy: -55, t: 0, life: 1, g: '✅', s: 20 });
+        state.floaties.push({ x: s.x, y: s.y - 24, vy: -55, t: 0, life: 1, d: 'check', s: 20 });
         updateHud();
         if (!state.gateClosing && state.sheep.every(sh => sh.penned)) {
           state.gateClosing = true;
@@ -1185,7 +1220,7 @@
     s.vx += Math.cos(a) * 220;
     s.vy += Math.sin(a) * 220;
     s.panic = 1;
-    state.floaties.push({ x: s.x, y: s.y - 26, vy: -55, t: 0, life: 0.8, g: '❗', s: 18 });
+    state.floaties.push({ x: s.x, y: s.y - 26, vy: -55, t: 0, life: 0.8, d: 'bang', s: 18 });
   }
 
   function levelClear() {
@@ -1240,78 +1275,124 @@
   }
 
   // ---------- sprites ----------
-  // Some platforms are missing individual emoji glyphs, and a missing glyph
-  // draws *nothing* on canvas. Probe candidates on an offscreen canvas and
-  // keep the first that actually renders in color; a monochrome tofu box
-  // painted in our probe color fails. Add ?noemoji to preview the vector
-  // stand-ins.
-  const forceVector = location.search.includes('noemoji');
-  const probe = document.createElement('canvas');
-  probe.width = probe.height = 32;
-  const ptx = probe.getContext('2d', { willReadFrequently: true });
-  function glyphRenders(g) {
-    ptx.clearRect(0, 0, 32, 32);
-    ptx.font = '26px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-    ptx.textAlign = 'center';
-    ptx.textBaseline = 'middle';
-    ptx.fillStyle = '#00ff00';
-    ptx.fillText(g, 16, 16);
-    const d = ptx.getImageData(0, 0, 32, 32).data;
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i + 3] > 40 && !(d[i] < 60 && d[i + 1] > 180 && d[i + 2] < 60)) return true;
-    }
-    return false;
-  }
-  const EMOJI = {};
-  for (const [name, cands] of Object.entries({
-    tree: ['🌳', '🌲'], rock: ['🪨', '🌰'],
-  })) {
-    EMOJI[name] = forceVector ? null : (cands.find(glyphRenders) || null);
-  }
+  // Everything on the field is drawn as vector shapes — no emoji glyphs,
+  // so none of the per-platform glyph probing / rasterizing the engine
+  // used to carry.
 
-  // Emoji are rasterized once per glyph+size to an offscreen canvas, then
-  // drawImage'd. Never fillText an emoji under a mirrored transform: iPad
-  // Safari silently draws nothing. drawImage mirrors fine everywhere, and
-  // the cache beats per-frame emoji fillText on phones.
-  const glyphCache = new Map();
-  function glyphSprite(g, size) {
-    const key = g + '@' + size;
-    let spr = glyphCache.get(key);
-    if (!spr) {
-      const pad = Math.ceil(size * 1.4); // emoji can overhang the em box
-      spr = document.createElement('canvas');
-      spr.width = spr.height = pad * 2;  // 2x for retina crispness
-      const g2 = spr.getContext('2d');
-      g2.font = size * 2 + 'px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-      g2.textAlign = 'center';
-      g2.textBaseline = 'middle';
-      g2.fillText(g, pad, pad);
-      glyphCache.set(key, spr);
-    }
-    return spr;
-  }
-  function drawEmoji(g, x, y, size, flip = false, rot = 0) {
-    // quantize so continuous sizes don't grow the cache unbounded
-    const spr = glyphSprite(g, Math.max(2, Math.round(size / 2) * 2));
-    const w = spr.width / 2;
+  // Small status marks that hover over the actors (the jobs emoji used to
+  // do: sweat, huffed steam, a music note...). All built around origin at
+  // roughly s px tall so they slot into the old emoji call sites.
+  function drawDoodle(name, x, y, s) {
+    const u = s / 15;
     ctx.save();
     ctx.translate(x, y);
-    if (rot) ctx.rotate(rot);
-    if (flip) ctx.scale(-1, 1);
-    ctx.drawImage(spr, -w / 2, -w / 2, w, w);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (name === 'huff') {
+      // twin steam puffs venting sideways from a planted nose
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+      for (const dir of [-1, 1]) {
+        for (let i = 0; i < 3; i++) {
+          ctx.beginPath();
+          ctx.arc(dir * (3 + i * 4) * u, -i * 1.4 * u, (3.2 - i * 0.6) * u, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    } else if (name === 'sweat') {
+      ctx.fillStyle = '#6ec2f7';
+      for (const [dx, dy, r] of [[-3.5, 1, 3.4], [3.5, -2, 2.6]]) {
+        ctx.beginPath();
+        ctx.moveTo(dx * u, (dy - 1.8 * r) * u);
+        ctx.bezierCurveTo((dx + 1.15 * r) * u, (dy - 0.35 * r) * u,
+          (dx + 0.95 * r) * u, (dy + r) * u, dx * u, (dy + r) * u);
+        ctx.bezierCurveTo((dx - 0.95 * r) * u, (dy + r) * u,
+          (dx - 1.15 * r) * u, (dy - 0.35 * r) * u, dx * u, (dy - 1.8 * r) * u);
+        ctx.fill();
+      }
+    } else if (name === 'note') {
+      ctx.fillStyle = ctx.strokeStyle = '#31204a';
+      ctx.lineWidth = 1.8 * u;
+      ctx.beginPath();
+      ctx.ellipse(-2.5 * u, 5 * u, 3.1 * u, 2.3 * u, -0.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(0.4 * u, 4.6 * u);
+      ctx.lineTo(0.4 * u, -5.5 * u);
+      ctx.quadraticCurveTo(3.6 * u, -4.6 * u, 4.6 * u, -1 * u);
+      ctx.stroke();
+    } else if (name === 'zzz') {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.strokeStyle = 'rgba(49, 32, 74, 0.85)';
+      ctx.fillStyle = '#fff6e8';
+      ctx.lineWidth = 2.6 * u;
+      ctx.font = '700 ' + 8 * u + 'px Fredoka, sans-serif';
+      ctx.strokeText('z', -3 * u, 4 * u);
+      ctx.fillText('z', -3 * u, 4 * u);
+      ctx.font = '700 ' + 11 * u + 'px Fredoka, sans-serif';
+      ctx.strokeText('Z', 4 * u, -3.5 * u);
+      ctx.fillText('Z', 4 * u, -3.5 * u);
+    } else if (name === 'spark') {
+      // anger burst: four strokes radiating from the bark
+      ctx.strokeStyle = '#ff5347';
+      ctx.lineWidth = 2.4 * u;
+      for (let i = 0; i < 4; i++) {
+        const a = Math.PI / 4 + i * Math.PI / 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * 2.5 * u, Math.sin(a) * 2.5 * u);
+        ctx.lineTo(Math.cos(a) * 6.5 * u, Math.sin(a) * 6.5 * u);
+        ctx.stroke();
+      }
+    } else if (name === 'check') {
+      ctx.beginPath();
+      ctx.moveTo(-5 * u, 0.5 * u);
+      ctx.lineTo(-1.5 * u, 4.5 * u);
+      ctx.lineTo(5.5 * u, -4.5 * u);
+      ctx.lineWidth = 4.6 * u;
+      ctx.strokeStyle = '#fff6e8';
+      ctx.stroke();
+      ctx.lineWidth = 2.4 * u;
+      ctx.strokeStyle = '#2fae4f';
+      ctx.stroke();
+    } else if (name === 'bang') {
+      ctx.fillStyle = '#ff5347';
+      ctx.beginPath();
+      ctx.moveTo(-1.8 * u, -6.5 * u);
+      ctx.lineTo(1.8 * u, -6.5 * u);
+      ctx.lineTo(1 * u, 1.5 * u);
+      ctx.lineTo(-1 * u, 1.5 * u);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(0, 5 * u, 1.6 * u, 0, Math.PI * 2);
+      ctx.fill();
+    }
     ctx.restore();
   }
 
-  function drawActor(name, x, y, size, flip = false, rot = 0) {
-    const g = EMOJI[name];
-    if (g) { drawEmoji(g, x, y, size, flip, rot); return; }
-    // no usable glyph on this device: canvas-drawn stand-ins
+  function drawFlower(x, y, s, c) {
+    const u = s / 15;
     ctx.save();
     ctx.translate(x, y);
-    if (rot) ctx.rotate(rot);
-    if (flip) ctx.scale(-1, 1);
+    ctx.fillStyle = c;
+    for (let i = 0; i < 5; i++) {
+      const a = i / 5 * Math.PI * 2;
+      ctx.beginPath();
+      ctx.ellipse(Math.cos(a) * 3.2 * u, Math.sin(a) * 3.2 * u, 2.7 * u, 1.8 * u, a, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#ffd84d';
+    ctx.beginPath();
+    ctx.arc(0, 0, 1.9 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawActor(name, x, y, size) {
+    ctx.save();
+    ctx.translate(x, y);
     if (name === 'tree') drawVectorTree(size);
-    else if (name === 'rock') drawVectorRock(size);
+    else drawVectorRock(size);
     ctx.restore();
   }
 
@@ -1505,7 +1586,7 @@
       ctx.quadraticCurveTo(tf.x + 4 * tf.s, tf.y - 9 * tf.s, tf.x + 6 * tf.s, tf.y - 12 * tf.s);
       ctx.stroke();
     }
-    for (const f of flowers) drawEmoji(f.g, f.x, f.y, f.s);
+    for (const f of flowers) drawFlower(f.x, f.y, f.s, f.c);
 
     const t = now / 1000;
     const inGame = state.mode === 'playing' || state.mode === 'clear';
@@ -1585,11 +1666,11 @@
       drawSheepTop(s.x, s.y - hop, s.defiant ? 32 : 30, s.dir, s.defiant, s.bob,
         Math.hypot(s.vx, s.vy) > 12);
       if (s.planted) {
-        drawEmoji('😤', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
+        drawDoodle('huff', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
       } else if (!s.penned && s.panic > 0.75) {
-        drawEmoji('💦', s.x + 13, s.y - 24 - hop, 12);
+        drawDoodle('sweat', s.x + 13, s.y - 24 - hop, 12);
       } else if (s.penned && Math.sin(t * 2 + s.bob) > 0.965) {
-        drawEmoji('🎵', s.x + 12, s.y - 26, 12);
+        drawDoodle('note', s.x + 12, s.y - 26, 12);
       }
     };
 
@@ -1604,7 +1685,7 @@
       const bounce = spd > 40 ? Math.abs(Math.sin(dg.bob)) * 4 : Math.sin(dg.bob) * 1;
       drawDogTop(dg.x, dg.y - bounce + (lying ? 4 : 0), lying ? 30 : 34, dg.dir, dg.bob, spd > 40);
       if (lying && state.mode === 'playing') {
-        drawEmoji('💤', dg.x + 14, dg.y - 22 + Math.sin(t * 3) * 2, 13);
+        drawDoodle('zzz', dg.x + 14, dg.y - 22 + Math.sin(t * 3) * 2, 13);
       }
     };
 
@@ -1681,7 +1762,7 @@
       }
     }
 
-    // floaties: emoji and command call-outs
+    // floaties: doodles and command call-outs
     for (const f of state.floaties) {
       ctx.globalAlpha = clamp(1 - f.t / f.life, 0, 1);
       if (f.txt) {
@@ -1694,7 +1775,7 @@
         ctx.fillStyle = '#fff6e8';
         ctx.fillText(f.txt, f.x, f.y);
       } else {
-        drawEmoji(f.g, f.x, f.y, f.s);
+        drawDoodle(f.d, f.x, f.y, f.s);
       }
     }
     ctx.globalAlpha = 1;
@@ -1810,7 +1891,7 @@
       state.sheep.push({
         x: rand(HEDGE + 120, w - HEDGE - 120), y: rand(HEDGE + 120, h - HEDGE - 120),
         vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false, defiant: i === 0,
-        panic: 0, planted: false, plantT: 0, plantCd: 99,
+        ...rollTemper(i === 0), panic: 0, planted: false, plantT: 0, plantCd: 99,
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
     }
