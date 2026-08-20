@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sparkle Butt — Sprite Manager</title>
+<style>
+  :root {
+    --plum: #31204a; --plum-2: #443061; --plum-3: #5a4380;
+    --cream: #fff6e8; --gold: #ffd84d; --pink: #ff8ae0; --coral: #ff7b54;
+    --grass: #7ec850; --grass-d: #3e7a2a;
+    --ink: #2a1f3d; --muted: #8d7fa8;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--plum); color: var(--cream);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding-bottom: 90px;
+  }
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: var(--plum); border-bottom: 2px solid var(--plum-3);
+    padding: 14px 22px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  }
+  header h1 { margin: 0; font-size: 20px; letter-spacing: .3px; }
+  header h1 .tail { color: var(--gold); }
+  .progress { flex: 1 1 220px; min-width: 180px; }
+  .bar { height: 12px; border-radius: 6px; background: var(--plum-2); overflow: hidden; }
+  .bar > i { display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--grass), var(--gold)); transition: width .3s; }
+  .progress small { color: var(--muted); }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  button, label.btn {
+    background: var(--gold); color: var(--ink); border: 0; border-radius: 8px;
+    padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer;
+  }
+  button.ghost, label.btn.ghost { background: var(--plum-2); color: var(--cream); }
+  button:hover, label.btn:hover { filter: brightness(1.08); }
+  main { max-width: 1180px; margin: 0 auto; padding: 18px 22px; }
+  .hint {
+    background: var(--plum-2); border: 1px dashed var(--plum-3); border-radius: 10px;
+    padding: 10px 14px; color: var(--cream); margin-bottom: 18px; font-size: 14px;
+  }
+  .hint b { color: var(--gold); }
+  h2.tier { color: var(--gold); font-size: 15px; text-transform: uppercase;
+    letter-spacing: 1.5px; margin: 26px 0 10px; }
+  h2.tier small { color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .subject {
+    background: var(--plum-2); border-radius: 14px; padding: 14px 16px; margin-bottom: 14px;
+    display: grid; grid-template-columns: 132px 1fr; gap: 16px; align-items: start;
+  }
+  .subject.done { outline: 2px solid var(--grass); }
+  .preview { text-align: center; }
+  .preview canvas {
+    width: 116px; height: 116px; border-radius: 10px; image-rendering: pixelated;
+    background:
+      linear-gradient(45deg, #3a2a55 25%, transparent 25%, transparent 75%, #3a2a55 75%),
+      linear-gradient(45deg, #3a2a55 25%, transparent 25%, transparent 75%, #3a2a55 75%),
+      #443061;
+    background-size: 16px 16px; background-position: 0 0, 8px 8px;
+  }
+  .preview .fps { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .meta { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+  .meta code { font-size: 16px; font-weight: 700; color: var(--gold); }
+  .chip { font-size: 11px; background: var(--plum-3); border-radius: 20px; padding: 2px 9px; }
+  .chip.count { background: var(--coral); color: var(--ink); font-weight: 700; }
+  .chip.count.full { background: var(--grass); }
+  .notes { color: #cfc3e6; font-size: 13px; margin: 0 0 10px; }
+  .slots { display: flex; gap: 10px; flex-wrap: wrap; }
+  .slot {
+    width: 84px; height: 100px; border-radius: 10px; position: relative; cursor: pointer;
+    background: var(--plum); border: 2px dashed var(--plum-3);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  }
+  .slot:hover { border-color: var(--gold); }
+  .slot.drag { border-color: var(--pink); background: #3a2a55; }
+  .slot.filled { border-style: solid; border-color: var(--grass-d); }
+  .slot .thumb {
+    width: 64px; height: 64px; image-rendering: pixelated; object-fit: contain;
+    background:
+      linear-gradient(45deg, #4a3868 25%, transparent 25%, transparent 75%, #4a3868 75%),
+      linear-gradient(45deg, #4a3868 25%, transparent 25%, transparent 75%, #4a3868 75%),
+      #3a2a55;
+    background-size: 12px 12px; background-position: 0 0, 6px 6px; border-radius: 6px;
+  }
+  .slot .plus { font-size: 26px; color: var(--plum-3); line-height: 1; }
+  .slot .tag { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; }
+  .slot .warn { position: absolute; top: 3px; left: 5px; font-size: 11px; cursor: help; }
+  .slot .x {
+    position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 50%;
+    background: var(--coral); color: var(--ink); font-size: 12px; font-weight: 700;
+    display: none; align-items: center; justify-content: center; padding: 0; line-height: 1;
+  }
+  .slot.filled:hover .x { display: flex; }
+  #toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--gold); color: var(--ink); font-weight: 700; border-radius: 10px;
+    padding: 10px 18px; z-index: 50; display: none; max-width: 80vw;
+  }
+  body.dragging::after {
+    content: "Drop frames anywhere — files named like cat_run_0.png route themselves";
+    position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+    background: rgba(49,32,74,.88); color: var(--gold); font-size: 22px; font-weight: 700;
+    border: 4px dashed var(--gold); pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Sparkle Butt <span class="tail">Sprite Manager</span></h1>
+  <div class="progress">
+    <div class="bar"><i id="bar"></i></div>
+    <small id="barLabel">0 / 0 frames</small>
+  </div>
+  <div class="actions">
+    <label class="btn ghost">Import atlas<input type="file" id="importInput" accept=".png,.json" multiple hidden></label>
+    <button class="ghost" id="clearBtn">Clear all</button>
+    <button id="exportBtn">Export sprites.png + json</button>
+  </div>
+</header>
+
+<main>
+  <div class="hint">
+    Upload a PNG per frame — click a slot, or drop files anywhere (named
+    <b>subject_index.png</b>, e.g. <b>cat_run_3.png</b>, they route themselves; other
+    names dropped on a subject card fill its empty slots in order). Frames are authored at the
+    size shown per subject, face <b>left</b>, centered. Everything autosaves in this browser.
+    <b>Export</b> packs the atlas — drop both files into <b>assets/</b> and the game uses them
+    instantly. Partial exports are fine: missing sprites stay emoji.
+  </div>
+  <div id="roster"></div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+
+// ---- Sprite roster (mirrors ART-SPEC.md) ------------------------------------
+// frames: slot count. size: authored frame size (atlas cell). fps: playback for
+// preview + exported anims entry (multi-frame subjects only). static single-frame
+// subjects export under their exact name, matching the game's frames[name] lookup.
+const TIERS = [
+  { title: 'Tier 1 — makes the game fully sprite-based', subjects: [
+    { name: 'cat_idle',    frames: 4, size: 128, notes: 'Idle loop: tail swish, ear flick' },
+    { name: 'cat_run',     frames: 6, size: 128, fps: 10, notes: 'Full sprint cycle — this is 90% of gameplay' },
+    { name: 'cat_grumped', frames: 1, size: 128, notes: 'Game-over cat: grumpy, storm-cloud vibes' },
+    { name: 'dog_scaredy', frames: 4, size: 128, notes: 'Nervous trot, ears back, looking over shoulder' },
+    { name: 'dog_chill',   frames: 2, size: 128, notes: 'Mopey shuffle, half-lidded eyes' },
+    { name: 'dog_aggro',   frames: 4, size: 128, notes: 'Charging run, bared teeth — reads as THREAT' },
+    { name: 'dog_happy',   frames: 4, size: 128, notes: 'Bouncy hop cycle, tongue out, wagging' },
+    { name: 'dog_munch',   frames: 2, size: 128, notes: 'Head-down chomping (eating a dropped steak)' },
+    { name: 'sparkle',     frames: 4, size: 64,  notes: 'Twinkle loop; must pop against grass' },
+    { name: 'steak',       frames: 1, size: 64,  notes: 'Cartoon T-bone, appetizing' },
+    { name: 'tree_0',      frames: 1, size: 256, notes: 'Tree variant A; canopy high, base at bottom center' },
+    { name: 'tree_1',      frames: 1, size: 256, notes: 'Tree variant B' },
+    { name: 'rock_0',      frames: 1, size: 128, notes: 'Boulder variant A' },
+    { name: 'rock_1',      frames: 1, size: 128, notes: 'Boulder variant B' },
+  ]},
+  { title: 'Tier 2 — replaces the remaining emoji FX', subjects: [
+    { name: 'cat_fart', frames: 4, size: 128, oneShot: true, notes: 'One-shot squat-and-release' },
+    { name: 'fx_heart', frames: 2, size: 64, notes: 'Floater above happy dogs' },
+    { name: 'fx_note',  frames: 2, size: 64, notes: 'Music-note floater' },
+    { name: 'fx_star',  frames: 2, size: 64, notes: 'Impact star floater' },
+    { name: 'fx_anger', frames: 2, size: 64, notes: 'Anger-vein mark, pulsing' },
+    { name: 'fx_cloud', frames: 2, size: 64, notes: 'Grump storm cloud (scaredy dogs + grumped cat)' },
+    { name: 'fx_zzz',   frames: 2, size: 64, notes: "Chill dog's sleep mark" },
+    { name: 'fx_bite',  frames: 1, size: 64, notes: 'Collision burst' },
+    { name: 'flower_0', frames: 1, size: 64, notes: 'Ground decor (daisy)' },
+    { name: 'flower_1', frames: 1, size: 64, notes: 'Ground decor (blossom)' },
+    { name: 'flower_2', frames: 1, size: 64, notes: 'Ground decor (tulip)' },
+    { name: 'flower_3', frames: 1, size: 64, notes: 'Ground decor (mushroom)' },
+  ]},
+];
+const SUBJECTS = TIERS.flatMap(t => t.subjects);
+const TOTAL_FRAMES = SUBJECTS.reduce((n, s) => n + s.frames, 0);
+const ATLAS_MAX = 2048;
+
+// key `${name}_${i}` -> { blob, url, img, w, h }
+const store = new Map();
+
+// ---- Persistence (IndexedDB) -------------------------------------------------
+function openDB() {
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open('sparkle-sprite-manager', 1);
+    rq.onupgradeneeded = () => rq.result.createObjectStore('frames');
+    rq.onsuccess = () => res(rq.result);
+    rq.onerror = () => rej(rq.error);
+  });
+}
+async function dbPut(key, blob) {
+  const db = await openDB();
+  db.transaction('frames', 'readwrite').objectStore('frames').put(blob, key);
+}
+async function dbDel(key) {
+  const db = await openDB();
+  db.transaction('frames', 'readwrite').objectStore('frames').delete(key);
+}
+async function dbClear() {
+  const db = await openDB();
+  db.transaction('frames', 'readwrite').objectStore('frames').clear();
+}
+async function dbLoadAll() {
+  const db = await openDB();
+  return new Promise(res => {
+    const out = [];
+    const cur = db.transaction('frames').objectStore('frames').openCursor();
+    cur.onsuccess = () => {
+      const c = cur.result;
+      if (!c) return res(out);
+      out.push([c.key, c.value]);
+      c.continue();
+    };
+    cur.onerror = () => res(out);
+  });
+}
+
+// ---- Frame assignment ---------------------------------------------------------
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = url;
+  });
+}
+
+async function assignFile(subject, index, fileOrBlob, { persist = true } = {}) {
+  const key = `${subject.name}_${index}`;
+  const old = store.get(key);
+  if (old) URL.revokeObjectURL(old.url);
+  const url = URL.createObjectURL(fileOrBlob);
+  let img;
+  try { img = await loadImage(url); }
+  catch { URL.revokeObjectURL(url); toast(`Couldn't read ${key} — not an image?`); return; }
+  store.set(key, { blob: fileOrBlob, url, img, w: img.naturalWidth, h: img.naturalHeight });
+  if (persist) dbPut(key, fileOrBlob);
+  renderSlot(subject, index);
+  refreshSubject(subject);
+  refreshProgress();
+}
+
+function clearFrame(subject, index) {
+  const key = `${subject.name}_${index}`;
+  const cur = store.get(key);
+  if (!cur) return;
+  URL.revokeObjectURL(cur.url);
+  store.delete(key);
+  dbDel(key);
+  renderSlot(subject, index);
+  refreshSubject(subject);
+  refreshProgress();
+}
+
+// Route loose files by name: "<subject>_<i>.png". Returns the unmatched leftovers.
+async function routeFiles(files) {
+  const leftovers = [];
+  for (const f of files) {
+    const base = f.name.toLowerCase().replace(/\.(png|webp|gif|jpe?g)$/, '');
+    // "tree_0.png" is the static subject tree_0 itself, not frame 0 of "tree"
+    const exact = SUBJECTS.find(s => s.name === base);
+    if (exact) { await assignFile(exact, 0, f); continue; }
+    const m = base.match(/^(.+?)_(\d+)$/);
+    const subject = m && SUBJECTS.find(s => s.name === m[1]);
+    if (subject && +m[2] < subject.frames) await assignFile(subject, +m[2], f);
+    else leftovers.push(f);
+  }
+  return leftovers;
+}
+
+// Fill a subject's empty slots, in slot order, from files sorted by name.
+async function fillSubject(subject, files) {
+  const sorted = [...files].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  let i = 0;
+  for (const f of sorted) {
+    while (i < subject.frames && store.has(`${subject.name}_${i}`)) i++;
+    if (i >= subject.frames) { toast(`${subject.name}: no empty slots left, ${sorted.length - sorted.indexOf(f)} file(s) skipped`); break; }
+    await assignFile(subject, i++, f);
+  }
+}
+
+// ---- UI ------------------------------------------------------------------------
+const roster = document.getElementById('roster');
+const els = new Map();   // subject name -> { card, count, slots: [slotEl], preview }
+
+function buildUI() {
+  for (const tier of TIERS) {
+    const h = document.createElement('h2');
+    h.className = 'tier';
+    h.innerHTML = tier.title.replace(/—(.*)$/, '— <small>$1</small>');
+    roster.appendChild(h);
+    for (const s of tier.subjects) roster.appendChild(buildSubjectCard(s));
+  }
+}
+
+function buildSubjectCard(s) {
+  const card = document.createElement('section');
+  card.className = 'subject';
+  card.innerHTML = `
+    <div class="preview">
+      <canvas width="${s.size}" height="${s.size}"></canvas>
+      <div class="fps">${s.frames > 1 ? (s.fps || 8) + ' fps' + (s.oneShot ? ' · one-shot' : ' · loop') : 'static'}</div>
+    </div>
+    <div>
+      <div class="meta">
+        <code>${s.name}</code>
+        <span class="chip count">0/${s.frames}</span>
+        <span class="chip">${s.size}×${s.size}</span>
+      </div>
+      <p class="notes">${s.notes}</p>
+      <div class="slots"></div>
+    </div>`;
+  const slotsEl = card.querySelector('.slots');
+  const slots = [];
+  for (let i = 0; i < s.frames; i++) {
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    slot.title = `Upload ${s.name}_${i}.png (${s.size}×${s.size})`;
+    slotsEl.appendChild(slot);
+    slots.push(slot);
+    slot.addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file'; input.accept = 'image/*'; input.multiple = true;
+      input.onchange = () => {
+        if (input.files.length === 1) assignFile(s, i, input.files[0]);
+        else fillSubject(s, [...input.files]);
+      };
+      input.click();
+    });
+    slot.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); slot.classList.add('drag'); });
+    slot.addEventListener('dragleave', () => slot.classList.remove('drag'));
+    slot.addEventListener('drop', async e => {
+      e.preventDefault(); e.stopPropagation();
+      slot.classList.remove('drag');
+      document.body.classList.remove('dragging');
+      const files = [...e.dataTransfer.files];
+      if (files.length === 1) assignFile(s, i, files[0]);
+      else fillSubject(s, await routeFiles(files));
+    });
+  }
+  card.addEventListener('dragover', e => e.preventDefault());
+  card.addEventListener('drop', async e => {
+    e.preventDefault();
+    document.body.classList.remove('dragging');
+    fillSubject(s, await routeFiles([...e.dataTransfer.files]));
+  });
+  els.set(s.name, { card, count: card.querySelector('.count'), slots, preview: card.querySelector('canvas') });
+  for (let i = 0; i < s.frames; i++) renderSlot(s, i);
+  refreshSubject(s);
+  return card;
+}
+
+function renderSlot(s, i) {
+  const slot = els.get(s.name).slots[i];
+  const key = `${s.name}_${i}`;
+  const f = store.get(key);
+  if (!f) {
+    slot.className = 'slot';
+    slot.innerHTML = `<span class="plus">+</span><span class="tag">_${i}</span>`;
+    return;
+  }
+  const off = f.w !== s.size || f.h !== s.size;
+  slot.className = 'slot filled';
+  slot.innerHTML = `
+    <img class="thumb" src="${f.url}" alt="${key}">
+    <span class="tag">_${i}</span>
+    ${off ? `<span class="warn" title="${f.w}×${f.h} — expected ${s.size}×${s.size}; will be fit into the cell on export">⚠️</span>` : ''}
+    <button class="x" title="Remove frame">×</button>`;
+  slot.querySelector('.x').addEventListener('click', e => { e.stopPropagation(); clearFrame(s, i); });
+}
+
+function countFilled(s) {
+  let n = 0;
+  for (let i = 0; i < s.frames; i++) if (store.has(`${s.name}_${i}`)) n++;
+  return n;
+}
+
+function refreshSubject(s) {
+  const ui = els.get(s.name);
+  const n = countFilled(s);
+  ui.count.textContent = `${n}/${s.frames}`;
+  ui.count.classList.toggle('full', n === s.frames);
+  ui.card.classList.toggle('done', n === s.frames);
+}
+
+function refreshProgress() {
+  let n = 0;
+  for (const s of SUBJECTS) n += countFilled(s);
+  document.getElementById('bar').style.width = (100 * n / TOTAL_FRAMES) + '%';
+  document.getElementById('barLabel').textContent =
+    `${n} / ${TOTAL_FRAMES} frames · ${SUBJECTS.filter(s => countFilled(s) === s.frames).length} / ${SUBJECTS.length} sprites complete`;
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, 3500);
+}
+
+// ---- Animation previews ----------------------------------------------------------
+function tickPreviews(tMs) {
+  const t = tMs / 1000;
+  for (const s of SUBJECTS) {
+    const cv = els.get(s.name).preview;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    const filled = [];
+    for (let i = 0; i < s.frames; i++) {
+      const f = store.get(`${s.name}_${i}`);
+      if (f) filled.push(f);
+    }
+    if (!filled.length) continue;
+    const f = filled[Math.floor(t * (s.fps || 8)) % filled.length];
+    // contain-fit, centered — same as the atlas cell on export
+    const sc = Math.min(cv.width / f.w, cv.height / f.h, 1);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(f.img, (cv.width - f.w * sc) / 2, (cv.height - f.h * sc) / 2, f.w * sc, f.h * sc);
+  }
+  requestAnimationFrame(tickPreviews);
+}
+
+// ---- Export: pack atlas + JSON ----------------------------------------------------
+function buildAtlas() {
+  const entries = [];
+  for (const s of SUBJECTS)
+    for (let i = 0; i < s.frames; i++) {
+      const f = store.get(`${s.name}_${i}`);
+      if (f) entries.push({ s, i, f });
+    }
+  if (!entries.length) return null;
+
+  // Shelf pack, tallest cells first, row width capped at ATLAS_MAX.
+  entries.sort((a, b) => b.s.size - a.s.size);
+  let x = 0, y = 0, rowH = 0, atlasW = 0;
+  for (const e of entries) {
+    if (x + e.s.size > ATLAS_MAX) { x = 0; y += rowH; rowH = 0; }
+    e.x = x; e.y = y;
+    x += e.s.size;
+    rowH = Math.max(rowH, e.s.size);
+    atlasW = Math.max(atlasW, x);
+  }
+  const atlasH = y + rowH;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = atlasW; canvas.height = atlasH;
+  const ctx = canvas.getContext('2d');
+  const frames = {}, anims = {};
+  for (const e of entries) {
+    const { s, i, f } = e;
+    // contain-fit into the cell (no-op for correctly sized art)
+    const sc = Math.min(s.size / f.w, s.size / f.h);
+    ctx.drawImage(f.img, e.x + (s.size - f.w * sc) / 2, e.y + (s.size - f.h * sc) / 2, f.w * sc, f.h * sc);
+    // Static subjects key by exact name (the game's frames[name] lookup);
+    // animated ones key name_i and get an anims entry below.
+    const key = s.frames === 1 ? s.name : `${s.name}_${i}`;
+    frames[key] = { x: e.x, y: e.y, w: s.size, h: s.size };
+  }
+  for (const s of SUBJECTS) {
+    if (s.frames === 1) continue;
+    const present = [];
+    for (let i = 0; i < s.frames; i++)
+      if (frames[`${s.name}_${i}`]) present.push(`${s.name}_${i}`);
+    if (present.length) anims[s.name] = { fps: s.fps || 8, frames: present };
+  }
+  const json = { meta: { image: 'sprites.png' }, frames, anims };
+  return { canvas, json, count: entries.length, w: atlasW, h: atlasH };
+}
+
+function download(name, blob) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+document.getElementById('exportBtn').addEventListener('click', () => {
+  const atlas = buildAtlas();
+  if (!atlas) return toast('No frames uploaded yet — nothing to export');
+  if (atlas.h > ATLAS_MAX) return toast(`Atlas would be ${atlas.w}×${atlas.h} — over the ${ATLAS_MAX}px limit`);
+  atlas.canvas.toBlob(blob => {
+    download('sprites.png', blob);
+    download('sprites.json', new Blob([JSON.stringify(atlas.json, null, 2)], { type: 'application/json' }));
+    toast(`Exported ${atlas.count} frames (${atlas.w}×${atlas.h}) — drop both files into assets/`);
+  }, 'image/png');
+});
+
+// ---- Import an existing atlas to continue work -------------------------------------
+document.getElementById('importInput').addEventListener('change', async e => {
+  const files = [...e.target.files];
+  e.target.value = '';
+  const jsonFile = files.find(f => f.name.endsWith('.json'));
+  const pngFile = files.find(f => !f.name.endsWith('.json'));
+  if (!jsonFile || !pngFile) return toast('Select both sprites.png and sprites.json');
+  let data;
+  try { data = JSON.parse(await jsonFile.text()); }
+  catch { return toast("Couldn't parse the JSON file"); }
+  const img = await loadImage(URL.createObjectURL(pngFile));
+  const cut = document.createElement('canvas');
+  const cctx = cut.getContext('2d');
+  let n = 0;
+  for (const [key, fr] of Object.entries(data.frames || {})) {
+    const m = key.match(/^(.+?)_(\d+)$/);
+    const subject = SUBJECTS.find(s => s.name === key) ||
+                    (m && SUBJECTS.find(s => s.name === m[1]));
+    if (!subject) continue;
+    const index = subject.name === key ? 0 : +m[2];
+    if (index >= subject.frames) continue;
+    cut.width = fr.w; cut.height = fr.h;
+    cctx.clearRect(0, 0, fr.w, fr.h);
+    cctx.drawImage(img, fr.x, fr.y, fr.w, fr.h, 0, 0, fr.w, fr.h);
+    const blob = await new Promise(res => cut.toBlob(res, 'image/png'));
+    await assignFile(subject, index, blob);
+    n++;
+  }
+  toast(n ? `Imported ${n} frames from the atlas` : 'No frames in that atlas matched the sprite list');
+});
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  if (!confirm('Remove every uploaded frame from this browser?')) return;
+  for (const [, f] of store) URL.revokeObjectURL(f.url);
+  store.clear();
+  dbClear();
+  for (const s of SUBJECTS) {
+    for (let i = 0; i < s.frames; i++) renderSlot(s, i);
+    refreshSubject(s);
+  }
+  refreshProgress();
+});
+
+// ---- Page-wide drag & drop -----------------------------------------------------------
+window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
+window.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
+window.addEventListener('drop', async e => {
+  e.preventDefault();
+  document.body.classList.remove('dragging');
+  const leftovers = await routeFiles([...e.dataTransfer.files]);
+  if (leftovers.length)
+    toast(`${leftovers.length} file(s) didn't match subject_index.png — drop them on a sprite card instead`);
+});
+
+// ---- Boot ------------------------------------------------------------------------------
+buildUI();
+refreshProgress();
+requestAnimationFrame(tickPreviews);
+dbLoadAll().then(async saved => {
+  for (const [key, blob] of saved) {
+    const m = key.match(/^(.+?)_(\d+)$/);
+    const subject = m && SUBJECTS.find(s => s.name === m[1]);
+    if (subject && +m[2] < subject.frames) await assignFile(subject, +m[2], blob, { persist: false });
+  }
+});
+
+// exposed for automated testing only
+window._sm = { SUBJECTS, assignFile, buildAtlas, store };
+</script>
+</body>
+</html>

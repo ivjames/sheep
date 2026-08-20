@@ -95,3 +95,13 @@ once — note them and we'll wire the trigger.
 Drop the two files into `assets/`, open `index.html` in a browser, play. Each
 sprite replaces its emoji the moment it exists in the atlas; anything missing
 stays emoji. No build step, no tooling.
+
+## Sprite manager (recommended)
+
+You don't have to build the atlas by hand: open `tools/sprite-manager.html` in
+a browser. It shows every sprite above as a grid of frame slots — upload a PNG
+per frame (or drag a batch of `name_i.png` files anywhere and they route
+themselves), preview each animation live at its real fps, and track completion.
+**Export** packs everything you've uploaded into a correctly formatted
+`sprites.png` + `sprites.json` — partial exports work fine. Uploads autosave in
+your browser between sessions.

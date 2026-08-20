@@ -59,6 +59,10 @@ Corner scaredy dogs against them, or break an aggro dog's chase around one.
   `index.html` and real art replaces the emoji with zero code changes —
   see [ART-SPEC.md](ART-SPEC.md) for the full artist brief (sprite list,
   sizes, naming, JSON schema).
+- **Sprite manager:** open [tools/sprite-manager.html](tools/sprite-manager.html)
+  in a browser to track and assemble the art — a grid of frame slots per sprite,
+  drag-and-drop uploads, live animation previews, and one-click export of the
+  packed `sprites.png` + `sprites.json`. Uploads autosave in the browser.
 
 ## Release paths
 
