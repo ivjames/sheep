@@ -336,6 +336,7 @@
   const MERGE_REACH = 520;        // stray sheep feel the mob's pull out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.55;
   const GATE_W = 112;
+  const GATE_PULL = 260;          // gate suction radius (training wheels, low levels)
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
@@ -424,6 +425,11 @@
   const randInt = (a, b) => Math.floor(rand(a, b + 1));
   const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  // rotate angle a toward target by at most rate, taking the short way round
+  function turnToward(a, target, rate) {
+    const d = ((target - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    return a + clamp(d, -rate, rate);
+  }
 
   // push a moving circle out of any obstacle it overlaps, sliding along the edge
   function collideObstacles(e, r) {
@@ -467,7 +473,7 @@
     input: 'drag', // drag | cmd
     level: 1,
     world: { w: 1600, h: 1000 },
-    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, cmd: 'lie', bob: 0, barkCd: 0 },
+    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, barkCd: 0 },
     easy: false,
     handler: { x: 800, y: 560 },
     sheep: [],
@@ -606,7 +612,7 @@
         if (penClear(x, y, 60) && state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + 30) ** 2)) break;
       }
       state.sheep.push({
-        x, y, vx: 0, vy: 0, facing: -1, penned: false,
+        x, y, vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false,
         defiant: tempers[i], panic: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
@@ -618,6 +624,7 @@
     state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (GATE_W / 2 + 90), HEDGE + 40, h - HEDGE - 40);
     state.dog.x = state.handler.x + 24; state.dog.y = state.handler.y + 20;
     state.dog.vx = 0; state.dog.vy = 0;
+    state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
     state.easy = false;
@@ -892,7 +899,9 @@
     collideSegs(d, DOG_R);
     collideObstacles(d, DOG_R);
     if (Math.abs(d.vx) > 30) d.facing = d.vx > 0 ? 1 : -1;
-    d.bob += dt * (Math.hypot(d.vx, d.vy) > 40 ? 12 : 3);
+    const dspd = Math.hypot(d.vx, d.vy);
+    if (dspd > 25) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), 11 * dt);
+    d.bob += dt * (dspd > 40 ? 12 : 3);
   }
 
   // ---------- flocking helpers ----------
@@ -912,6 +921,22 @@
     const k = Math.min(1, (ml - COH_RANGE) / (MERGE_REACH - COH_RANGE));
     const pull = (s.defiant ? 9 : 34) * (0.4 + 0.6 * k) * (1 + s.panic * 1.5);
     return { x: (mx / ml) * pull, y: (my / ml) * pull };
+  }
+  // training wheels: at early levels the gate gently inhales sheep that
+  // wander near its mouth, fading out entirely by level 5
+  function gateSuction(s) {
+    const ease = clamp(1 - (state.level - 1) / 4, 0, 1);
+    if (!ease || s.planted) return null;
+    const P = state.pen;
+    // in front of the mouth only — never through the back fence
+    if ((s.x - P.gx) * P.out.x + (s.y - P.gy) * P.out.y < -4) return null;
+    // aim a little inside the gate so the pull carries sheep over the line
+    const tx = P.gx - P.out.x * 34 - s.x, ty = P.gy - P.out.y * 34 - s.y;
+    const tl = Math.hypot(tx, ty);
+    if (tl < 0.01 || tl > GATE_PULL) return null;
+    const k = 1 - tl / GATE_PULL;
+    const f = ease * (s.defiant ? 0.5 : 1) * (40 + 320 * k * k);
+    return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * ease };
   }
   // fear spreads: one spooked sheep puts its neighbours on edge too
   function catchPanic(s, nearPanic, dt) {
@@ -936,12 +961,16 @@
         s.x = clamp(s.x + s.vx * dt, iz.x0 + 4, iz.x1 - 4);
         s.y = clamp(s.y + s.vy * dt, iz.y0 + 4, iz.y1 - 4);
         if (Math.abs(s.vx) > 4) s.facing = s.vx > 0 ? 1 : -1;
+        if (Math.hypot(s.vx, s.vy) > 4) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), 2.5 * dt);
         continue;
       }
       s.panic = Math.max(0, s.panic - dt * 0.35);
       s.plantCd = Math.max(0, s.plantCd - dt);
 
       let fx = 0, fy = 0;
+      // gate suction (early levels): the pen mouth draws nearby sheep in,
+      // and a sheep caught in the funnel stops answering the mob's pull
+      const gs = grazing ? null : gateSuction(s);
       // --- flocking: separation, cohesion, alignment ---
       let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0;
       for (const o of state.sheep) {
@@ -970,7 +999,7 @@
         fy += (avy / cn - s.vy) * aw;
         catchPanic(s, nearPanic, dt);
       }
-      const mp = mergePull(s, flock);
+      const mp = gs ? null : mergePull(s, flock);
       if (mp) { fx += mp.x; fy += mp.y; }
       // --- dog pressure ---
       if (!grazing) {
@@ -1014,6 +1043,7 @@
           s.panic = 1;
         }
       }
+      if (gs) { fx += gs.x; fy += gs.y; }
       // --- keep off the hedge ---
       const wp = 60, wk = 140;
       if (s.x < HEDGE + wp) fx += wk * (1 - (s.x - HEDGE) / wp);
@@ -1032,7 +1062,8 @@
       s.vy += fy * dt;
       s.vx -= s.vx * 2.4 * dt;
       s.vy -= s.vy * 2.4 * dt;
-      const cap = s.planted ? 10 : 26 + s.panic * (s.defiant ? 180 : 150);
+      let cap = s.planted ? 10 : 26 + s.panic * (s.defiant ? 180 : 150);
+      if (gs) cap = Math.max(cap, 30 + 70 * gs.k); // the funnel pulls at a trot
       const spd = Math.hypot(s.vx, s.vy);
       if (spd > cap) { s.vx *= cap / spd; s.vy *= cap / spd; }
       s.x = clamp(s.x + s.vx * dt, HEDGE + 14, w - HEDGE - 14);
@@ -1040,6 +1071,10 @@
       collideSegs(s, SHEEP_R);
       collideObstacles(s, SHEEP_R);
       if (Math.abs(s.vx) > 6) s.facing = s.vx > 0 ? 1 : -1;
+      // swing the body round to the way it's actually running —
+      // spooked sheep whip about faster than grazing ones
+      const run = Math.hypot(s.vx, s.vy);
+      if (run > 6) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), (3.5 + s.panic * 8) * dt);
 
       if (s.planted) {
         s.plantT -= dt;
@@ -1141,8 +1176,7 @@
   }
   const EMOJI = {};
   for (const [name, cands] of Object.entries({
-    sheep: ['🐑', '🐏'], ram: ['🐏', '🐑'],
-    dog: ['🐕', '🐶'], handler: ['🧑‍🌾', '👩‍🌾', '👨‍🌾', '🧍'],
+    handler: ['🧑‍🌾', '👩‍🌾', '👨‍🌾', '🧍'],
     tree: ['🌳', '🌲'], rock: ['🪨', '🌰'],
   })) {
     EMOJI[name] = forceVector ? null : (cands.find(glyphRenders) || null);
@@ -1189,93 +1223,130 @@
     ctx.translate(x, y);
     if (rot) ctx.rotate(rot);
     if (flip) ctx.scale(-1, 1);
-    if (name === 'sheep' || name === 'ram') drawVectorSheep(size, name === 'ram');
-    else if (name === 'dog') drawVectorDog(size);
-    else if (name === 'handler') drawVectorHandler(size);
+    if (name === 'handler') drawVectorHandler(size);
     else if (name === 'tree') drawVectorTree(size);
     else if (name === 'rock') drawVectorRock(size);
     ctx.restore();
   }
 
-  // ---------- vector stand-ins ----------
-  function drawVectorSheep(s, ram) {
-    const u = s / 44;
-    const wool = ram ? '#c9b8a0' : '#f4efe4';
+  // ---------- top-down actor shapes ----------
+  // Sheep and dog are drawn as simple vector shapes instead of emoji:
+  // oblong bodies built nose-first along +x, then rotated to the smoothed
+  // heading (dir), so the flock visibly streams the way it's running.
+  function drawSheepTop(x, y, size, dir, ram, bob, moving) {
+    const u = size / 30;
+    const wool = ram ? '#d9c6a8' : '#f6f1e6';
+    const shade = ram ? '#b8a284' : '#ddd3bf';
     const skin = ram ? '#4a3b30' : '#3b3b46';
-    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(dir + Math.sin(bob) * 0.05); // slight waddle
+    // trotting feet, diagonal pairs swinging in counter-phase
     ctx.fillStyle = skin;
-    for (const lx of [-9, -2, 6, 12]) ctx.fillRect((lx - 2) * u, 8 * u, 4 * u, 9 * u);
-    ctx.fillStyle = wool;
-    for (const [bx, by, br] of [[-6, 0, 12], [6, -2, 11], [0, -6, 11], [12, 2, 8], [-12, 3, 8]]) {
+    const step = moving ? Math.sin(bob * 2) * 3.5 * u : 0;
+    for (const [px, py, ph] of [[7, -8, 1], [-8, -8, -1], [7, 8, -1], [-8, 8, 1]]) {
       ctx.beginPath();
-      ctx.arc(bx * u, by * u, br * u, 0, Math.PI * 2);
+      ctx.arc(px * u + step * ph, py * u, 2.4 * u, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = skin;
+    // oblong wool body with a darker rim
+    ctx.fillStyle = shade;
     ctx.beginPath();
-    ctx.ellipse(-17 * u, -4 * u, 7.5 * u, 6 * u, -0.2, 0, Math.PI * 2);
+    ctx.ellipse(-0.5 * u, 0, 14 * u, 9.5 * u, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = wool;
     ctx.beginPath();
-    ctx.arc(-15 * u, -10 * u, 5 * u, 0, Math.PI * 2);
+    ctx.ellipse(0.5 * u, 0, 12.5 * u, 8.5 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    if (ram) {
+    // tail puff
+    ctx.beginPath();
+    ctx.arc(-14 * u, 0, 3.2 * u, 0, Math.PI * 2);
+    ctx.fill();
+    // head out front, ears to the sides
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(14 * u, 0, 6 * u, 4.2 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(11 * u, -5.5 * u, 3.8 * u, 1.8 * u, -0.5, 0, Math.PI * 2);
+    ctx.ellipse(11 * u, 5.5 * u, 3.8 * u, 1.8 * u, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // wool cap on the crown
+    ctx.fillStyle = wool;
+    ctx.beginPath();
+    ctx.arc(10.5 * u, 0, 4 * u, 0, Math.PI * 2);
+    ctx.fill();
+    if (ram) { // horns curling beside the head
       ctx.strokeStyle = '#e0d3b8';
-      ctx.lineWidth = 3 * u;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 2.6 * u;
       ctx.beginPath();
-      ctx.arc(-13 * u, -8 * u, 5.5 * u, -0.5, 2.4);
+      ctx.arc(11 * u, -6.5 * u, 3.6 * u, 2.7, 5.8);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(11 * u, 6.5 * u, 3.6 * u, 0.5, 3.6);
       ctx.stroke();
     }
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(-20 * u, -6 * u, 1.8 * u, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#1c1c24';
-    ctx.beginPath();
-    ctx.arc(-20.5 * u, -6 * u, 1 * u, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.restore();
   }
 
-  function drawVectorDog(s) {
-    const u = s / 48;
-    const coat = '#2b2b33', white = '#f4efe4';
-    ctx.lineJoin = ctx.lineCap = 'round';
+  function drawDogTop(x, y, size, dir, bob, moving) {
+    const u = size / 34;
+    const coat = '#26262e', white = '#f4efe4';
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(dir);
+    ctx.lineCap = 'round';
+    // tail streams out behind, swishing wider at a run
+    const wag = Math.sin(bob * 1.6) * (moving ? 4 : 2) * u;
     ctx.strokeStyle = coat;
-    ctx.lineWidth = 5 * u;
+    ctx.lineWidth = 4.5 * u;
     ctx.beginPath();
-    ctx.moveTo(17 * u, -2 * u);
-    ctx.quadraticCurveTo(27 * u, -6 * u, 25 * u, -15 * u);
+    ctx.moveTo(-12 * u, 0);
+    ctx.quadraticCurveTo(-19 * u, wag * 0.6, -23 * u, wag);
     ctx.stroke();
     ctx.fillStyle = white; // tail tip
     ctx.beginPath();
-    ctx.arc(25 * u, -15 * u, 3 * u, 0, Math.PI * 2);
+    ctx.arc(-23 * u, wag, 2.6 * u, 0, Math.PI * 2);
     ctx.fill();
+    // paws, diagonal pairs
     ctx.fillStyle = coat;
-    for (const lx of [-11, -3, 7, 15]) ctx.fillRect((lx - 2.5) * u, 8 * u, 5 * u, 11 * u);
+    const step = moving ? Math.sin(bob * 2) * 4 * u : 0;
+    for (const [px, py, ph] of [[8, -7, 1], [-8, -7, -1], [8, 7, -1], [-8, 7, 1]]) {
+      ctx.beginPath();
+      ctx.arc(px * u + step * ph, py * u, 2.2 * u, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // oblong body
     ctx.beginPath();
-    ctx.ellipse(3 * u, 0, 18 * u, 10 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(-1 * u, 0, 13.5 * u, 7 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = white; // chest
+    // white shoulder band
+    ctx.fillStyle = white;
     ctx.beginPath();
-    ctx.ellipse(-9 * u, 3 * u, 7 * u, 7 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(5.5 * u, 0, 4 * u, 6.2 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = coat; // head
+    // head with pricked ears
+    ctx.fillStyle = coat;
     ctx.beginPath();
-    ctx.arc(-14 * u, -10 * u, 10 * u, 0, Math.PI * 2);
+    ctx.ellipse(13 * u, 0, 7 * u, 5.2 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.beginPath(); // ears
-    ctx.moveTo(-20 * u, -18 * u); ctx.lineTo(-17 * u, -26 * u); ctx.lineTo(-13 * u, -18 * u);
-    ctx.moveTo(-11 * u, -18 * u); ctx.lineTo(-7 * u, -25 * u); ctx.lineTo(-5 * u, -16 * u);
-    ctx.fill();
-    ctx.fillStyle = white; // muzzle blaze
     ctx.beginPath();
-    ctx.ellipse(-21 * u, -8 * u, 6 * u, 4.5 * u, -0.2, 0, Math.PI * 2);
+    ctx.moveTo(9 * u, -4 * u); ctx.lineTo(6 * u, -9.5 * u); ctx.lineTo(13 * u, -6.5 * u);
+    ctx.closePath();
+    ctx.moveTo(9 * u, 4 * u); ctx.lineTo(6 * u, 9.5 * u); ctx.lineTo(13 * u, 6.5 * u);
+    ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#1c1c24';
+    // blaze down the muzzle, wet nose out front
+    ctx.fillStyle = white;
     ctx.beginPath();
-    ctx.arc(-26 * u, -9 * u, 2 * u, 0, Math.PI * 2); // nose
-    ctx.arc(-16 * u, -12 * u, 1.8 * u, 0, Math.PI * 2); // eye
+    ctx.ellipse(17 * u, 0, 3.6 * u, 1.9 * u, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.fillStyle = '#111116';
+    ctx.beginPath();
+    ctx.arc(20 * u, 0, 1.8 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   function drawVectorHandler(s) {
@@ -1457,7 +1528,8 @@
         ctx.arc(s.x, s.y - hop, 21, 0, Math.PI * 2);
         ctx.fill();
       }
-      drawActor(s.defiant ? 'ram' : 'sheep', s.x, s.y - hop, s.defiant ? 32 : 30, s.facing === 1);
+      drawSheepTop(s.x, s.y - hop, s.defiant ? 32 : 30, s.dir, s.defiant, s.bob,
+        Math.hypot(s.vx, s.vy) > 12);
       if (s.planted) {
         drawEmoji('😤', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
       } else if (!s.penned && s.panic > 0.75) {
@@ -1476,8 +1548,7 @@
       ctx.ellipse(dg.x, dg.y + 15, 17, 5.5, 0, 0, Math.PI * 2);
       ctx.fill();
       const bounce = spd > 40 ? Math.abs(Math.sin(dg.bob)) * 4 : Math.sin(dg.bob) * 1;
-      const lean = clamp(dg.vx / 900, -0.16, 0.16);
-      drawActor('dog', dg.x, dg.y - bounce + (lying ? 4 : 0), lying ? 30 : 34, dg.facing === 1, lean);
+      drawDogTop(dg.x, dg.y - bounce + (lying ? 4 : 0), lying ? 30 : 34, dg.dir, dg.bob, spd > 40);
       if (lying && state.mode === 'playing') {
         drawEmoji('💤', dg.x + 14, dg.y - 22 + Math.sin(t * 3) * 2, 13);
       }
@@ -1675,7 +1746,7 @@
     for (let i = 0; i < 9; i++) {
       state.sheep.push({
         x: rand(HEDGE + 120, w - HEDGE - 120), y: rand(HEDGE + 120, h - HEDGE - 120),
-        vx: 0, vy: 0, facing: -1, penned: false, defiant: i === 0,
+        vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false, defiant: i === 0,
         panic: 0, planted: false, plantT: 0, plantCd: 99,
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
