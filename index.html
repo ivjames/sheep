@@ -275,7 +275,7 @@
       <div><span class="glyph">⛩️</span><span>Push every sheep through the <strong>gate</strong> into the pen to clear the level.</span></div>
       <div><span class="glyph">🐏</span><span><strong>Defiant sheep</strong> barely care about you. They plant their hooves and stray from the flock. They don't bite — they're just stubborn.</span></div>
       <div><span class="glyph">📣</span><span><strong>Charge</strong> right at a sheep and the dog <strong>barks</strong> — a burst of pressure, and the only thing that moves a planted sheep.</span></div>
-      <div><span class="glyph">🗣️</span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em>, <em>easy</em>, <em>steady</em>, <em>to me</em> (call off), <em>that'll do</em>.</span></div>
+      <div><span class="glyph">🗣️</span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em> (faster each tap), <em>easy</em> (slower), <em>steady</em> (halt), <em>to me</em> (call off), <em>that'll do</em>.</span></div>
     </div>
     <div class="mode-row">
       <button class="big-btn" id="start-drag-btn">🎯 Lure the dog<span class="sub">it chases your finger</span></button>
@@ -312,8 +312,9 @@
   const FIELD_AREA = 1650000;     // world w*h — sized to viewport aspect per level
   const DOG_SPEED = 345;          // direct-drive top speed
   const DOG_ACCEL = 2400, DOG_DRAG = 6;
-  const CMD_SPEED = 300;          // command-mode working pace ("easy" scales it)
-  const EASY_SCALE = 0.55;
+  const CMD_SPEED = 300;          // command-mode speed at full pace
+  const PACE_STEP = 0.2;          // WALK ON taps add this, EASY taps shed it
+  const PACE_START = 0.6, PACE_MIN = 0.2;
   const SHEEP_R = 12, DOG_R = 13;
   const FLEE_RANGE = 235;         // how far a normal sheep feels the dog
   const FLEE_RANGE_DEFIANT = 150; // defiant sheep make you get close
@@ -465,7 +466,7 @@
     level: 1,
     world: { w: 1600, h: 1000 },
     dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, barkCd: 0 },
-    easy: false,
+    pace: PACE_START, // command-mode speed gradient, 0 (halt) → 1 (flat out)
     handler: { x: 800, y: 560 },
     sheep: [],
     pen: { segs: [], inner: null },
@@ -654,7 +655,7 @@
     state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
-    state.easy = false;
+    state.pace = PACE_START;
     state.barks = [];
     state.floaties = [];
     state.gateClosing = false;
@@ -817,16 +818,28 @@
   function issueCommand(cmd) {
     if (state.mode !== 'playing' || state.input !== 'cmd') return;
     ensureAudio();
-    if (cmd === 'easy') {
-      state.easy = !state.easy;
-      sfx.whistle_easy();
+    // pace is a gradient: WALK ON taps push it up, EASY taps ease it
+    // down, STEADY brings the dog to a halt
+    if (cmd === 'walk') {
+      state.dog.cmd = 'walk';
+      state.pace = Math.min(1, state.pace + PACE_STEP);
+    } else if (cmd === 'easy') {
+      state.pace = Math.max(PACE_MIN, state.pace - PACE_STEP);
+    } else if (cmd === 'lie') {
+      state.dog.cmd = 'lie';
+      state.pace = 0;
     } else {
       state.dog.cmd = cmd;
-      sfx[CMD_INFO[cmd].whistle]();
+      // a flank called from a standstill goes at working pace
+      if (cmd === 'cb' || cmd === 'aw') state.pace = Math.max(state.pace, PACE_START);
+    }
+    sfx[CMD_INFO[cmd].whistle]();
+    let txt = CMD_INFO[cmd].label;
+    if (cmd === 'walk' || cmd === 'easy') {
+      txt += ' ' + '›'.repeat(Math.max(1, Math.round(state.pace / PACE_STEP)));
     }
     state.floaties.push({
-      x: state.dog.x, y: state.dog.y - 34, vy: -46, t: 0, life: 1,
-      txt: CMD_INFO[cmd].label + (cmd === 'easy' && !state.easy ? ' off' : ''), s: 16,
+      x: state.dog.x, y: state.dog.y - 34, vy: -46, t: 0, life: 1, txt, s: 16,
     });
     updateCmdButtons();
   }
@@ -899,7 +912,8 @@
       if (spd > DOG_SPEED) { d.vx *= DOG_SPEED / spd; d.vy *= DOG_SPEED / spd; }
     } else {
       // command mode: the dog works the flock on its own
-      const pace = CMD_SPEED * (state.easy ? EASY_SCALE : 1);
+      const pace = CMD_SPEED * state.pace;
+      const goPace = Math.max(pace, CMD_SPEED * PACE_START); // recalls never dawdle
       const flock = flockInfo();
       let cmd = d.cmd;
       if (!flock && (cmd === 'cb' || cmd === 'aw' || cmd === 'walk')) cmd = 'lie';
@@ -907,7 +921,7 @@
         const hx = state.handler.x - d.x, hy = state.handler.y - d.y;
         const hd = Math.hypot(hx, hy);
         if (hd < 30) { d.cmd = 'lie'; updateCmdButtons(); }
-        else { desx = hx / hd * pace; desy = hy / hd * pace; }
+        else { desx = hx / hd * goPace; desy = hy / hd * goPace; }
       } else if (cmd === 'tome') {
         // call off: come away from the sheep toward the handler's post,
         // then hold as soon as the pressure is off the flock
@@ -918,7 +932,7 @@
         const hx = state.handler.x - d.x, hy = state.handler.y - d.y;
         const hd = Math.hypot(hx, hy);
         if (hd < 30 || near > (FLEE_RANGE + 50) ** 2) { d.cmd = 'lie'; updateCmdButtons(); }
-        else { desx = hx / hd * pace; desy = hy / hd * pace; }
+        else { desx = hx / hd * goPace; desy = hy / hd * goPace; }
       } else if (cmd === 'walk') {
         const hx = flock.cx - d.x, hy = flock.cy - d.y;
         const hd = Math.hypot(hx, hy) || 1;
@@ -1730,7 +1744,7 @@
   function updateCmdButtons() {
     for (const b of cmdBtns) {
       const c = b.dataset.cmd;
-      b.classList.toggle('active', c === 'easy' ? state.easy : state.dog.cmd === c);
+      b.classList.toggle('active', state.dog.cmd === c);
     }
   }
   for (const b of cmdBtns) {
