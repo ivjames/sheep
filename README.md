@@ -63,9 +63,9 @@ Corner scaredy dogs against them, or break an aggro dog's chase around one.
   in a browser to track and assemble the art — a grid of frame slots per sprite,
   drag-and-drop uploads, live animation previews, and one-click export of the
   packed `sprites.png` + `sprites.json`. On the live site it runs against a
-  shared store (nginx WebDAV, basic auth — see [DEPLOY.md](DEPLOY.md)) so the
-  team uploads and reviews the same art; opened locally it falls back to
-  browser-only autosave.
+  shared store (nginx WebDAV, link access — see [DEPLOY.md](DEPLOY.md)) so
+  anyone with the link sees and uploads the same art; opened locally it falls
+  back to browser-only autosave.
 
 ## Release paths
 

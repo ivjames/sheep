@@ -99,13 +99,11 @@ stays emoji. No build step, no tooling.
 ## Sprite manager (recommended)
 
 You don't have to build the atlas by hand: open
-`https://sparkle.lab980.com/tools/sprite-manager.html` (sign in with the
-credentials you were given). It shows every sprite above as a grid of frame
-slots — upload a PNG per frame (or drag a batch of `name_i.png` files anywhere
-and they route themselves), preview each animation live at its real fps, and
-track completion. Uploads land in a shared store, so the team sees them
-immediately and can **✓ approve** or **✗ request changes** on each frame —
-watch for the coral ✗ notes. **Export** packs everything uploaded into a
-correctly formatted `sprites.png` + `sprites.json` — partial exports work fine.
-(Opened as a local file instead, the tool stores uploads in your own browser
-only.)
+`https://sparkle.lab980.com/tools/sprite-manager.html` — no sign-in, the link
+is all you need. It shows every sprite above as a grid of frame slots — upload
+a PNG per frame (or drag a batch of `name_i.png` files anywhere and they route
+themselves), preview each animation live at its real fps, and track
+completion. Uploads land in a shared store, so anyone with the link sees the
+latest art immediately. **Export** packs everything uploaded into a correctly
+formatted `sprites.png` + `sprites.json` — partial exports work fine. (Opened
+as a local file instead, the tool stores uploads in your own browser only.)

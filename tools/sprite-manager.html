@@ -70,21 +70,18 @@
   .chip { font-size: 11px; background: var(--plum-3); border-radius: 20px; padding: 2px 9px; }
   .chip.count { background: var(--coral); color: var(--ink); font-weight: 700; }
   .chip.count.full { background: var(--grass); }
-  .chip.approved { background: var(--gold); color: var(--ink); font-weight: 700; }
   .notes { color: #cfc3e6; font-size: 13px; margin: 0 0 10px; }
   .slots { display: flex; gap: 10px; flex-wrap: wrap; }
   .slot {
-    width: 84px; height: 112px; border-radius: 10px; position: relative; cursor: pointer;
+    width: 84px; height: 100px; border-radius: 10px; position: relative; cursor: pointer;
     background: var(--plum); border: 2px dashed var(--plum-3);
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
   }
   .slot:hover { border-color: var(--gold); }
   .slot.drag { border-color: var(--pink); background: #3a2a55; }
   .slot.filled { border-style: solid; border-color: var(--grass-d); }
-  .slot.approved { border-color: var(--grass); }
-  .slot.changes { border-color: var(--coral); }
   .slot .thumb {
-    width: 62px; height: 62px; image-rendering: pixelated; object-fit: contain;
+    width: 64px; height: 64px; image-rendering: pixelated; object-fit: contain;
     background:
       linear-gradient(45deg, #4a3868 25%, transparent 25%, transparent 75%, #4a3868 75%),
       linear-gradient(45deg, #4a3868 25%, transparent 25%, transparent 75%, #4a3868 75%),
@@ -93,12 +90,6 @@
   }
   .slot .plus { font-size: 26px; color: var(--plum-3); line-height: 1; }
   .slot .tag { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; }
-  .slot .verdict {
-    font-size: 10px; line-height: 1.2; max-width: 76px; text-align: center;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .slot .verdict.ok { color: var(--grass); }
-  .slot .verdict.no { color: var(--coral); }
   .slot .warn { position: absolute; top: 3px; left: 5px; font-size: 11px; cursor: help; }
   .slot .x {
     position: absolute; top: -7px; right: -7px; width: 20px; height: 20px; border-radius: 50%;
@@ -106,13 +97,6 @@
     display: none; align-items: center; justify-content: center; padding: 0; line-height: 1;
   }
   .slot.filled:hover .x { display: flex; }
-  .rev { position: absolute; bottom: -9px; display: none; gap: 5px; }
-  .slot.filled:hover .rev { display: flex; }
-  .rev button {
-    width: 24px; height: 20px; border-radius: 6px; padding: 0; font-size: 11px; line-height: 1;
-  }
-  .rev .ok { background: var(--grass); }
-  .rev .no { background: var(--coral); }
   #toast {
     position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
     background: var(--gold); color: var(--ink); font-weight: 700; border-radius: 10px;
@@ -195,11 +179,8 @@ const POLL_MS = 30000;
 
 // key `${name}_${i}` -> { url, img, w, h }
 const store = new Map();
-// shared mode only: key -> { status: 'approved'|'changes', note, by, at }
-const reviews = new Map();
 let mode = 'local';               // 'shared' once /art/ answers
 const frameMtimes = new Map();    // shared: key -> listing mtime, for cheap refresh
-const reviewMtimes = new Map();
 
 // ---- Shared backend: plain fetch against nginx ----------------------------------
 async function artList(dir) {
@@ -215,15 +196,6 @@ async function artPut(path, body) {
 async function artDelete(path) {
   const r = await fetch(`${ART_BASE}/${path}`, { method: 'DELETE' });
   if (!r.ok && r.status !== 404) throw new Error(`delete ${path}: HTTP ${r.status}`);
-}
-
-function reviewerName() {
-  let n = localStorage.getItem('sm-reviewer') || '';
-  if (!n) {
-    n = (prompt('Your name (shown on uploads/reviews):') || '').trim();
-    if (n) localStorage.setItem('sm-reviewer', n);
-  }
-  return n;
 }
 
 // ---- Local backend (IndexedDB) — fallback when /art/ is unreachable --------------
@@ -290,11 +262,8 @@ async function assignFile(subject, index, fileOrBlob, { persist = true } = {}) {
   catch { URL.revokeObjectURL(url); toast(`Couldn't read ${key} — not an image?`); return; }
   if (persist) {
     if (mode === 'shared') {
-      try {
-        await artPut(`frames/${key}.png`, fileOrBlob);
-        // fresh art resets any old verdict
-        if (reviews.has(key)) { await artDelete(`reviews/${key}.json`); reviews.delete(key); }
-      } catch (e) { URL.revokeObjectURL(url); toast(String(e.message || e)); return; }
+      try { await artPut(`frames/${key}.png`, fileOrBlob); }
+      catch (e) { URL.revokeObjectURL(url); toast(String(e.message || e)); return; }
     } else {
       dbPut(key, fileOrBlob);
     }
@@ -307,11 +276,8 @@ async function clearFrame(subject, index) {
   const cur = store.get(key);
   if (!cur) return;
   if (mode === 'shared') {
-    try {
-      await artDelete(`frames/${key}.png`);
-      await artDelete(`reviews/${key}.json`);
-    } catch (e) { toast(String(e.message || e)); return; }
-    reviews.delete(key);
+    try { await artDelete(`frames/${key}.png`); }
+    catch (e) { toast(String(e.message || e)); return; }
   } else {
     dbDel(key);
   }
@@ -320,20 +286,6 @@ async function clearFrame(subject, index) {
   renderSlot(subject, index);
   refreshSubject(subject);
   refreshProgress();
-}
-
-async function setReview(subject, index, status) {
-  const key = `${subject.name}_${index}`;
-  const by = reviewerName();
-  if (!by) return;
-  let note = '';
-  if (status === 'changes') note = (prompt(`${key}: what needs to change?`) || '').trim();
-  const body = { status, note, by, at: new Date().toISOString() };
-  try { await artPut(`reviews/${key}.json`, JSON.stringify(body, null, 2)); }
-  catch (e) { toast(String(e.message || e)); return; }
-  reviews.set(key, body);
-  renderSlot(subject, index);
-  refreshSubject(subject);
 }
 
 // Route loose files by name: "<subject>_<i>.png". Returns the unmatched leftovers.
@@ -365,7 +317,7 @@ async function fillSubject(subject, files) {
 
 // ---- UI --------------------------------------------------------------------------
 const roster = document.getElementById('roster');
-const els = new Map();   // subject name -> { card, count, approvedChip, slots, preview }
+const els = new Map();   // subject name -> { card, count, slots, preview }
 
 function buildUI() {
   for (const tier of TIERS) {
@@ -390,7 +342,6 @@ function buildSubjectCard(s) {
         <code>${s.name}</code>
         <span class="chip count">0/${s.frames}</span>
         <span class="chip">${s.size}×${s.size}</span>
-        <span class="chip approved" hidden></span>
       </div>
       <p class="notes">${s.notes}</p>
       <div class="slots"></div>
@@ -429,13 +380,7 @@ function buildSubjectCard(s) {
     document.body.classList.remove('dragging');
     fillSubject(s, await routeFiles([...e.dataTransfer.files]));
   });
-  els.set(s.name, {
-    card,
-    count: card.querySelector('.count'),
-    approvedChip: card.querySelector('.approved'),
-    slots,
-    preview: card.querySelector('canvas'),
-  });
+  els.set(s.name, { card, count: card.querySelector('.count'), slots, preview: card.querySelector('canvas') });
   for (let i = 0; i < s.frames; i++) renderSlot(s, i);
   refreshSubject(s);
   return card;
@@ -451,29 +396,13 @@ function renderSlot(s, i) {
     return;
   }
   const off = f.w !== s.size || f.h !== s.size;
-  const rev = mode === 'shared' ? reviews.get(key) : null;
-  const revCls = rev ? (rev.status === 'approved' ? ' approved' : ' changes') : '';
-  const revLabel = rev
-    ? (rev.status === 'approved'
-        ? `<span class="verdict ok" title="Approved by ${rev.by}">✓ ${rev.by}</span>`
-        : `<span class="verdict no" title="${rev.note ? rev.note.replace(/"/g, '&quot;') + ' — ' : ''}${rev.by}">✗ ${rev.note || 'changes'}</span>`)
-    : (mode === 'shared' ? '<span class="verdict" style="color:var(--muted)">pending</span>' : '');
-  slot.className = 'slot filled' + revCls;
+  slot.className = 'slot filled';
   slot.innerHTML = `
     <img class="thumb" src="${f.url}" alt="${key}">
     <span class="tag">_${i}</span>
-    ${revLabel}
     ${off ? `<span class="warn" title="${f.w}×${f.h} — expected ${s.size}×${s.size}; will be fit into the cell on export">⚠️</span>` : ''}
-    <button class="x" title="Remove frame">×</button>
-    ${mode === 'shared' ? `<span class="rev">
-      <button class="ok" title="Approve">✓</button>
-      <button class="no" title="Request changes">✗</button>
-    </span>` : ''}`;
+    <button class="x" title="Remove frame">×</button>`;
   slot.querySelector('.x').addEventListener('click', e => { e.stopPropagation(); clearFrame(s, i); });
-  if (mode === 'shared') {
-    slot.querySelector('.rev .ok').addEventListener('click', e => { e.stopPropagation(); setReview(s, i, 'approved'); });
-    slot.querySelector('.rev .no').addEventListener('click', e => { e.stopPropagation(); setReview(s, i, 'changes'); });
-  }
 }
 
 function countFilled(s) {
@@ -488,26 +417,14 @@ function refreshSubject(s) {
   ui.count.textContent = `${n}/${s.frames}`;
   ui.count.classList.toggle('full', n === s.frames);
   ui.card.classList.toggle('done', n === s.frames);
-  if (mode === 'shared') {
-    let ok = 0;
-    for (let i = 0; i < s.frames; i++) {
-      const r = reviews.get(`${s.name}_${i}`);
-      if (r && r.status === 'approved') ok++;
-    }
-    ui.approvedChip.hidden = ok === 0;
-    ui.approvedChip.textContent = `✓ ${ok} approved`;
-  }
 }
 
 function refreshProgress() {
   let n = 0;
   for (const s of SUBJECTS) n += countFilled(s);
   document.getElementById('bar').style.width = (100 * n / TOTAL_FRAMES) + '%';
-  const approved = mode === 'shared'
-    ? ` · ${[...reviews.values()].filter(r => r.status === 'approved').length} approved`
-    : '';
   document.getElementById('barLabel').textContent =
-    `${n} / ${TOTAL_FRAMES} frames · ${SUBJECTS.filter(s => countFilled(s) === s.frames).length} / ${SUBJECTS.length} sprites complete${approved}`;
+    `${n} / ${TOTAL_FRAMES} frames · ${SUBJECTS.filter(s => countFilled(s) === s.frames).length} / ${SUBJECTS.length} sprites complete`;
 }
 
 function setModeUI() {
@@ -516,18 +433,17 @@ function setModeUI() {
   if (mode === 'shared') {
     modeEl.textContent = 'shared · ' + location.host;
     modeEl.className = 'shared';
-    hint.innerHTML = `Shared store: uploads land on the server and everyone signed in sees them
-      (refreshes every ${POLL_MS / 1000}s). Upload a PNG per frame — click a slot, or drop files anywhere
-      (named <b>subject_index.png</b>, e.g. <b>cat_run_3.png</b>, they route themselves). Hover a filled
-      frame to <b>✓ approve</b> or <b>✗ request changes</b>. <b>Export</b> packs the current state into
+    hint.innerHTML = `Uploads land on the server — anyone with this link sees the same grid
+      (refreshes every ${POLL_MS / 1000}s). Upload a PNG per frame: click a slot, or drop files anywhere
+      (named <b>subject_index.png</b>, e.g. <b>cat_run_3.png</b>, they route themselves; other names dropped
+      on a sprite card fill its empty slots in order). <b>Export</b> packs the current state into
       <b>sprites.png + sprites.json</b> for <b>assets/</b> — partial exports are fine, missing sprites stay emoji.`;
   } else {
     modeEl.textContent = 'local · this browser only';
     modeEl.className = '';
-    hint.innerHTML = `Local mode (the shared store at <b>${ART_BASE}/</b> isn't reachable — on the live site,
-      sign in when prompted and reload). Uploads autosave in this browser only. Click a slot or drop files
-      anywhere (named <b>subject_index.png</b> they route themselves). <b>Export</b> packs
-      <b>sprites.png + sprites.json</b> for <b>assets/</b>.`;
+    hint.innerHTML = `Local mode (no shared store at <b>${ART_BASE}/</b> here). Uploads autosave in this
+      browser only. Click a slot or drop files anywhere (named <b>subject_index.png</b> they route
+      themselves). <b>Export</b> packs <b>sprites.png + sprites.json</b> for <b>assets/</b>.`;
   }
 }
 
@@ -664,10 +580,9 @@ document.getElementById('clearBtn').addEventListener('click', async () => {
   if (!confirm(`Remove every uploaded frame ${what}?`)) return;
   if (mode === 'shared') {
     for (const key of [...store.keys()]) {
-      try { await artDelete(`frames/${key}.png`); await artDelete(`reviews/${key}.json`); }
+      try { await artDelete(`frames/${key}.png`); }
       catch (e) { toast(String(e.message || e)); return; }
     }
-    reviews.clear();
   } else {
     dbClear();
   }
@@ -724,33 +639,6 @@ async function syncShared({ first = false } = {}) {
     store.delete(key);
     if (p) { renderSlot(p.subject, p.index); refreshSubject(p.subject); }
   }
-
-  // reviews
-  const revListing = await artList('reviews').catch(() => []);
-  const revSeen = new Set();
-  for (const e of revListing) {
-    if (!e.name.endsWith('.json')) continue;
-    const p = parseKey(e.name);
-    if (!p) continue;
-    revSeen.add(p.key);
-    if (reviewMtimes.get(p.key) === e.mtime) continue;
-    reviewMtimes.set(p.key, e.mtime);
-    try {
-      const r = await fetch(`${ART_BASE}/reviews/${e.name}?t=${encodeURIComponent(e.mtime)}`);
-      if (r.ok) {
-        reviews.set(p.key, await r.json());
-        renderSlot(p.subject, p.index);
-        refreshSubject(p.subject);
-      }
-    } catch { /* retry next poll */ }
-  }
-  for (const key of [...reviews.keys()]) {
-    if (revSeen.has(key)) continue;
-    const p = parseKey(key + '.json');
-    reviews.delete(key);
-    reviewMtimes.delete(key);
-    if (p && store.has(key)) { renderSlot(p.subject, p.index); refreshSubject(p.subject); }
-  }
   refreshProgress();
   if (first) toast(`Connected to the shared store — ${store.size} frame(s) loaded`);
 }
@@ -762,15 +650,12 @@ requestAnimationFrame(tickPreviews);
 
 (async () => {
   try {
-    // Same-origin fetch: a 401 pops the browser's sign-in dialog; cancelling it
-    // (or no store at all) lands us in local mode.
+    // No store at all (file:// or art-setup not run) lands us in local mode.
     const r = await fetch(`${ART_BASE}/frames/`, { headers: { Accept: 'application/json' } });
     if (r.ok && Array.isArray(await r.json())) mode = 'shared';
   } catch { /* local mode */ }
   setModeUI();
   if (mode === 'shared') {
-    // review buttons only exist in shared mode — re-render pre-built slots
-    for (const s of SUBJECTS) for (let i = 0; i < s.frames; i++) renderSlot(s, i);
     await syncShared({ first: true }).catch(e => toast(String(e.message || e)));
     setInterval(() => syncShared().catch(() => {}), POLL_MS);
   } else {
@@ -783,7 +668,7 @@ requestAnimationFrame(tickPreviews);
 })();
 
 // exposed for automated testing only
-window._sm = { SUBJECTS, assignFile, buildAtlas, store, reviews, setReview, get mode() { return mode; } };
+window._sm = { SUBJECTS, assignFile, buildAtlas, store, get mode() { return mode; } };
 </script>
 </body>
 </html>
