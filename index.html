@@ -1259,15 +1259,37 @@
   }
 
   // ---------- render ----------
+  // Emoji are rasterized once per glyph+size to an offscreen canvas, then
+  // drawImage'd. Never fillText an emoji under a mirrored transform: iPad
+  // Safari silently draws nothing (which is how the cat — the one actor
+  // that flips whenever it runs right — kept vanishing). drawImage mirrors
+  // fine everywhere, and the cache beats per-frame emoji fillText on phones.
+  const glyphCache = new Map();
+  function glyphSprite(g, size) {
+    const key = g + '@' + size;
+    let spr = glyphCache.get(key);
+    if (!spr) {
+      const pad = Math.ceil(size * 1.4); // emoji can overhang the em box
+      spr = document.createElement('canvas');
+      spr.width = spr.height = pad * 2;  // 2x for retina crispness
+      const g2 = spr.getContext('2d');
+      g2.font = size * 2 + 'px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+      g2.textAlign = 'center';
+      g2.textBaseline = 'middle';
+      g2.fillText(g, pad, pad);
+      glyphCache.set(key, spr);
+    }
+    return spr;
+  }
   function drawEmoji(g, x, y, size, flip = false, rot = 0) {
+    // quantize so continuous sizes (floaties) don't grow the cache unbounded
+    const spr = glyphSprite(g, Math.max(2, Math.round(size / 2) * 2));
+    const w = spr.width / 2;
     ctx.save();
     ctx.translate(x, y);
     if (rot) ctx.rotate(rot);
     if (flip) ctx.scale(-1, 1);
-    ctx.font = size + 'px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(g, 0, 0);
+    ctx.drawImage(spr, -w / 2, -w / 2, w, w);
     ctx.restore();
   }
 
