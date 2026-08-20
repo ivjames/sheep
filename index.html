@@ -230,6 +230,26 @@
   }
   .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #c99b13; }
   .keys-note { margin: 18px 0 0; font-size: 12.5px; font-weight: 700; opacity: 0.65; }
+  .build-tag { margin: 10px 0 0; font-size: 10.5px; font-weight: 700; opacity: 0.35; letter-spacing: 0.08em; }
+  #toast {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%) translateY(90px);
+    background: #31204a;
+    color: #fff6e8;
+    font-weight: 800;
+    font-size: 14px;
+    padding: 12px 20px;
+    border-radius: 999px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    transition: transform 0.25s ease;
+    z-index: 40;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  #toast.tappable { pointer-events: auto; cursor: pointer; }
   #hidden { display: none !important; }
   .hidden { display: none !important; }
 </style>
@@ -267,6 +287,7 @@
     </div>
     <button class="big-btn" id="start-btn">Let's go!</button>
     <p class="keys-note" id="keys-note">WASD / arrows to move &nbsp;·&nbsp; SPACE to fart &nbsp;·&nbsp; E drops a steak</p>
+    <p class="build-tag" id="build-tag"></p>
   </div>
 </div>
 
@@ -292,11 +313,15 @@
   </div>
 </div>
 
+<div id="toast" role="status"></div>
+
 <script>
 (() => {
   'use strict';
 
   // ---------- constants ----------
+  // Stamped by `sparkle deploy` with the deployed commit; 'dev' in the repo.
+  const BUILD = 'dev';
   const WORLD_W = 2200, WORLD_H = 1600;
   const FUEL_MAX = 9, FART_COST = 3;
   const FART_RADIUS = 150, FART_LIFE = 0.85;
@@ -569,6 +594,96 @@
   canvas.addEventListener('pointerup', joyEnd);
   canvas.addEventListener('pointercancel', joyEnd);
 
+  // ---------- toast ----------
+  const toastEl = document.getElementById('toast');
+  let toastTimer = 0, toastAction = null;
+  toastEl.addEventListener('click', () => {
+    if (toastAction) toastAction();
+    hideToast();
+  });
+  function toast(msg, onTap = null) {
+    clearTimeout(toastTimer);
+    toastEl.textContent = msg;
+    toastAction = onTap;
+    toastEl.classList.toggle('tappable', !!onTap);
+    toastEl.classList.add('show');
+    if (!onTap) toastTimer = setTimeout(hideToast, 3000);
+  }
+  function hideToast() {
+    clearTimeout(toastTimer);
+    toastAction = null;
+    toastEl.classList.remove('show', 'tappable');
+  }
+
+  // ---------- gamepad ----------
+  // Bluetooth controllers (Xbox / PlayStation / MFi) via the Gamepad API —
+  // works in iPad/iPhone Safari too. Controllers only show up in
+  // getGamepads() after a button press, so we poll every frame.
+  const pad = { x: 0, y: 0, prev: [] };
+  addEventListener('gamepadconnected', (e) => {
+    toast('🎮 ' + (e.gamepad.id.split('(')[0].trim() || 'Controller') + ' connected');
+    document.getElementById('keys-note').textContent =
+      '🎮 Stick to scamper · Ⓐ fart · Ⓧ drops a steak';
+  });
+  addEventListener('gamepaddisconnected', () => { pad.x = 0; pad.y = 0; pad.prev = []; });
+
+  function pollGamepad() {
+    let gp = null;
+    for (const g of (navigator.getGamepads ? navigator.getGamepads() : [])) {
+      if (g && g.connected) { gp = g; break; }
+    }
+    pad.x = 0; pad.y = 0;
+    if (!gp) return;
+    const ax = gp.axes[0] || 0, ay = gp.axes[1] || 0;
+    if (Math.hypot(ax, ay) > 0.22) { pad.x = ax; pad.y = ay; }
+    const down = gp.buttons.map(b => b.pressed);
+    if (down[14]) pad.x -= 1; // d-pad
+    if (down[15]) pad.x += 1;
+    if (down[12]) pad.y -= 1;
+    if (down[13]) pad.y += 1;
+    const hit = (i) => down[i] && !pad.prev[i];
+    if (state.mode === 'playing') {
+      if (hit(0) || hit(7) || hit(5)) tryFart();       // A / R2 / R1
+      if (hit(1) || hit(2) || hit(6) || hit(4)) tryDropSteak(); // B / X / L2 / L1
+    } else if (hit(0) || hit(9)) {                     // A / Start on a menu
+      const btn = state.mode === 'title' ? startBtn
+        : state.mode === 'clear' ? nextBtn : retryBtn;
+      btn.click();
+    }
+    pad.prev = down;
+  }
+
+  // ---------- update check ----------
+  // nginx serves index.html with no-cache, but a tab that's already open
+  // (an iPad basically never closes Safari) keeps running the old build.
+  // On load and whenever the tab comes back to the foreground, fetch our own
+  // page fresh and compare build stamps.
+  async function checkForUpdate() {
+    if (location.protocol === 'file:') return;
+    try {
+      const res = await fetch(location.pathname, { cache: 'no-store' });
+      if (!res.ok) return;
+      const m = (await res.text()).match(/const BUILD = '([^']+)'/);
+      if (!m || m[1] === BUILD) return;
+      const apply = async () => {
+        // 'reload' refreshes the HTTP cache entry so the reload gets the new build
+        await fetch(location.pathname, { cache: 'reload' }).catch(() => {});
+        location.reload();
+      };
+      const guard = 'sb-autoreload-' + m[1];
+      if (state.mode === 'title' && !sessionStorage.getItem(guard)) {
+        sessionStorage.setItem(guard, '1');
+        apply();
+      } else {
+        toast('✨ New build ' + m[1] + ' — tap to update', apply);
+      }
+    } catch { /* offline or blocked: never mind */ }
+  }
+  checkForUpdate();
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) checkForUpdate();
+  });
+
   // ---------- steak lure ----------
   function tryDropSteak() {
     if (state.mode !== 'playing') return;
@@ -708,6 +823,7 @@
       const len = Math.hypot(joy.dx, joy.dy);
       if (len > 8) { ix = joy.dx / 70; iy = joy.dy / 70; }
     }
+    ix += pad.x; iy += pad.y;
     const ilen = Math.hypot(ix, iy);
     if (ilen > 1) { ix /= ilen; iy /= ilen; }
 
@@ -1388,9 +1504,13 @@
     steakBtn.classList.toggle('empty', state.steaksHeld <= 0);
   }
 
-  document.getElementById('start-btn').addEventListener('click', () => { ensureAudio(); startLevel(1); });
-  document.getElementById('next-btn').addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
-  document.getElementById('retry-btn').addEventListener('click', () => { ensureAudio(); startLevel(state.level); });
+  const startBtn = document.getElementById('start-btn');
+  const nextBtn = document.getElementById('next-btn');
+  const retryBtn = document.getElementById('retry-btn');
+  startBtn.addEventListener('click', () => { ensureAudio(); startLevel(1); });
+  nextBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
+  retryBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level); });
+  document.getElementById('build-tag').textContent = 'build ' + BUILD;
   fartBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryFart(); });
   steakBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryDropSteak(); });
   document.getElementById('mute-btn').addEventListener('click', (e) => {
@@ -1408,6 +1528,7 @@
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
+    pollGamepad();
     update(dt);
     render(now);
     requestAnimationFrame(frame);
