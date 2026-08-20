@@ -63,6 +63,18 @@
     white-space: nowrap;
   }
   #hud-spacer { flex: 1; }
+  /* dev FPS meter: dot takes the tier color, chip pulses when the
+     frame rate crosses a threshold in either direction */
+  #fps-chip.fps-good #fps-dot { color: #7ede6f; }
+  #fps-chip.fps-ok #fps-dot { color: var(--gold); }
+  #fps-chip.fps-bad #fps-dot { color: #ff6b5e; }
+  #fps-chip #fps-dot { transition: color 0.25s; }
+  #fps-chip.fps-pulse { animation: fps-pulse 0.5s ease-out; }
+  @keyframes fps-pulse {
+    0% { transform: scale(1); }
+    35% { transform: scale(1.25); }
+    100% { transform: scale(1); }
+  }
   #level-chip, #mode-btn, #mute-btn {
     pointer-events: auto;
     cursor: pointer;
@@ -291,6 +303,8 @@
   <button class="hud-chip" id="level-chip" aria-label="Jump to level">Level 1</button>
   <div class="hud-chip">🐑 <span id="sheep-count" style="font-variant-numeric:tabular-nums">0/0</span> penned</div>
   <div class="hud-chip">⏱ <span id="time-chip" style="font-variant-numeric:tabular-nums">0:00</span></div>
+  <!-- dev: frame-rate meter, color-coded by budget -->
+  <div class="hud-chip" id="fps-chip"><span id="fps-dot">●</span> <span id="fps-val" style="font-variant-numeric:tabular-nums">--</span> fps</div>
   <div id="hud-spacer"></div>
   <button class="hud-chip" id="mode-btn" aria-label="Switch input mode">🕹️ drag</button>
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
@@ -1202,15 +1216,29 @@
     const target = nearPanic * (0.9 - 0.4 * s.bold);
     if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 3);
   }
-  // neighbour lookup: sheep bucketed into COH_RANGE-sized cells so
+  // neighbour lookup: loose sheep bucketed into COH_RANGE-sized cells so
   // flocking only tests the 3x3 cells that can hold a sheep in range,
   // instead of the whole flock. Rebuilt once per frame — a big field is
-  // only a few dozen cells. Penned sheep are in the grid too (for their
-  // own shoulder-room pass) but loose-sheep flocking skips them
+  // only a few dozen cells
   function sheepGrid() {
     const g = new Map();
     for (const s of state.sheep) {
+      if (s.penned) continue;
       const key = Math.floor(s.x / COH_RANGE) + ',' + Math.floor(s.y / COH_RANGE);
+      const cell = g.get(key);
+      if (cell) cell.push(s); else g.set(key, [s]);
+    }
+    return g;
+  }
+  // penned sheep get their own grid at PEN_SEP-sized cells: the pen is
+  // small and packs the whole flock by level end, so bucketing at the
+  // actual push radius keeps the shoulder-room pass near-linear instead
+  // of every penned sheep scanning most of the pen
+  function penGrid() {
+    const g = new Map();
+    for (const s of state.sheep) {
+      if (!s.penned) continue;
+      const key = Math.floor(s.x / PEN_SEP) + ',' + Math.floor(s.y / PEN_SEP);
       const cell = g.get(key);
       if (cell) cell.push(s); else g.set(key, [s]);
     }
@@ -1224,6 +1252,7 @@
     const grazing = state.mode === 'title' || state.mode === 'ready';
     const flock = flockInfo();
     const grid = sheepGrid();
+    const pgrid = penGrid();
     for (const s of state.sheep) {
       s.bob += dt * (2 + s.panic * 9);
       if (s.penned) {
@@ -1250,13 +1279,13 @@
         // soft shoulder room: penned sheep nudge apart instead of
         // stacking — separation only, no cohesion/alignment needed
         let px = 0, py = 0;
-        const pgx = Math.floor(s.x / COH_RANGE), pgy = Math.floor(s.y / COH_RANGE);
+        const pgx = Math.floor(s.x / PEN_SEP), pgy = Math.floor(s.y / PEN_SEP);
         for (let ci = -1; ci <= 1; ci++) {
           for (let cj = -1; cj <= 1; cj++) {
-            const cell = grid.get((pgx + ci) + ',' + (pgy + cj));
+            const cell = pgrid.get((pgx + ci) + ',' + (pgy + cj));
             if (!cell) continue;
             for (const o of cell) {
-              if (o === s || !o.penned) continue;
+              if (o === s) continue;
               const dx = s.x - o.x, dy = s.y - o.y;
               const dd = dx * dx + dy * dy;
               if (dd < PEN_SEP * PEN_SEP && dd > 0.01) {
@@ -2148,6 +2177,28 @@
   setupBackdrop();
 
   // ---------- main loop ----------
+  // dev FPS meter: frames counted over half-second windows; the dot is
+  // green at 50+, gold down to 30, red below, and the chip pulses
+  // whenever the reading crosses a threshold in either direction
+  const fpsChip = document.getElementById('fps-chip');
+  const fpsVal = document.getElementById('fps-val');
+  let fpsFrames = 0, fpsT0 = performance.now(), fpsTier = '';
+  function fpsTick(now) {
+    fpsFrames++;
+    if (now - fpsT0 < 500) return;
+    const fps = Math.round(fpsFrames * 1000 / (now - fpsT0));
+    fpsFrames = 0; fpsT0 = now;
+    fpsVal.textContent = fps;
+    const tier = fps >= 50 ? 'fps-good' : fps >= 30 ? 'fps-ok' : 'fps-bad';
+    if (tier === fpsTier) return;
+    if (fpsTier) fpsChip.classList.remove(fpsTier);
+    fpsChip.classList.add(tier);
+    // restart the pulse even if one is mid-flight
+    fpsChip.classList.remove('fps-pulse');
+    void fpsChip.offsetWidth;
+    if (fpsTier) fpsChip.classList.add('fps-pulse');
+    fpsTier = tier;
+  }
   let last = performance.now();
   function frame(now) {
     const dt = Math.min((now - last) / 1000, 0.05);
@@ -2155,6 +2206,7 @@
     pollGamepad();
     update(dt);
     render(now);
+    fpsTick(now);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
