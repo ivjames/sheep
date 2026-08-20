@@ -97,6 +97,8 @@ pressure in a ring, and the only thing that shifts a planted sheep.
   per-platform missing-glyph pitfalls.
 - Build stamp + self-update: deploys stamp the commit into `BUILD`, and open
   tabs poll their own URL and offer/auto-apply a refresh.
+- Dev shortcut: the HUD level chip is a button — click it to jump between
+  levels by tens (1, 10, 20 … 100) for stress-testing big flocks.
 
 ## Roadmap ideas
 

@@ -63,13 +63,41 @@
     white-space: nowrap;
   }
   #hud-spacer { flex: 1; }
-  #mode-btn, #mute-btn {
+  #level-chip, #mode-btn, #mute-btn {
     pointer-events: auto;
     cursor: pointer;
     border: 0;
     font: inherit;
     color: inherit;
   }
+  /* dev level-skip picker, hangs under the level chip */
+  #level-picker {
+    position: fixed;
+    top: 52px;
+    left: 14px;
+    z-index: 45;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 10px;
+    background: var(--plum);
+    border-radius: 18px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  }
+  #level-picker button {
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--cream);
+    background: rgba(255, 246, 232, 0.12);
+    border: 0;
+    border-radius: 999px;
+    padding: 7px 12px;
+    min-width: 46px;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  #level-picker button:hover { background: var(--gold); color: var(--plum); }
   /* ---------- Command buttons ---------- */
   /* a compact 3-column pad, bottom-center:
        COME BY  STEADY  AWAY
@@ -260,13 +288,16 @@
 <canvas id="game"></canvas>
 
 <div id="hud">
-  <div class="hud-chip" id="level-chip">Level 1</div>
+  <button class="hud-chip" id="level-chip" aria-label="Jump to level">Level 1</button>
   <div class="hud-chip">🐑 <span id="sheep-count" style="font-variant-numeric:tabular-nums">0/0</span> penned</div>
   <div class="hud-chip">⏱ <span id="time-chip" style="font-variant-numeric:tabular-nums">0:00</span></div>
   <div id="hud-spacer"></div>
   <button class="hud-chip" id="mode-btn" aria-label="Switch input mode">🕹️ drag</button>
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
 </div>
+
+<!-- dev shortcut: jump between levels for stress-testing -->
+<div id="level-picker" class="hidden"></div>
 
 <div id="cmd-ui">
   <button class="cmd-btn" data-cmd="cb">🌀 COME BY <span class="key-hint">1</span></button>
@@ -1102,6 +1133,20 @@
     const target = nearPanic * (0.9 - 0.4 * s.bold);
     if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 3);
   }
+  // neighbour lookup: loose sheep bucketed into COH_RANGE-sized cells so
+  // flocking only tests the 3x3 cells that can hold a sheep in range,
+  // instead of the whole flock. Rebuilt once per frame — a big field is
+  // only a few dozen cells
+  function sheepGrid() {
+    const g = new Map();
+    for (const s of state.sheep) {
+      if (s.penned) continue;
+      const key = Math.floor(s.x / COH_RANGE) + ',' + Math.floor(s.y / COH_RANGE);
+      const cell = g.get(key);
+      if (cell) cell.push(s); else g.set(key, [s]);
+    }
+    return g;
+  }
 
   function updateSheep(dt) {
     const { w, h } = state.world;
@@ -1109,6 +1154,7 @@
     const iz = state.pen.inner;
     const grazing = state.mode === 'title' || state.mode === 'ready';
     const flock = flockInfo();
+    const grid = sheepGrid();
     for (const s of state.sheep) {
       s.bob += dt * (2 + s.panic * 9);
       if (s.penned) {
@@ -1132,19 +1178,26 @@
       const gs = grazing ? null : gateSuction(s);
       // --- flocking: separation, cohesion, alignment ---
       let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0;
-      for (const o of state.sheep) {
-        if (o === s || o.penned) continue;
-        const dx = s.x - o.x, dy = s.y - o.y;
-        const dd = dx * dx + dy * dy;
-        if (dd < SEP_RANGE * SEP_RANGE && dd > 0.01) {
-          const dl = Math.sqrt(dd);
-          const k = 1 - dl / SEP_RANGE;
-          fx += (dx / dl) * k * 320;
-          fy += (dy / dl) * k * 320;
-        }
-        if (dd < COH_RANGE * COH_RANGE) {
-          cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy;
-          if (o.panic > nearPanic) nearPanic = o.panic;
+      const gx = Math.floor(s.x / COH_RANGE), gy = Math.floor(s.y / COH_RANGE);
+      for (let ci = -1; ci <= 1; ci++) {
+        for (let cj = -1; cj <= 1; cj++) {
+          const cell = grid.get((gx + ci) + ',' + (gy + cj));
+          if (!cell) continue;
+          for (const o of cell) {
+            if (o === s || o.penned) continue;
+            const dx = s.x - o.x, dy = s.y - o.y;
+            const dd = dx * dx + dy * dy;
+            if (dd < SEP_RANGE * SEP_RANGE && dd > 0.01) {
+              const dl = Math.sqrt(dd);
+              const k = 1 - dl / SEP_RANGE;
+              fx += (dx / dl) * k * 320;
+              fy += (dy / dl) * k * 320;
+            }
+            if (dd < COH_RANGE * COH_RANGE) {
+              cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy;
+              if (o.panic > nearPanic) nearPanic = o.panic;
+            }
+          }
         }
       }
       if (cn && !s.planted) {
@@ -1902,6 +1955,27 @@
     toast(state.input === 'drag'
       ? '🎯 Guide mode — the dog chases your finger'
       : '🗣️ Command mode — whistle the dog around');
+  });
+
+  // dev shortcut: tap the level chip to jump between levels by tens
+  const levelPicker = document.getElementById('level-picker');
+  for (let n = 0; n <= 100; n += 10) {
+    const lv = n || 1;
+    const b = document.createElement('button');
+    b.textContent = lv;
+    b.addEventListener('click', () => {
+      levelPicker.classList.add('hidden');
+      ensureAudio();
+      startLevel(lv);
+    });
+    levelPicker.appendChild(b);
+  }
+  levelChip.addEventListener('click', () => {
+    levelPicker.classList.toggle('hidden');
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (levelPicker.contains(e.target) || levelChip.contains(e.target)) return;
+    levelPicker.classList.add('hidden');
   });
 
   const startDragBtn = document.getElementById('start-drag-btn');
