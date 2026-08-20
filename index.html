@@ -98,30 +98,27 @@
   #bark-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #2a6f99; }
   #bark-btn .key-hint { font-family: var(--body); font-weight: 800; font-size: 11px; opacity: 0.75; }
   /* ---------- Command buttons ---------- */
-  /* zoned for thumbs: flanks mid-screen left/right, pace cluster
-     bottom-left, recalls stacked above BARK on the right */
-  #cmd-ui { display: none; }
-  .cmd-cluster {
+  /* a compact 3-column pad, bottom-center:
+       COME BY  STEADY  AWAY
+       WALK ON  EASY    TO ME
+           THAT'LL DO        */
+  #cmd-ui {
     position: fixed;
-    display: flex;
-    flex-direction: column;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
+    display: none;
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
     z-index: 20;
   }
-  #cmd-stack { left: 14px; bottom: 20px; }
-  #cmd-recall { right: 14px; bottom: 142px; align-items: flex-end; }
-  .cmd-flank {
-    position: fixed;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 20;
-  }
-  #cmd-left { left: 14px; }
-  #cmd-right { right: 14px; }
-  .cmd-flank .cmd-btn {
-    padding: 16px 18px;
-    font-size: 17px;
-    border-radius: 24px;
+  #cmd-ui .cmd-btn { justify-content: center; text-align: center; }
+  #cmd-ui .cmd-btn[data-cmd="home"] { grid-column: 1 / -1; }
+  /* on narrow screens the pad owns the bottom edge: lift BARK clear of it */
+  @media (max-width: 700px) {
+    #cmd-ui { gap: 7px; }
+    #cmd-ui .cmd-btn { font-size: 12.5px; padding: 9px 8px; gap: 5px; white-space: nowrap; }
+    body.cmd-mode #bark-btn { bottom: 178px; width: 84px; height: 84px; font-size: 17px; }
   }
   .cmd-btn {
     border: 0;
@@ -288,21 +285,13 @@
 </button>
 
 <div id="cmd-ui">
-  <div id="cmd-left" class="cmd-flank">
-    <button class="cmd-btn" data-cmd="cb">🌀 COME BY <span class="key-hint">1</span></button>
-  </div>
-  <div id="cmd-right" class="cmd-flank">
-    <button class="cmd-btn" data-cmd="aw">🔄 AWAY <span class="key-hint">2</span></button>
-  </div>
-  <div id="cmd-stack" class="cmd-cluster">
-    <button class="cmd-btn" data-cmd="walk">➡️ WALK ON <span class="key-hint">3</span></button>
-    <button class="cmd-btn" data-cmd="easy">🐢 EASY <span class="key-hint">4</span></button>
-    <button class="cmd-btn" data-cmd="lie">✋ STEADY <span class="key-hint">5</span></button>
-  </div>
-  <div id="cmd-recall" class="cmd-cluster">
-    <button class="cmd-btn" data-cmd="tome">🤙 TO ME <span class="key-hint">6</span></button>
-    <button class="cmd-btn" data-cmd="home">🏡 THAT'LL DO <span class="key-hint">7</span></button>
-  </div>
+  <button class="cmd-btn" data-cmd="cb">🌀 COME BY <span class="key-hint">1</span></button>
+  <button class="cmd-btn" data-cmd="lie">✋ STEADY <span class="key-hint">2</span></button>
+  <button class="cmd-btn" data-cmd="aw">🔄 AWAY <span class="key-hint">3</span></button>
+  <button class="cmd-btn" data-cmd="walk">➡️ WALK ON <span class="key-hint">4</span></button>
+  <button class="cmd-btn" data-cmd="easy">🐢 EASY <span class="key-hint">5</span></button>
+  <button class="cmd-btn" data-cmd="tome">🤙 TO ME <span class="key-hint">6</span></button>
+  <button class="cmd-btn" data-cmd="home">🏡 THAT'LL DO <span class="key-hint">7</span></button>
 </div>
 
 <div class="overlay" id="title-overlay">
@@ -715,7 +704,7 @@
 
   // ---------- input ----------
   const keys = {};
-  const CMD_KEYS = { 1: 'cb', 2: 'aw', 3: 'walk', 4: 'easy', 5: 'lie', 6: 'tome', 7: 'home' };
+  const CMD_KEYS = { 1: 'cb', 2: 'lie', 3: 'aw', 4: 'walk', 5: 'easy', 6: 'tome', 7: 'home' };
   addEventListener('keydown', (e) => {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     keys[e.key.toLowerCase()] = true;
@@ -1755,8 +1744,9 @@
 
   function applyInputMode() {
     if (state.mode === 'playing') {
-      cmdUi.style.display = state.input === 'cmd' ? 'block' : 'none';
+      cmdUi.style.display = state.input === 'cmd' ? 'grid' : 'none';
     }
+    document.body.classList.toggle('cmd-mode', state.input === 'cmd');
     if (state.input === 'cmd') {
       state.dog.cmd = 'lie';
       updateCmdButtons();
