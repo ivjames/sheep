@@ -120,6 +120,10 @@
     #cmd-ui .cmd-btn { font-size: 12.5px; padding: 9px 8px; gap: 5px; white-space: nowrap; }
     body.cmd-mode #bark-btn { bottom: 178px; width: 84px; height: 84px; font-size: 17px; }
   }
+  /* no keyboard, no key hints */
+  @media (pointer: coarse) {
+    #cmd-ui .key-hint { display: none; }
+  }
   .cmd-btn {
     border: 0;
     border-radius: 999px;
