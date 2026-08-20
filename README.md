@@ -29,38 +29,46 @@ npx serve .
 
 Pick one on the title screen, swap any time mid-game with the HUD toggle:
 
-- **🕹️ Drag mode** — steer the dog yourself: WASD / arrow keys, drag anywhere
-  on touch, or a Bluetooth gamepad stick. Same feel as Sparkle Butt's cat.
+- **🎯 Guide mode** — your finger (or mouse) is the dog's target: touch the
+  field and it rubber-bands to the spot, easing to a stop when it arrives.
+  WASD / arrows and a gamepad stick still direct-drive.
 - **🗣️ Command mode** — the dog works the flock alone and you call real
-  sheepdog-trial commands (keys 1–6, tap the buttons, or gamepad):
+  sheepdog-trial commands (keys 1–7, tap the buttons, or gamepad):
 
   | Command | Means | The dog… |
   |---|---|---|
   | **Come by** | flank clockwise | circles the flock clockwise |
+  | **Steady** | halt | stops — pace drops to zero |
   | **Away** (to me) | flank counter-clockwise | circles the other way |
-  | **Walk on** | drive | pushes straight at the flock |
-  | **Easy** | slow down | toggles a gentler working pace |
-  | **Steady** | hold | stops and holds position |
-  | **That'll do** | done | returns to the handler and lies down |
+  | **Walk on** | drive | pushes at the flock, each tap adds pace |
+  | **Easy** | slow down | each tap sheds pace |
+  | **To me** | call off | comes off the sheep toward the gate post |
+  | **That'll do** | done | returns to the post and lies down |
 
-  Each command has its own synth whistle, like a real handler's.
+  Speed is a gradient: WALK ON taps push it up, EASY taps ease it down,
+  STEADY halts. Each command has its own synth whistle, like a real
+  handler's.
 
-**BARK** (SPACE / tap / Ⓐ) works in both modes: a burst of extra pressure in
-a ring around the dog.
+**Barking** works in both modes and has no button: charge straight at a
+sheep and the dog barks on its own as it closes in — a burst of extra
+pressure in a ring, and the only thing that shifts a planted sheep.
 
 ## Rules
 
 - Levels are zoomed out — the whole field fits on screen. Each level has a
   **random-sized flock** (bigger as you go) and a fenced pen against one
-  edge with a flagged gate. Pen every sheep to clear the level. No fail
-  state, just you, the flock, and the clock.
-- Sheep are boids: they bunch when scared, graze and drift when calm, and
-  squirt around obstacles. Pressure from directly behind moves them where
-  you want; pressure from the side scatters them.
-- **Defiant sheep** (dark wool 🐏, from level 2): they don't attack — they're
-  just hard to wrangle. They barely feel the dog, stray from the flock, and
-  **plant their hooves** (😤) and refuse to move. A BARK — or the dog walking
-  right up to them — startles them loose.
+  edge with a flagged gate. Pen every sheep and the gate swings shut to
+  clear the level. No fail state, just you, the flock, and the clock.
+- Sheep are boids: they bunch when scared, panic spreads between
+  neighbours, strays and split groups drift back and merge with the mob,
+  and they graze and wander when calm. Pressure from directly behind moves
+  them where you want; pressure from the side scatters them.
+- At early levels the gate mouth gently **funnels** nearby sheep in —
+  training wheels that fade out entirely by level 5.
+- **Defiant sheep** (dark wool, curled horns, from level 2): they don't
+  attack — they're just hard to wrangle. They barely feel the dog, stray
+  from the flock, and **plant their hooves** (😤) and refuse to move. A
+  bark — the dog charging right up to them — startles them loose.
 - Trees and rocks block movement. The hedge keeps everyone on the field.
 
 ## Tech
@@ -68,9 +76,11 @@ a ring around the dog.
 - Single `index.html` — vanilla JS, canvas rendering, WebAudio synth SFX
   (whistles, barks, bleats — no audio assets). No build step, no dependencies.
 - Works on desktop and mobile browsers; DPR-aware, fit-to-screen world sized
-  to the device aspect, virtual joystick, gamepad support,
+  to the device aspect, tap-to-guide steering, gamepad support,
   `prefers-reduced-motion` respected.
-- Emoji sprites with per-glyph render probing and canvas-drawn vector
+- Sheep and dog are canvas-drawn vector shapes — oblong bodies that rotate
+  to a smoothed heading, with trotting feet and a wagging tail. Scenery and
+  floaties are still emoji sprites with per-glyph render probing and vector
   fallbacks (add `?noemoji` to preview them) — same pipeline lessons as
   Sparkle Butt: glyphs are rasterized to cached offscreen canvases because
   iPad Safari silently drops mirrored emoji `fillText`.

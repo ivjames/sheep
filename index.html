@@ -70,42 +70,31 @@
     font: inherit;
     color: inherit;
   }
-  /* ---------- Bark button ---------- */
-  #bark-btn {
+  /* ---------- Command buttons ---------- */
+  /* a compact 3-column pad, bottom-center:
+       COME BY  STEADY  AWAY
+       WALK ON  EASY    TO ME
+           THAT'LL DO        */
+  #cmd-ui {
     position: fixed;
-    right: 22px;
-    bottom: 26px;
-    width: 96px;
-    height: 96px;
-    border-radius: 50%;
-    border: 0;
+    left: 50%;
+    bottom: 18px;
+    transform: translateX(-50%);
     display: none;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 0;
-    background: radial-gradient(circle at 35% 30%, #a8e4ff, var(--sky) 60%, #3d9fd6);
-    color: var(--plum);
-    font-family: var(--display);
-    font-weight: 700;
-    font-size: 19px;
-    letter-spacing: 0.04em;
-    box-shadow: 0 6px 0 #2a6f99, 0 10px 18px rgba(0,0,0,0.25);
-    cursor: pointer;
-    touch-action: none;
-    z-index: 20;
-  }
-  #bark-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #2a6f99; }
-  #bark-btn .key-hint { font-family: var(--body); font-weight: 800; font-size: 11px; opacity: 0.75; }
-  /* ---------- Command stack ---------- */
-  #cmd-stack {
-    position: fixed;
-    left: 14px;
-    bottom: 20px;
-    display: none;
-    flex-direction: column;
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
     z-index: 20;
+  }
+  #cmd-ui .cmd-btn { justify-content: center; text-align: center; }
+  #cmd-ui .cmd-btn[data-cmd="home"] { grid-column: 1 / -1; }
+  /* on narrow screens the pad owns the bottom edge: lift BARK clear of it */
+  @media (max-width: 700px) {
+    #cmd-ui { gap: 7px; }
+    #cmd-ui .cmd-btn { font-size: 12.5px; padding: 9px 8px; gap: 5px; white-space: nowrap; }
+  }
+  /* no keyboard, no key hints */
+  @media (pointer: coarse) {
+    #cmd-ui .key-hint { display: none; }
   }
   .cmd-btn {
     border: 0;
@@ -236,8 +225,8 @@
   #toast {
     position: fixed;
     left: 50%;
-    bottom: 22px;
-    transform: translateX(-50%) translateY(90px);
+    top: 62px; /* under the HUD, clear of the thumb clusters below */
+    transform: translateX(-50%) translateY(-130px);
     background: #31204a;
     color: #fff6e8;
     font-weight: 800;
@@ -267,17 +256,14 @@
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
 </div>
 
-<button id="bark-btn" aria-label="Bark">
-  BARK!<span class="key-hint" id="bark-hint">SPACE</span>
-</button>
-
-<div id="cmd-stack">
+<div id="cmd-ui">
   <button class="cmd-btn" data-cmd="cb">🌀 COME BY <span class="key-hint">1</span></button>
-  <button class="cmd-btn" data-cmd="aw">🔄 AWAY <span class="key-hint">2</span></button>
-  <button class="cmd-btn" data-cmd="walk">➡️ WALK ON <span class="key-hint">3</span></button>
-  <button class="cmd-btn" data-cmd="easy">🐢 EASY <span class="key-hint">4</span></button>
-  <button class="cmd-btn" data-cmd="lie">✋ STEADY <span class="key-hint">5</span></button>
-  <button class="cmd-btn" data-cmd="home">🏡 THAT'LL DO <span class="key-hint">6</span></button>
+  <button class="cmd-btn" data-cmd="lie">✋ STEADY <span class="key-hint">2</span></button>
+  <button class="cmd-btn" data-cmd="aw">🔄 AWAY <span class="key-hint">3</span></button>
+  <button class="cmd-btn" data-cmd="walk">➡️ WALK ON <span class="key-hint">4</span></button>
+  <button class="cmd-btn" data-cmd="easy">🐢 EASY <span class="key-hint">5</span></button>
+  <button class="cmd-btn" data-cmd="tome">🤙 TO ME <span class="key-hint">6</span></button>
+  <button class="cmd-btn" data-cmd="home">🏡 THAT'LL DO <span class="key-hint">7</span></button>
 </div>
 
 <div class="overlay" id="title-overlay">
@@ -288,14 +274,14 @@
       <div><span class="glyph">🐕</span><span>You're the sheepdog. Sheep drift away from you — use that pressure to steer the flock.</span></div>
       <div><span class="glyph">⛩️</span><span>Push every sheep through the <strong>gate</strong> into the pen to clear the level.</span></div>
       <div><span class="glyph">🐏</span><span><strong>Defiant sheep</strong> barely care about you. They plant their hooves and stray from the flock. They don't bite — they're just stubborn.</span></div>
-      <div><span class="glyph">📣</span><span><strong>BARK</strong> for a burst of pressure — it's the only thing that moves a planted sheep.</span></div>
-      <div><span class="glyph">🗣️</span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em>, <em>easy</em>, <em>steady</em>, <em>that'll do</em>.</span></div>
+      <div><span class="glyph">📣</span><span><strong>Charge</strong> right at a sheep and the dog <strong>barks</strong> — a burst of pressure, and the only thing that moves a planted sheep.</span></div>
+      <div><span class="glyph">🗣️</span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em> (faster each tap), <em>easy</em> (slower), <em>steady</em> (halt), <em>to me</em> (call off), <em>that'll do</em>.</span></div>
     </div>
     <div class="mode-row">
-      <button class="big-btn" id="start-drag-btn">🕹️ Drag to herd<span class="sub">steer the dog yourself</span></button>
+      <button class="big-btn" id="start-drag-btn">🎯 Guide the dog<span class="sub">it chases your finger</span></button>
       <button class="big-btn alt" id="start-cmd-btn">🗣️ Command mode<span class="sub">whistle the dog around</span></button>
     </div>
-    <p class="keys-note" id="keys-note">WASD / arrows to run · SPACE barks · 1–6 call commands · swap modes any time</p>
+    <p class="keys-note" id="keys-note">Click to send the dog (or WASD / arrows) · charge a sheep to bark · 1–7 call commands · swap modes any time</p>
     <p class="build-tag" id="build-tag"></p>
   </div>
 </div>
@@ -326,14 +312,20 @@
   const FIELD_AREA = 1650000;     // world w*h — sized to viewport aspect per level
   const DOG_SPEED = 345;          // direct-drive top speed
   const DOG_ACCEL = 2400, DOG_DRAG = 6;
-  const CMD_SPEED = 300;          // command-mode working pace ("easy" scales it)
-  const EASY_SCALE = 0.55;
+  const CMD_SPEED = 300;          // command-mode speed at full pace
+  const PACE_STEP = 0.2;          // WALK ON taps add this, EASY taps shed it
+  const PACE_START = 0.6, PACE_MIN = 0.2;
   const SHEEP_R = 12, DOG_R = 13;
   const FLEE_RANGE = 235;         // how far a normal sheep feels the dog
   const FLEE_RANGE_DEFIANT = 150; // defiant sheep make you get close
-  const SEP_RANGE = 34, COH_RANGE = 170;
-  const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.55;
+  const SEP_RANGE = 34, COH_RANGE = 190;
+  const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
+  const MERGE_REACH = 520;        // stray sheep feel the mob's pull out to here
+  const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
+  const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
+  const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
   const GATE_W = 112;
+  const GATE_PULL = 260;          // gate suction radius (training wheels, low levels)
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
@@ -398,6 +390,7 @@
     whistle_walk() { tone(880, 0.09, 'sine', 0.12, 0, 1250); tone(880, 0.09, 'sine', 0.12, 0.13, 1250); },
     whistle_easy() { tone(720, 0.32, 'sine', 0.09, 0, 640); },
     whistle_lie() { tone(1250, 0.38, 'sine', 0.11, 0, 520); },
+    whistle_tome() { tone(620, 0.11, 'sine', 0.12, 0, 1150); tone(620, 0.11, 'sine', 0.11, 0.14, 1150); },
     whistle_home() { [1300, 1000, 700].forEach((f, i) => tone(f, 0.14, 'sine', 0.11, i * 0.11)); },
     bark() {
       noiseBurst(0.09, 0.24, 1800, 300);
@@ -411,6 +404,8 @@
       tone(450 * p, 0.09, 'sawtooth', 0.035, 0.2);
     },
     stomp() { noiseBurst(0.08, 0.14, 500, 120); },
+    gateCreak() { noiseBurst(0.4, 0.07, 900, 260); tone(340, 0.35, 'triangle', 0.05, 0, 250); },
+    gateClunk() { noiseBurst(0.09, 0.18, 700, 150); tone(150, 0.16, 'square', 0.11, 0.02, 100); },
     penned() { tone(660, 0.1, 'sine', 0.12); tone(990, 0.14, 'sine', 0.1, 0.06); },
     win() {
       [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.3, 'triangle', 0.12, i * 0.1));
@@ -422,6 +417,11 @@
   const randInt = (a, b) => Math.floor(rand(a, b + 1));
   const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  // rotate angle a toward target by at most rate, taking the short way round
+  function turnToward(a, target, rate) {
+    const d = ((target - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
+    return a + clamp(d, -rate, rate);
+  }
 
   // push a moving circle out of any obstacle it overlaps, sliding along the edge
   function collideObstacles(e, r) {
@@ -465,14 +465,17 @@
     input: 'drag', // drag | cmd
     level: 1,
     world: { w: 1600, h: 1000 },
-    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, cmd: 'lie', bob: 0, barkCd: 0 },
-    easy: false,
+    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, barkCd: 0 },
+    pace: PACE_START, // command-mode speed gradient, 0 (halt) → 1 (flat out)
     handler: { x: 800, y: 560 },
     sheep: [],
     pen: { segs: [], inner: null },
     obstacles: [],
     barks: [],    // active bark pressure pulses
     floaties: [], // rising emoji / command call-outs
+    gateClosing: false, // all sheep home: the gate swings shut
+    gateT: 0,           // 0 open → 1 closed
+    clearWait: 0,
     time: 0,
     levelTime: 0,
     barksUsed: 0,
@@ -481,15 +484,48 @@
 
   // ---------- world decor ----------
   const flowers = [], tufts = [];
+  const fieldCanvas = document.createElement('canvas');
   function makeDecor() {
     const { w, h } = state.world;
     flowers.length = 0; tufts.length = 0;
     const k = (w * h) / FIELD_AREA;
-    for (let i = 0; i < 40 * k; i++) {
-      flowers.push({ x: rand(60, w - 60), y: rand(60, h - 60), g: ['🌼','🌸','🌷','🍄'][Math.floor(rand(0, 4))], s: rand(14, 22) });
+    // pre-render the pasture once per level: flat green with soft-edged
+    // patches of lighter and darker grass — pasture, not a mowed pitch
+    fieldCanvas.width = w; fieldCanvas.height = h;
+    const fc = fieldCanvas.getContext('2d');
+    fc.fillStyle = '#7ec850';
+    fc.fillRect(0, 0, w, h);
+    for (let i = 0; i < 30 * k; i++) {
+      const [cr, cg, cb, ca] = Math.random() < 0.55
+        ? [111, 183, 70, 0.5] : [139, 210, 92, 0.45];
+      const grad = fc.createRadialGradient(0, 0, 0, 0, 0, 1);
+      grad.addColorStop(0, `rgba(${cr},${cg},${cb},${ca})`);
+      grad.addColorStop(0.55, `rgba(${cr},${cg},${cb},${ca * 0.8})`);
+      grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+      fc.save();
+      fc.translate(rand(0, w), rand(0, h));
+      fc.rotate(rand(0, Math.PI));
+      const big = i % 2 === 0; // half broad drifts, half smaller mottles
+      fc.scale(rand(big ? 100 : 40, big ? 280 : 110), rand(big ? 70 : 30, big ? 180 : 80));
+      fc.fillStyle = grad;
+      fc.beginPath();
+      fc.arc(0, 0, 1, 0, Math.PI * 2);
+      fc.fill();
+      fc.restore();
     }
-    for (let i = 0; i < 70 * k; i++) {
-      tufts.push({ x: rand(30, w - 30), y: rand(30, h - 30), s: rand(0.5, 1.1) });
+    // fine speckle grain over the top
+    for (let i = 0; i < 900 * k; i++) {
+      fc.fillStyle = Math.random() < 0.5
+        ? 'rgba(104, 176, 64, 0.3)' : 'rgba(152, 218, 102, 0.3)';
+      fc.beginPath();
+      fc.arc(rand(0, w), rand(0, h), rand(1.5, 5), 0, Math.PI * 2);
+      fc.fill();
+    }
+    for (let i = 0; i < 80 * k; i++) {
+      flowers.push({ x: rand(60, w - 60), y: rand(60, h - 60), g: ['🌼','🌸','🌷','🍄','🌻','🌺'][Math.floor(rand(0, 6))], s: rand(13, 21) });
+    }
+    for (let i = 0; i < 170 * k; i++) {
+      tufts.push({ x: rand(30, w - 30), y: rand(30, h - 30), s: rand(0.5, 1.15) });
     }
   }
 
@@ -604,7 +640,7 @@
         if (penClear(x, y, 60) && state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + 30) ** 2)) break;
       }
       state.sheep.push({
-        x, y, vx: 0, vy: 0, facing: -1, penned: false,
+        x, y, vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false,
         defiant: tempers[i], panic: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
@@ -616,16 +652,19 @@
     state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (GATE_W / 2 + 90), HEDGE + 40, h - HEDGE - 40);
     state.dog.x = state.handler.x + 24; state.dog.y = state.handler.y + 20;
     state.dog.vx = 0; state.dog.vy = 0;
+    state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
-    state.easy = false;
+    state.pace = PACE_START;
     state.barks = [];
     state.floaties = [];
+    state.gateClosing = false;
+    state.gateT = 0;
+    state.clearWait = 0;
     state.levelTime = 0;
     state.barksUsed = 0;
 
     hud.style.display = 'flex';
-    barkBtn.style.display = 'flex';
     titleOverlay.classList.add('hidden');
     clearOverlay.classList.add('hidden');
     applyInputMode();
@@ -633,49 +672,46 @@
     toast('🐑 Herd all ' + count + ' sheep through the gate!');
     if (defiantCount && !state.defiantSeen) {
       state.defiantSeen = true;
-      setTimeout(() => toast('🐏 A defiant sheep joined the flock — BARK to budge it!'), 3400);
+      setTimeout(() => toast('🐏 A defiant sheep joined the flock — charge it to bark it loose!'), 3400);
     }
   }
 
   // ---------- input ----------
   const keys = {};
-  const CMD_KEYS = { 1: 'cb', 2: 'aw', 3: 'walk', 4: 'easy', 5: 'lie', 6: 'home' };
+  const CMD_KEYS = { 1: 'cb', 2: 'lie', 3: 'aw', 4: 'walk', 5: 'easy', 6: 'tome', 7: 'home' };
   addEventListener('keydown', (e) => {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     keys[e.key.toLowerCase()] = true;
-    if (e.key === ' ' && !e.repeat) tryBark();
     if (!e.repeat && CMD_KEYS[e.key] && state.input === 'cmd') issueCommand(CMD_KEYS[e.key]);
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-  // virtual joystick (drag mode): drag anywhere on canvas
-  const joy = { active: false, id: null, sx: 0, sy: 0, dx: 0, dy: 0 };
+  // rabbit-style guide (drag mode): your finger is the dog's target — it
+  // chases the spot, and if you lift, finishes the run and stops there
+  const guide = { id: null, has: false, x: 0, y: 0 };
+  function guideFrom(e) {
+    const { w, h } = state.world;
+    const scale = Math.min(vw / w, vh / h);
+    const ox = (vw - w * scale) / 2, oy = (vh - h * scale) / 2;
+    guide.x = clamp((e.clientX - ox) / scale, HEDGE + 16, w - HEDGE - 16);
+    guide.y = clamp((e.clientY - oy) / scale, HEDGE + 16, h - HEDGE - 16);
+    guide.has = true;
+  }
   canvas.addEventListener('pointerdown', (e) => {
     ensureAudio();
-    if (joy.active || state.input !== 'drag') return;
-    joy.active = true; joy.id = e.pointerId;
-    joy.sx = e.clientX; joy.sy = e.clientY;
-    joy.dx = 0; joy.dy = 0;
+    if (guide.id !== null || state.input !== 'drag') return;
+    guide.id = e.pointerId;
+    guideFrom(e);
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!joy.active || e.pointerId !== joy.id) return;
-    joy.dx = e.clientX - joy.sx;
-    joy.dy = e.clientY - joy.sy;
-    const len = Math.hypot(joy.dx, joy.dy);
-    const max = 70;
-    if (len > max) { // drag the anchor along so direction stays responsive
-      joy.sx = e.clientX - (joy.dx / len) * max;
-      joy.sy = e.clientY - (joy.dy / len) * max;
-      joy.dx = (joy.dx / len) * max;
-      joy.dy = (joy.dy / len) * max;
-    }
+    if (e.pointerId === guide.id) guideFrom(e);
   });
-  function joyEnd(e) {
-    if (e.pointerId === joy.id) { joy.active = false; joy.id = null; }
+  function guideEnd(e) {
+    if (e.pointerId === guide.id) guide.id = null;
   }
-  canvas.addEventListener('pointerup', joyEnd);
-  canvas.addEventListener('pointercancel', joyEnd);
+  canvas.addEventListener('pointerup', guideEnd);
+  canvas.addEventListener('pointercancel', guideEnd);
 
   // ---------- toast ----------
   const toastEl = document.getElementById('toast');
@@ -705,7 +741,7 @@
   addEventListener('gamepadconnected', (e) => {
     toast('🎮 ' + (e.gamepad.id.split('(')[0].trim() || 'Controller') + ' connected');
     document.getElementById('keys-note').textContent =
-      '🎮 Stick to run · Ⓐ barks · in command mode: R1 come by, L1 away, Ⓧ walk on, Ⓑ steady, Ⓨ that\'ll do';
+      '🎮 Stick to run · charge a sheep to bark · in command mode: R1 come by, L1 away, Ⓧ walk on, Ⓑ steady, Ⓨ that\'ll do';
   });
   addEventListener('gamepaddisconnected', () => { pad.x = 0; pad.y = 0; pad.prev = []; });
 
@@ -725,7 +761,6 @@
     if (down[13]) pad.y += 1;
     const hit = (i) => down[i] && !pad.prev[i];
     if (state.mode === 'playing') {
-      if (hit(0)) tryBark();                              // A
       if (state.input === 'cmd') {
         if (hit(5)) issueCommand('cb');                   // R1
         if (hit(4)) issueCommand('aw');                   // L1
@@ -777,29 +812,43 @@
     walk: { label: 'walk on',    whistle: 'whistle_walk' },
     easy: { label: 'easy',       whistle: 'whistle_easy' },
     lie:  { label: 'steady',     whistle: 'whistle_lie' },
+    tome: { label: 'to me',      whistle: 'whistle_tome' },
     home: { label: "that'll do", whistle: 'whistle_home' },
   };
   function issueCommand(cmd) {
     if (state.mode !== 'playing' || state.input !== 'cmd') return;
     ensureAudio();
-    if (cmd === 'easy') {
-      state.easy = !state.easy;
-      sfx.whistle_easy();
+    // pace is a gradient: WALK ON taps push it up, EASY taps ease it
+    // down, STEADY brings the dog to a halt
+    if (cmd === 'walk') {
+      state.dog.cmd = 'walk';
+      state.pace = Math.min(1, state.pace + PACE_STEP);
+    } else if (cmd === 'easy') {
+      state.pace = Math.max(PACE_MIN, state.pace - PACE_STEP);
+    } else if (cmd === 'lie') {
+      state.dog.cmd = 'lie';
+      state.pace = 0;
     } else {
       state.dog.cmd = cmd;
-      sfx[CMD_INFO[cmd].whistle]();
+      // a flank called from a standstill goes at working pace
+      if (cmd === 'cb' || cmd === 'aw') state.pace = Math.max(state.pace, PACE_START);
+    }
+    sfx[CMD_INFO[cmd].whistle]();
+    let txt = CMD_INFO[cmd].label;
+    if (cmd === 'walk' || cmd === 'easy') {
+      txt += ' ' + '›'.repeat(Math.max(1, Math.round(state.pace / PACE_STEP)));
     }
     state.floaties.push({
-      x: state.dog.x, y: state.dog.y - 34, vy: -46, t: 0, life: 1,
-      txt: CMD_INFO[cmd].label + (cmd === 'easy' && !state.easy ? ' off' : ''), s: 16,
+      x: state.dog.x, y: state.dog.y - 34, vy: -46, t: 0, life: 1, txt, s: 16,
     });
     updateCmdButtons();
   }
 
   // ---------- bark ----------
+  // No bark button: the dog barks on its own when it charges a sheep
+  // at speed and gets right up close (see updateDog).
   function tryBark() {
     if (state.mode !== 'playing') return;
-    ensureAudio();
     const d = state.dog;
     if (d.barkCd > 0) return;
     d.barkCd = BARK_COOLDOWN;
@@ -836,22 +885,35 @@
       if (keys['d'] || keys['arrowright']) ix += 1;
       if (keys['w'] || keys['arrowup']) iy -= 1;
       if (keys['s'] || keys['arrowdown']) iy += 1;
-      if (joy.active) {
-        const len = Math.hypot(joy.dx, joy.dy);
-        if (len > 8) { ix = joy.dx / 70; iy = joy.dy / 70; }
-      }
       ix += pad.x; iy += pad.y;
       const ilen = Math.hypot(ix, iy);
-      if (ilen > 1) { ix /= ilen; iy /= ilen; }
-      d.vx += ix * DOG_ACCEL * dt;
-      d.vy += iy * DOG_ACCEL * dt;
-      d.vx -= d.vx * DOG_DRAG * dt;
-      d.vy -= d.vy * DOG_DRAG * dt;
+      if (ilen > 0.05) {
+        // keys / stick direct-drive, and take over from the guide
+        guide.has = false;
+        if (ilen > 1) { ix /= ilen; iy /= ilen; }
+        d.vx += ix * DOG_ACCEL * dt;
+        d.vy += iy * DOG_ACCEL * dt;
+        d.vx -= d.vx * DOG_DRAG * dt;
+        d.vy -= d.vy * DOG_DRAG * dt;
+      } else if (guide.has) {
+        // rubber band to the guide: harder pull the farther it sits,
+        // easing in to a stop on arrival
+        const tx = guide.x - d.x, ty = guide.y - d.y;
+        const td = Math.hypot(tx, ty);
+        if (td < 8 && guide.id === null) guide.has = false; // got there
+        const sp = Math.min(DOG_SPEED, td * 3.4);
+        d.vx += ((td > 0.01 ? tx / td * sp : 0) - d.vx) * 9 * dt;
+        d.vy += ((td > 0.01 ? ty / td * sp : 0) - d.vy) * 9 * dt;
+      } else {
+        d.vx -= d.vx * DOG_DRAG * dt;
+        d.vy -= d.vy * DOG_DRAG * dt;
+      }
       const spd = Math.hypot(d.vx, d.vy);
       if (spd > DOG_SPEED) { d.vx *= DOG_SPEED / spd; d.vy *= DOG_SPEED / spd; }
     } else {
       // command mode: the dog works the flock on its own
-      const pace = CMD_SPEED * (state.easy ? EASY_SCALE : 1);
+      const pace = CMD_SPEED * state.pace;
+      const goPace = Math.max(pace, CMD_SPEED * PACE_START); // recalls never dawdle
       const flock = flockInfo();
       let cmd = d.cmd;
       if (!flock && (cmd === 'cb' || cmd === 'aw' || cmd === 'walk')) cmd = 'lie';
@@ -859,7 +921,18 @@
         const hx = state.handler.x - d.x, hy = state.handler.y - d.y;
         const hd = Math.hypot(hx, hy);
         if (hd < 30) { d.cmd = 'lie'; updateCmdButtons(); }
-        else { desx = hx / hd * pace; desy = hy / hd * pace; }
+        else { desx = hx / hd * goPace; desy = hy / hd * goPace; }
+      } else if (cmd === 'tome') {
+        // call off: come away from the sheep toward the handler's post,
+        // then hold as soon as the pressure is off the flock
+        let near = Infinity;
+        for (const s of state.sheep) {
+          if (!s.penned) near = Math.min(near, dist2(d.x, d.y, s.x, s.y));
+        }
+        const hx = state.handler.x - d.x, hy = state.handler.y - d.y;
+        const hd = Math.hypot(hx, hy);
+        if (hd < 30 || near > (FLEE_RANGE + 50) ** 2) { d.cmd = 'lie'; updateCmdButtons(); }
+        else { desx = hx / hd * goPace; desy = hy / hd * goPace; }
       } else if (cmd === 'walk') {
         const hx = flock.cx - d.x, hy = flock.cy - d.y;
         const hd = Math.hypot(hx, hy) || 1;
@@ -890,7 +963,62 @@
     collideSegs(d, DOG_R);
     collideObstacles(d, DOG_R);
     if (Math.abs(d.vx) > 30) d.facing = d.vx > 0 ? 1 : -1;
-    d.bob += dt * (Math.hypot(d.vx, d.vy) > 40 ? 12 : 3);
+    const dspd = Math.hypot(d.vx, d.vy);
+    if (dspd > 25) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), 11 * dt);
+    d.bob += dt * (dspd > 40 ? 12 : 3);
+    // charging bark: rush straight at a sheep and the dog lets one off
+    if (d.barkCd <= 0 && dspd > BARK_CHARGE_SPEED) {
+      for (const s of state.sheep) {
+        if (s.penned) continue;
+        const dx = s.x - d.x, dy = s.y - d.y;
+        const dd = Math.hypot(dx, dy);
+        if (dd < BARK_CHARGE_RANGE && dd > 0.01 &&
+            (d.vx * dx + d.vy * dy) / (dspd * dd) > 0.55) {
+          tryBark();
+          break;
+        }
+      }
+    }
+  }
+
+  // ---------- flocking helpers ----------
+  // scared sheep bunch much tighter; defiant ones barely flock at all
+  function cohesionWeight(s) {
+    return (s.defiant ? 5 : 20) + s.panic * (s.defiant ? 12 : 64);
+  }
+  // a sheep off on its own feels the mob's pull, so strays and split
+  // groups drift back together and merge instead of scattering for good
+  function mergePull(s, flock) {
+    if (!flock || flock.n < 2 || s.planted) return null;
+    const n = flock.n; // centroid of the *others*, not counting this sheep
+    const mx = (flock.cx * n - s.x) / (n - 1) - s.x;
+    const my = (flock.cy * n - s.y) / (n - 1) - s.y;
+    const ml = Math.hypot(mx, my);
+    if (ml < COH_RANGE) return null; // close enough — cohesion handles it
+    const k = Math.min(1, (ml - COH_RANGE) / (MERGE_REACH - COH_RANGE));
+    const pull = (s.defiant ? 9 : 34) * (0.4 + 0.6 * k) * (1 + s.panic * 1.5);
+    return { x: (mx / ml) * pull, y: (my / ml) * pull };
+  }
+  // training wheels: at early levels the gate gently inhales sheep that
+  // wander near its mouth, fading out entirely by level 5
+  function gateSuction(s) {
+    const ease = clamp(1 - (state.level - 1) / 4, 0, 1);
+    if (!ease || s.planted) return null;
+    const P = state.pen;
+    // in front of the mouth only — never through the back fence
+    if ((s.x - P.gx) * P.out.x + (s.y - P.gy) * P.out.y < -4) return null;
+    // aim a little inside the gate so the pull carries sheep over the line
+    const tx = P.gx - P.out.x * 34 - s.x, ty = P.gy - P.out.y * 34 - s.y;
+    const tl = Math.hypot(tx, ty);
+    if (tl < 0.01 || tl > GATE_PULL) return null;
+    const k = 1 - tl / GATE_PULL;
+    const f = ease * (s.defiant ? 0.5 : 1) * (40 + 320 * k * k);
+    return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * ease };
+  }
+  // fear spreads: one spooked sheep puts its neighbours on edge too
+  function catchPanic(s, nearPanic, dt) {
+    const target = nearPanic * (s.defiant ? 0.5 : 0.85);
+    if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 3);
   }
 
   function updateSheep(dt) {
@@ -898,6 +1026,7 @@
     const d = state.dog;
     const iz = state.pen.inner;
     const grazing = state.mode === 'title';
+    const flock = flockInfo();
     for (const s of state.sheep) {
       s.bob += dt * (2 + s.panic * 9);
       if (s.penned) {
@@ -909,14 +1038,18 @@
         s.x = clamp(s.x + s.vx * dt, iz.x0 + 4, iz.x1 - 4);
         s.y = clamp(s.y + s.vy * dt, iz.y0 + 4, iz.y1 - 4);
         if (Math.abs(s.vx) > 4) s.facing = s.vx > 0 ? 1 : -1;
+        if (Math.hypot(s.vx, s.vy) > 4) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), 2.5 * dt);
         continue;
       }
       s.panic = Math.max(0, s.panic - dt * 0.35);
       s.plantCd = Math.max(0, s.plantCd - dt);
 
       let fx = 0, fy = 0;
+      // gate suction (early levels): the pen mouth draws nearby sheep in,
+      // and a sheep caught in the funnel stops answering the mob's pull
+      const gs = grazing ? null : gateSuction(s);
       // --- flocking: separation, cohesion, alignment ---
-      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0;
+      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0;
       for (const o of state.sheep) {
         if (o === s || o.penned) continue;
         const dx = s.x - o.x, dy = s.y - o.y;
@@ -927,21 +1060,30 @@
           fx += (dx / dl) * k * 320;
           fy += (dy / dl) * k * 320;
         }
-        if (dd < COH_RANGE * COH_RANGE) { cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy; }
+        if (dd < COH_RANGE * COH_RANGE) {
+          cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy;
+          if (o.panic > nearPanic) nearPanic = o.panic;
+        }
       }
       if (cn && !s.planted) {
-        // scared sheep bunch tighter — defiant ones barely flock at all
-        const cw = (s.defiant ? 4 : 12) + s.panic * (s.defiant ? 10 : 46);
+        const cw = cohesionWeight(s);
         const tx = cx / cn - s.x, ty = cy / cn - s.y;
         const tl = Math.hypot(tx, ty);
-        if (tl > 26) { fx += (tx / tl) * cw; fy += (ty / tl) * cw; }
-        fx += (avx / cn - s.vx) * 0.8;
-        fy += (avy / cn - s.vy) * 0.8;
+        if (tl > 18) { fx += (tx / tl) * cw; fy += (ty / tl) * cw; }
+        // match the mob's heading — sheep steer off each other constantly
+        const aw = s.defiant ? 0.6 : 1.5;
+        fx += (avx / cn - s.vx) * aw;
+        fy += (avy / cn - s.vy) * aw;
+        catchPanic(s, nearPanic, dt);
       }
+      const mp = gs ? null : mergePull(s, flock);
+      if (mp) { fx += mp.x; fy += mp.y; }
       // --- dog pressure ---
       if (!grazing) {
         const range = s.defiant ? FLEE_RANGE_DEFIANT : FLEE_RANGE;
-        const ddx = s.x - d.x, ddy = s.y - d.y;
+        // sheep read the dog's line of travel, not just where it stands
+        const lead = s.defiant ? 0 : 0.3;
+        const ddx = s.x - (d.x + d.vx * lead), ddy = s.y - (d.y + d.vy * lead);
         const dd = Math.hypot(ddx, ddy);
         if (dd < range && dd > 0.01) {
           const k = 1 - dd / range;
@@ -958,6 +1100,12 @@
             fy += (ddy / dd) * k * 520 * mult;
           }
           s.panic = Math.max(s.panic, Math.min(1, k * (s.defiant ? 0.8 : 1.15)));
+        } else if (!s.defiant && !s.planted && dd < DOG_AWARE && dd > 0.01) {
+          // noticed but not pressed yet: lift the head, edge away, bunch up
+          const k = 1 - (dd - range) / (DOG_AWARE - range);
+          fx += (ddx / dd) * k * 70;
+          fy += (ddy / dd) * k * 70;
+          s.panic = Math.max(s.panic, k * 0.4);
         }
       }
       // --- bark pulses ---
@@ -972,6 +1120,7 @@
           s.panic = 1;
         }
       }
+      if (gs) { fx += gs.x; fy += gs.y; }
       // --- keep off the hedge ---
       const wp = 60, wk = 140;
       if (s.x < HEDGE + wp) fx += wk * (1 - (s.x - HEDGE) / wp);
@@ -990,7 +1139,8 @@
       s.vy += fy * dt;
       s.vx -= s.vx * 2.4 * dt;
       s.vy -= s.vy * 2.4 * dt;
-      const cap = s.planted ? 10 : 26 + s.panic * (s.defiant ? 180 : 150);
+      let cap = s.planted ? 10 : 26 + s.panic * (s.defiant ? 180 : 150);
+      if (gs) cap = Math.max(cap, 30 + 70 * gs.k); // the funnel pulls at a trot
       const spd = Math.hypot(s.vx, s.vy);
       if (spd > cap) { s.vx *= cap / spd; s.vy *= cap / spd; }
       s.x = clamp(s.x + s.vx * dt, HEDGE + 14, w - HEDGE - 14);
@@ -998,6 +1148,10 @@
       collideSegs(s, SHEEP_R);
       collideObstacles(s, SHEEP_R);
       if (Math.abs(s.vx) > 6) s.facing = s.vx > 0 ? 1 : -1;
+      // swing the body round to the way it's actually running —
+      // spooked sheep whip about faster than grazing ones
+      const run = Math.hypot(s.vx, s.vy);
+      if (run > 6) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), (3.5 + s.panic * 8) * dt);
 
       if (s.planted) {
         s.plantT -= dt;
@@ -1012,7 +1166,10 @@
         sfx.penned();
         state.floaties.push({ x: s.x, y: s.y - 24, vy: -55, t: 0, life: 1, g: '✅', s: 20 });
         updateHud();
-        if (state.sheep.every(sh => sh.penned)) levelClear();
+        if (!state.gateClosing && state.sheep.every(sh => sh.penned)) {
+          state.gateClosing = true;
+          sfx.gateCreak();
+        }
       }
 
       if (Math.random() < dt * (0.008 + s.panic * 0.1)) sfx.baa(rand(0.75, 1.3));
@@ -1043,8 +1200,7 @@
       'The gate swings shut. The flock is home.',
       'Ewe did it. Every last one.'][state.level % 4];
     clearOverlay.classList.remove('hidden');
-    barkBtn.style.display = 'none';
-    cmdStack.style.display = 'none';
+    cmdUi.style.display = 'none';
   }
 
   function update(dt) {
@@ -1054,9 +1210,18 @@
       return;
     }
     if (state.mode !== 'playing') return;
-    state.levelTime += dt;
+    if (!state.gateClosing) state.levelTime += dt; // the clock stops at the last sheep
     updateDog(dt);
     updateSheep(dt);
+    if (state.gateClosing) {
+      if (state.gateT < 1) {
+        state.gateT = Math.min(1, state.gateT + dt / 0.9);
+        if (state.gateT >= 1) { sfx.gateClunk(); state.clearWait = 0.7; }
+      } else {
+        state.clearWait -= dt;
+        if (state.clearWait <= 0) levelClear();
+      }
+    }
     for (let i = state.barks.length - 1; i >= 0; i--) {
       state.barks[i].t += dt;
       if (state.barks[i].t >= 0.6) state.barks.splice(i, 1);
@@ -1099,8 +1264,6 @@
   }
   const EMOJI = {};
   for (const [name, cands] of Object.entries({
-    sheep: ['🐑', '🐏'], ram: ['🐏', '🐑'],
-    dog: ['🐕', '🐶'], handler: ['🧑‍🌾', '👩‍🌾', '👨‍🌾', '🧍'],
     tree: ['🌳', '🌲'], rock: ['🪨', '🌰'],
   })) {
     EMOJI[name] = forceVector ? null : (cands.find(glyphRenders) || null);
@@ -1147,119 +1310,129 @@
     ctx.translate(x, y);
     if (rot) ctx.rotate(rot);
     if (flip) ctx.scale(-1, 1);
-    if (name === 'sheep' || name === 'ram') drawVectorSheep(size, name === 'ram');
-    else if (name === 'dog') drawVectorDog(size);
-    else if (name === 'handler') drawVectorHandler(size);
-    else if (name === 'tree') drawVectorTree(size);
+    if (name === 'tree') drawVectorTree(size);
     else if (name === 'rock') drawVectorRock(size);
     ctx.restore();
   }
 
-  // ---------- vector stand-ins ----------
-  function drawVectorSheep(s, ram) {
-    const u = s / 44;
-    const wool = ram ? '#c9b8a0' : '#f4efe4';
+  // ---------- top-down actor shapes ----------
+  // Sheep and dog are drawn as simple vector shapes instead of emoji:
+  // oblong bodies built nose-first along +x, then rotated to the smoothed
+  // heading (dir), so the flock visibly streams the way it's running.
+  function drawSheepTop(x, y, size, dir, ram, bob, moving) {
+    const u = size / 30;
+    const wool = ram ? '#d9c6a8' : '#f6f1e6';
+    const shade = ram ? '#b8a284' : '#ddd3bf';
     const skin = ram ? '#4a3b30' : '#3b3b46';
-    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(dir + Math.sin(bob) * 0.05); // slight waddle
+    // trotting feet, diagonal pairs swinging in counter-phase
     ctx.fillStyle = skin;
-    for (const lx of [-9, -2, 6, 12]) ctx.fillRect((lx - 2) * u, 8 * u, 4 * u, 9 * u);
-    ctx.fillStyle = wool;
-    for (const [bx, by, br] of [[-6, 0, 12], [6, -2, 11], [0, -6, 11], [12, 2, 8], [-12, 3, 8]]) {
+    const step = moving ? Math.sin(bob * 2) * 3.5 * u : 0;
+    for (const [px, py, ph] of [[7, -8, 1], [-8, -8, -1], [7, 8, -1], [-8, 8, 1]]) {
       ctx.beginPath();
-      ctx.arc(bx * u, by * u, br * u, 0, Math.PI * 2);
+      ctx.arc(px * u + step * ph, py * u, 2.4 * u, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.fillStyle = skin;
+    // oblong wool body with a darker rim
+    ctx.fillStyle = shade;
     ctx.beginPath();
-    ctx.ellipse(-17 * u, -4 * u, 7.5 * u, 6 * u, -0.2, 0, Math.PI * 2);
+    ctx.ellipse(-0.5 * u, 0, 14 * u, 9.5 * u, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = wool;
     ctx.beginPath();
-    ctx.arc(-15 * u, -10 * u, 5 * u, 0, Math.PI * 2);
+    ctx.ellipse(0.5 * u, 0, 12.5 * u, 8.5 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    if (ram) {
+    // tail puff
+    ctx.beginPath();
+    ctx.arc(-14 * u, 0, 3.2 * u, 0, Math.PI * 2);
+    ctx.fill();
+    // head out front, ears to the sides
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(14 * u, 0, 6 * u, 4.2 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(11 * u, -5.5 * u, 3.8 * u, 1.8 * u, -0.5, 0, Math.PI * 2);
+    ctx.ellipse(11 * u, 5.5 * u, 3.8 * u, 1.8 * u, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // wool cap on the crown
+    ctx.fillStyle = wool;
+    ctx.beginPath();
+    ctx.arc(10.5 * u, 0, 4 * u, 0, Math.PI * 2);
+    ctx.fill();
+    if (ram) { // horns curling beside the head
       ctx.strokeStyle = '#e0d3b8';
-      ctx.lineWidth = 3 * u;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 2.6 * u;
       ctx.beginPath();
-      ctx.arc(-13 * u, -8 * u, 5.5 * u, -0.5, 2.4);
+      ctx.arc(11 * u, -6.5 * u, 3.6 * u, 2.7, 5.8);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(11 * u, 6.5 * u, 3.6 * u, 0.5, 3.6);
       ctx.stroke();
     }
-    ctx.fillStyle = '#fff';
-    ctx.beginPath();
-    ctx.arc(-20 * u, -6 * u, 1.8 * u, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#1c1c24';
-    ctx.beginPath();
-    ctx.arc(-20.5 * u, -6 * u, 1 * u, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.restore();
   }
 
-  function drawVectorDog(s) {
-    const u = s / 48;
-    const coat = '#2b2b33', white = '#f4efe4';
-    ctx.lineJoin = ctx.lineCap = 'round';
+  function drawDogTop(x, y, size, dir, bob, moving) {
+    const u = size / 34;
+    const coat = '#26262e', white = '#f4efe4';
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(dir);
+    ctx.lineCap = 'round';
+    // tail streams out behind, swishing wider at a run
+    const wag = Math.sin(bob * 1.6) * (moving ? 4 : 2) * u;
     ctx.strokeStyle = coat;
-    ctx.lineWidth = 5 * u;
+    ctx.lineWidth = 4.5 * u;
     ctx.beginPath();
-    ctx.moveTo(17 * u, -2 * u);
-    ctx.quadraticCurveTo(27 * u, -6 * u, 25 * u, -15 * u);
+    ctx.moveTo(-12 * u, 0);
+    ctx.quadraticCurveTo(-19 * u, wag * 0.6, -23 * u, wag);
     ctx.stroke();
     ctx.fillStyle = white; // tail tip
     ctx.beginPath();
-    ctx.arc(25 * u, -15 * u, 3 * u, 0, Math.PI * 2);
+    ctx.arc(-23 * u, wag, 2.6 * u, 0, Math.PI * 2);
     ctx.fill();
+    // paws, diagonal pairs
     ctx.fillStyle = coat;
-    for (const lx of [-11, -3, 7, 15]) ctx.fillRect((lx - 2.5) * u, 8 * u, 5 * u, 11 * u);
+    const step = moving ? Math.sin(bob * 2) * 4 * u : 0;
+    for (const [px, py, ph] of [[8, -7, 1], [-8, -7, -1], [8, 7, -1], [-8, 7, 1]]) {
+      ctx.beginPath();
+      ctx.arc(px * u + step * ph, py * u, 2.2 * u, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // oblong body
     ctx.beginPath();
-    ctx.ellipse(3 * u, 0, 18 * u, 10 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(-1 * u, 0, 13.5 * u, 7 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = white; // chest
+    // white shoulder band
+    ctx.fillStyle = white;
     ctx.beginPath();
-    ctx.ellipse(-9 * u, 3 * u, 7 * u, 7 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(5.5 * u, 0, 4 * u, 6.2 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = coat; // head
+    // head with pricked ears
+    ctx.fillStyle = coat;
     ctx.beginPath();
-    ctx.arc(-14 * u, -10 * u, 10 * u, 0, Math.PI * 2);
+    ctx.ellipse(13 * u, 0, 7 * u, 5.2 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.beginPath(); // ears
-    ctx.moveTo(-20 * u, -18 * u); ctx.lineTo(-17 * u, -26 * u); ctx.lineTo(-13 * u, -18 * u);
-    ctx.moveTo(-11 * u, -18 * u); ctx.lineTo(-7 * u, -25 * u); ctx.lineTo(-5 * u, -16 * u);
-    ctx.fill();
-    ctx.fillStyle = white; // muzzle blaze
     ctx.beginPath();
-    ctx.ellipse(-21 * u, -8 * u, 6 * u, 4.5 * u, -0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#1c1c24';
-    ctx.beginPath();
-    ctx.arc(-26 * u, -9 * u, 2 * u, 0, Math.PI * 2); // nose
-    ctx.arc(-16 * u, -12 * u, 1.8 * u, 0, Math.PI * 2); // eye
-    ctx.fill();
-  }
-
-  function drawVectorHandler(s) {
-    const u = s / 44;
-    ctx.lineJoin = ctx.lineCap = 'round';
-    ctx.fillStyle = '#4a6741'; // coat
-    ctx.beginPath();
-    ctx.moveTo(-8 * u, -4 * u); ctx.lineTo(8 * u, -4 * u); ctx.lineTo(6 * u, 16 * u); ctx.lineTo(-6 * u, 16 * u);
+    ctx.moveTo(9 * u, -4 * u); ctx.lineTo(6 * u, -9.5 * u); ctx.lineTo(13 * u, -6.5 * u);
+    ctx.closePath();
+    ctx.moveTo(9 * u, 4 * u); ctx.lineTo(6 * u, 9.5 * u); ctx.lineTo(13 * u, 6.5 * u);
     ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#e8b88a'; // head
+    // blaze down the muzzle, wet nose out front
+    ctx.fillStyle = white;
     ctx.beginPath();
-    ctx.arc(0, -12 * u, 6.5 * u, 0, Math.PI * 2);
+    ctx.ellipse(17 * u, 0, 3.6 * u, 1.9 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#7a5b3a'; // hat
+    ctx.fillStyle = '#111116';
     ctx.beginPath();
-    ctx.ellipse(0, -16 * u, 10 * u, 3 * u, 0, 0, Math.PI * 2);
+    ctx.arc(20 * u, 0, 1.8 * u, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillRect(-5 * u, -24 * u, 10 * u, 8 * u);
-    ctx.strokeStyle = '#8a5f3c'; // crook
-    ctx.lineWidth = 2.5 * u;
-    ctx.beginPath();
-    ctx.moveTo(12 * u, 16 * u);
-    ctx.lineTo(12 * u, -14 * u);
-    ctx.arc(9 * u, -14 * u, 3 * u, 0, Math.PI, true);
-    ctx.stroke();
+    ctx.restore();
   }
 
   function drawVectorTree(s) {
@@ -1312,14 +1485,8 @@
     ctx.translate(ox, oy);
     ctx.scale(scale, scale);
 
-    // field
-    ctx.fillStyle = '#7ec850';
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = '#6fb746';
-    const stripe = 140;
-    for (let sx = 0; sx < w; sx += stripe * 2) {
-      ctx.fillRect(sx, 0, stripe, h);
-    }
+    // field (pre-rendered in makeDecor)
+    ctx.drawImage(fieldCanvas, 0, 0);
     // world border hedge
     ctx.strokeStyle = '#3e7a2a';
     ctx.lineWidth = HEDGE;
@@ -1348,9 +1515,9 @@
       const P = state.pen;
       ctx.fillStyle = 'rgba(146, 106, 60, 0.30)';
       ctx.fillRect(P.rect.x0, P.rect.y0, P.rect.x1 - P.rect.x0, P.rect.y1 - P.rect.y0);
-      // animated chevrons pointing in through the gate
+      // animated chevrons pointing in through the gate (until it shuts)
       const gA = Math.atan2(-P.out.y, -P.out.x); // into the pen
-      for (let i = 0; i < 3; i++) {
+      for (let i = 0; state.gateT === 0 && i < 3; i++) {
         const k = ((t * 0.7 + i / 3) % 1);
         const cxx = P.gx + P.out.x * (110 - k * 130);
         const cyy = P.gy + P.out.y * (110 - k * 130);
@@ -1415,7 +1582,8 @@
         ctx.arc(s.x, s.y - hop, 21, 0, Math.PI * 2);
         ctx.fill();
       }
-      drawActor(s.defiant ? 'ram' : 'sheep', s.x, s.y - hop, s.defiant ? 32 : 30, s.facing === 1);
+      drawSheepTop(s.x, s.y - hop, s.defiant ? 32 : 30, s.dir, s.defiant, s.bob,
+        Math.hypot(s.vx, s.vy) > 12);
       if (s.planted) {
         drawEmoji('😤', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
       } else if (!s.penned && s.panic > 0.75) {
@@ -1434,29 +1602,16 @@
       ctx.ellipse(dg.x, dg.y + 15, 17, 5.5, 0, 0, Math.PI * 2);
       ctx.fill();
       const bounce = spd > 40 ? Math.abs(Math.sin(dg.bob)) * 4 : Math.sin(dg.bob) * 1;
-      const lean = clamp(dg.vx / 900, -0.16, 0.16);
-      drawActor('dog', dg.x, dg.y - bounce + (lying ? 4 : 0), lying ? 30 : 34, dg.facing === 1, lean);
+      drawDogTop(dg.x, dg.y - bounce + (lying ? 4 : 0), lying ? 30 : 34, dg.dir, dg.bob, spd > 40);
       if (lying && state.mode === 'playing') {
         drawEmoji('💤', dg.x + 14, dg.y - 22 + Math.sin(t * 3) * 2, 13);
       }
     };
 
-    const drawHandler = () => {
-      const hd = state.handler;
-      ctx.fillStyle = 'rgba(0,0,0,0.16)';
-      ctx.beginPath();
-      ctx.ellipse(hd.x, hd.y + 18, 13, 4.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      drawActor('handler', hd.x, hd.y, 38);
-    };
-
     const ents = [];
     for (const o of state.obstacles) ents.push({ y: o.y, draw: () => drawObstacle(o) });
     for (const s of state.sheep) ents.push({ y: s.y, draw: () => drawSheep(s) });
-    if (inGame) {
-      ents.push({ y: state.dog.y, draw: drawDog });
-      ents.push({ y: state.handler.y, draw: drawHandler });
-    }
+    if (inGame) ents.push({ y: state.dog.y, draw: drawDog });
     ents.sort((a, b) => a.y - b.y);
     for (const e of ents) e.draw();
 
@@ -1486,6 +1641,27 @@
           ctx.arc(px, py, 5, 0, Math.PI * 2);
           ctx.fill();
         }
+      }
+      // the gate itself, sliding shut once every sheep is home
+      if (state.gateT > 0) {
+        const g = P.gate;
+        const gx2 = g.x1 + (g.x2 - g.x1) * state.gateT;
+        const gy2 = g.y1 + (g.y2 - g.y1) * state.gateT;
+        ctx.strokeStyle = '#8a5f3c';
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(g.x1, g.y1); ctx.lineTo(gx2, gy2);
+        ctx.stroke();
+        ctx.strokeStyle = '#b98a5a';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(g.x1, g.y1); ctx.lineTo(gx2, gy2);
+        ctx.stroke();
+        ctx.fillStyle = '#6e4a2c'; // leading post
+        ctx.beginPath();
+        ctx.arc(gx2, gy2, 5, 0, Math.PI * 2);
+        ctx.fill();
       }
       // gate flags
       for (const [fx, fy] of [[P.gate.x1, P.gate.y1], [P.gate.x2, P.gate.y2]]) {
@@ -1525,24 +1701,25 @@
 
     ctx.restore();
 
-    // joystick indicator (screen space)
-    if (joy.active && state.mode === 'playing' && state.input === 'drag') {
-      ctx.strokeStyle = 'rgba(255, 246, 232, 0.5)';
-      ctx.lineWidth = 3;
+    // guide marker (screen space): where the dog is running to
+    if (guide.has && state.mode === 'playing' && state.input === 'drag') {
+      const sx = ox + guide.x * scale, sy = oy + guide.y * scale;
+      const pulse = reducedMotion ? 1 : 1 + Math.sin(now / 140) * 0.15;
+      ctx.strokeStyle = 'rgba(255, 246, 232, 0.85)';
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(joy.sx, joy.sy, 46, 0, Math.PI * 2);
+      ctx.arc(sx, sy, 13 * pulse, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = 'rgba(255, 246, 232, 0.7)';
+      ctx.fillStyle = 'rgba(255, 216, 77, 0.9)';
       ctx.beginPath();
-      ctx.arc(joy.sx + joy.dx * 0.65, joy.sy + joy.dy * 0.65, 18, 0, Math.PI * 2);
+      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
       ctx.fill();
     }
   }
 
   // ---------- HUD & buttons ----------
   const hud = document.getElementById('hud');
-  const barkBtn = document.getElementById('bark-btn');
-  const cmdStack = document.getElementById('cmd-stack');
+  const cmdUi = document.getElementById('cmd-ui');
   const titleOverlay = document.getElementById('title-overlay');
   const clearOverlay = document.getElementById('clear-overlay');
   const levelChip = document.getElementById('level-chip');
@@ -1560,14 +1737,14 @@
     levelChip.textContent = 'Level ' + state.level;
     const penned = state.sheep.filter(s => s.penned).length;
     sheepCount.textContent = penned + '/' + state.sheep.length;
-    modeBtn.textContent = state.input === 'drag' ? '🕹️ drag' : '🗣️ commands';
+    modeBtn.textContent = state.input === 'drag' ? '🎯 guide' : '🗣️ commands';
   }
 
-  const cmdBtns = [...cmdStack.querySelectorAll('.cmd-btn')];
+  const cmdBtns = [...cmdUi.querySelectorAll('.cmd-btn')];
   function updateCmdButtons() {
     for (const b of cmdBtns) {
       const c = b.dataset.cmd;
-      b.classList.toggle('active', c === 'easy' ? state.easy : state.dog.cmd === c);
+      b.classList.toggle('active', state.dog.cmd === c);
     }
   }
   for (const b of cmdBtns) {
@@ -1576,21 +1753,22 @@
 
   function applyInputMode() {
     if (state.mode === 'playing') {
-      cmdStack.style.display = state.input === 'cmd' ? 'flex' : 'none';
+      cmdUi.style.display = state.input === 'cmd' ? 'grid' : 'none';
     }
+    document.body.classList.toggle('cmd-mode', state.input === 'cmd');
     if (state.input === 'cmd') {
       state.dog.cmd = 'lie';
       updateCmdButtons();
-    } else if (joy.active) {
-      joy.active = false; joy.id = null;
     }
+    guide.has = false;
+    guide.id = null;
     updateHud();
   }
   modeBtn.addEventListener('click', () => {
     state.input = state.input === 'drag' ? 'cmd' : 'drag';
     applyInputMode();
     toast(state.input === 'drag'
-      ? '🕹️ Drag mode — steer the dog yourself'
+      ? '🎯 Guide mode — the dog chases your finger'
       : '🗣️ Command mode — whistle the dog around');
   });
 
@@ -1601,15 +1779,13 @@
   startCmdBtn.addEventListener('click', () => { ensureAudio(); state.input = 'cmd'; startLevel(1); });
   nextBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
   document.getElementById('build-tag').textContent = 'build ' + BUILD;
-  barkBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryBark(); });
   document.getElementById('mute-btn').addEventListener('click', (e) => {
     muted = !muted;
     e.currentTarget.textContent = muted ? '🔇' : '🔊';
   });
   if (isTouch) {
-    document.getElementById('bark-hint').textContent = 'TAP';
     document.getElementById('keys-note').textContent =
-      'Drag anywhere to run · tap BARK! · tap the calls in command mode · swap modes any time';
+      'Touch the field — the dog chases your finger · charge a sheep to bark · tap the calls in command mode';
   }
 
   // ---------- title backdrop ----------
@@ -1633,7 +1809,7 @@
     for (let i = 0; i < 9; i++) {
       state.sheep.push({
         x: rand(HEDGE + 120, w - HEDGE - 120), y: rand(HEDGE + 120, h - HEDGE - 120),
-        vx: 0, vy: 0, facing: -1, penned: false, defiant: i === 0,
+        vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false, defiant: i === 0,
         panic: 0, planted: false, plantT: 0, plantCd: 99,
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
