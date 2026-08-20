@@ -488,18 +488,34 @@
   };
 
   // ---------- world decor ----------
-  const flowers = [], tufts = [], patches = [];
+  const flowers = [], tufts = [];
+  const fieldCanvas = document.createElement('canvas');
   function makeDecor() {
     const { w, h } = state.world;
-    flowers.length = 0; tufts.length = 0; patches.length = 0;
+    flowers.length = 0; tufts.length = 0;
     const k = (w * h) / FIELD_AREA;
-    // soft irregular grass-tone patches — pasture, not a mowed pitch
+    // pre-render the pasture once per level: flat green with soft-edged
+    // patches of lighter and darker grass — pasture, not a mowed pitch
+    fieldCanvas.width = w; fieldCanvas.height = h;
+    const fc = fieldCanvas.getContext('2d');
+    fc.fillStyle = '#7ec850';
+    fc.fillRect(0, 0, w, h);
     for (let i = 0; i < 16 * k; i++) {
-      patches.push({
-        x: rand(0, w), y: rand(0, h),
-        rx: rand(100, 280), ry: rand(70, 180), rot: rand(0, Math.PI),
-        tone: Math.random() < 0.55 ? 'rgba(111, 183, 70, 0.4)' : 'rgba(139, 210, 92, 0.35)',
-      });
+      const [cr, cg, cb, ca] = Math.random() < 0.55
+        ? [111, 183, 70, 0.5] : [139, 210, 92, 0.45];
+      const grad = fc.createRadialGradient(0, 0, 0, 0, 0, 1);
+      grad.addColorStop(0, `rgba(${cr},${cg},${cb},${ca})`);
+      grad.addColorStop(0.55, `rgba(${cr},${cg},${cb},${ca * 0.8})`);
+      grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+      fc.save();
+      fc.translate(rand(0, w), rand(0, h));
+      fc.rotate(rand(0, Math.PI));
+      fc.scale(rand(100, 280), rand(70, 180));
+      fc.fillStyle = grad;
+      fc.beginPath();
+      fc.arc(0, 0, 1, 0, Math.PI * 2);
+      fc.fill();
+      fc.restore();
     }
     for (let i = 0; i < 40 * k; i++) {
       flowers.push({ x: rand(60, w - 60), y: rand(60, h - 60), g: ['🌼','🌸','🌷','🍄'][Math.floor(rand(0, 4))], s: rand(14, 22) });
@@ -1433,15 +1449,8 @@
     ctx.translate(ox, oy);
     ctx.scale(scale, scale);
 
-    // field
-    ctx.fillStyle = '#7ec850';
-    ctx.fillRect(0, 0, w, h);
-    for (const p of patches) {
-      ctx.fillStyle = p.tone;
-      ctx.beginPath();
-      ctx.ellipse(p.x, p.y, p.rx, p.ry, p.rot, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // field (pre-rendered in makeDecor)
+    ctx.drawImage(fieldCanvas, 0, 0);
     // world border hedge
     ctx.strokeStyle = '#3e7a2a';
     ctx.lineWidth = HEDGE;
