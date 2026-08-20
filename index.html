@@ -370,6 +370,7 @@
   const FLEE_RANGE = 235;         // how far the most timid sheep feels the dog
   const FLEE_RANGE_DEFIANT = 150; // ...and the boldest make you get close
   const SEP_RANGE = 34, COH_RANGE = 190;
+  const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const MERGE_REACH = 520;        // stray sheep feel the mob's pull out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
@@ -1201,14 +1202,14 @@
     const target = nearPanic * (0.9 - 0.4 * s.bold);
     if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 3);
   }
-  // neighbour lookup: loose sheep bucketed into COH_RANGE-sized cells so
+  // neighbour lookup: sheep bucketed into COH_RANGE-sized cells so
   // flocking only tests the 3x3 cells that can hold a sheep in range,
   // instead of the whole flock. Rebuilt once per frame — a big field is
-  // only a few dozen cells
+  // only a few dozen cells. Penned sheep are in the grid too (for their
+  // own shoulder-room pass) but loose-sheep flocking skips them
   function sheepGrid() {
     const g = new Map();
     for (const s of state.sheep) {
-      if (s.penned) continue;
       const key = Math.floor(s.x / COH_RANGE) + ',' + Math.floor(s.y / COH_RANGE);
       const cell = g.get(key);
       if (cell) cell.push(s); else g.set(key, [s]);
@@ -1246,6 +1247,29 @@
           s.vx += (Math.cos(s.wanderA) * 14 - s.vx) * 2 * dt;
           s.vy += (Math.sin(s.wanderA) * 14 - s.vy) * 2 * dt;
         }
+        // soft shoulder room: penned sheep nudge apart instead of
+        // stacking — separation only, no cohesion/alignment needed
+        let px = 0, py = 0;
+        const pgx = Math.floor(s.x / COH_RANGE), pgy = Math.floor(s.y / COH_RANGE);
+        for (let ci = -1; ci <= 1; ci++) {
+          for (let cj = -1; cj <= 1; cj++) {
+            const cell = grid.get((pgx + ci) + ',' + (pgy + cj));
+            if (!cell) continue;
+            for (const o of cell) {
+              if (o === s || !o.penned) continue;
+              const dx = s.x - o.x, dy = s.y - o.y;
+              const dd = dx * dx + dy * dy;
+              if (dd < PEN_SEP * PEN_SEP && dd > 0.01) {
+                const dl = Math.sqrt(dd);
+                const k = 1 - dl / PEN_SEP;
+                px += (dx / dl) * k;
+                py += (dy / dl) * k;
+              }
+            }
+          }
+        }
+        s.vx += px * 150 * dt;
+        s.vy += py * 150 * dt;
         s.x = clamp(s.x + s.vx * dt, iz.x0 + 4, iz.x1 - 4);
         s.y = clamp(s.y + s.vy * dt, iz.y0 + 4, iz.y1 - 4);
         if (Math.abs(s.vx) > 4) s.facing = s.vx > 0 ? 1 : -1;
