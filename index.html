@@ -278,7 +278,7 @@
       <div><span class="glyph">🗣️</span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em> (faster each tap), <em>easy</em> (slower), <em>steady</em> (halt), <em>to me</em> (call off), <em>that'll do</em>.</span></div>
     </div>
     <div class="mode-row">
-      <button class="big-btn" id="start-drag-btn">🎯 Lure the dog<span class="sub">it chases your finger</span></button>
+      <button class="big-btn" id="start-drag-btn">🎯 Guide the dog<span class="sub">it chases your finger</span></button>
       <button class="big-btn alt" id="start-cmd-btn">🗣️ Command mode<span class="sub">whistle the dog around</span></button>
     </div>
     <p class="keys-note" id="keys-note">Click to send the dog (or WASD / arrows) · charge a sheep to bark · 1–7 call commands · swap modes any time</p>
@@ -686,32 +686,32 @@
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-  // rabbit-style lure (drag mode): your finger is the dog's target — it
+  // rabbit-style guide (drag mode): your finger is the dog's target — it
   // chases the spot, and if you lift, finishes the run and stops there
-  const lure = { id: null, has: false, x: 0, y: 0 };
-  function lureFrom(e) {
+  const guide = { id: null, has: false, x: 0, y: 0 };
+  function guideFrom(e) {
     const { w, h } = state.world;
     const scale = Math.min(vw / w, vh / h);
     const ox = (vw - w * scale) / 2, oy = (vh - h * scale) / 2;
-    lure.x = clamp((e.clientX - ox) / scale, HEDGE + 16, w - HEDGE - 16);
-    lure.y = clamp((e.clientY - oy) / scale, HEDGE + 16, h - HEDGE - 16);
-    lure.has = true;
+    guide.x = clamp((e.clientX - ox) / scale, HEDGE + 16, w - HEDGE - 16);
+    guide.y = clamp((e.clientY - oy) / scale, HEDGE + 16, h - HEDGE - 16);
+    guide.has = true;
   }
   canvas.addEventListener('pointerdown', (e) => {
     ensureAudio();
-    if (lure.id !== null || state.input !== 'drag') return;
-    lure.id = e.pointerId;
-    lureFrom(e);
+    if (guide.id !== null || state.input !== 'drag') return;
+    guide.id = e.pointerId;
+    guideFrom(e);
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (e.pointerId === lure.id) lureFrom(e);
+    if (e.pointerId === guide.id) guideFrom(e);
   });
-  function lureEnd(e) {
-    if (e.pointerId === lure.id) lure.id = null;
+  function guideEnd(e) {
+    if (e.pointerId === guide.id) guide.id = null;
   }
-  canvas.addEventListener('pointerup', lureEnd);
-  canvas.addEventListener('pointercancel', lureEnd);
+  canvas.addEventListener('pointerup', guideEnd);
+  canvas.addEventListener('pointercancel', guideEnd);
 
   // ---------- toast ----------
   const toastEl = document.getElementById('toast');
@@ -888,19 +888,19 @@
       ix += pad.x; iy += pad.y;
       const ilen = Math.hypot(ix, iy);
       if (ilen > 0.05) {
-        // keys / stick direct-drive, and take over from the lure
-        lure.has = false;
+        // keys / stick direct-drive, and take over from the guide
+        guide.has = false;
         if (ilen > 1) { ix /= ilen; iy /= ilen; }
         d.vx += ix * DOG_ACCEL * dt;
         d.vy += iy * DOG_ACCEL * dt;
         d.vx -= d.vx * DOG_DRAG * dt;
         d.vy -= d.vy * DOG_DRAG * dt;
-      } else if (lure.has) {
-        // rubber band to the lure: harder pull the farther it sits,
+      } else if (guide.has) {
+        // rubber band to the guide: harder pull the farther it sits,
         // easing in to a stop on arrival
-        const tx = lure.x - d.x, ty = lure.y - d.y;
+        const tx = guide.x - d.x, ty = guide.y - d.y;
         const td = Math.hypot(tx, ty);
-        if (td < 8 && lure.id === null) lure.has = false; // got there
+        if (td < 8 && guide.id === null) guide.has = false; // got there
         const sp = Math.min(DOG_SPEED, td * 3.4);
         d.vx += ((td > 0.01 ? tx / td * sp : 0) - d.vx) * 9 * dt;
         d.vy += ((td > 0.01 ? ty / td * sp : 0) - d.vy) * 9 * dt;
@@ -1701,9 +1701,9 @@
 
     ctx.restore();
 
-    // lure marker (screen space): where the dog is running to
-    if (lure.has && state.mode === 'playing' && state.input === 'drag') {
-      const sx = ox + lure.x * scale, sy = oy + lure.y * scale;
+    // guide marker (screen space): where the dog is running to
+    if (guide.has && state.mode === 'playing' && state.input === 'drag') {
+      const sx = ox + guide.x * scale, sy = oy + guide.y * scale;
       const pulse = reducedMotion ? 1 : 1 + Math.sin(now / 140) * 0.15;
       ctx.strokeStyle = 'rgba(255, 246, 232, 0.85)';
       ctx.lineWidth = 2.5;
@@ -1737,7 +1737,7 @@
     levelChip.textContent = 'Level ' + state.level;
     const penned = state.sheep.filter(s => s.penned).length;
     sheepCount.textContent = penned + '/' + state.sheep.length;
-    modeBtn.textContent = state.input === 'drag' ? '🎯 lure' : '🗣️ commands';
+    modeBtn.textContent = state.input === 'drag' ? '🎯 guide' : '🗣️ commands';
   }
 
   const cmdBtns = [...cmdUi.querySelectorAll('.cmd-btn')];
@@ -1760,15 +1760,15 @@
       state.dog.cmd = 'lie';
       updateCmdButtons();
     }
-    lure.has = false;
-    lure.id = null;
+    guide.has = false;
+    guide.id = null;
     updateHud();
   }
   modeBtn.addEventListener('click', () => {
     state.input = state.input === 'drag' ? 'cmd' : 'drag';
     applyInputMode();
     toast(state.input === 'drag'
-      ? '🎯 Lure mode — the dog chases your finger'
+      ? '🎯 Guide mode — the dog chases your finger'
       : '🗣️ Command mode — whistle the dog around');
   });
 
