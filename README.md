@@ -94,11 +94,22 @@ pressure in a ring, and the only thing that shifts a planted sheep.
   (steam huffs, sweat drops, music notes) are hand-drawn shapes too. The
   emoji sprite pipeline from Sparkle Butt — glyph probing, vector
   fallbacks, cached rasterization — is gone entirely, along with its
-  per-platform missing-glyph pitfalls.
+  per-platform missing-glyph pitfalls. The start screen's how-to icons are
+  inline SVG paths (see [Credits](#credits)), inherited `currentColor` so
+  they pick up the panel and button text colours.
 - Build stamp + self-update: deploys stamp the commit into `BUILD`, and open
   tabs poll their own URL and offer/auto-apply a refresh.
 - Dev shortcut: the HUD level chip is a button — click it to jump between
   levels by tens (1, 10, 20 … 100) for stress-testing big flocks.
+
+## Credits
+
+Start-screen icons (sitting dog, ranch gate, sheep, megaphone, whistle,
+bullseye) are by **Delapouite** and **Skoll** from
+[game-icons.net](https://game-icons.net/), used under
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). They're embedded
+as inline SVG paths in `index.html` with the background square stripped and
+the fill switched to `currentColor`.
 
 ## Roadmap ideas
 
