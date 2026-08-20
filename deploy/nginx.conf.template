@@ -1,5 +1,5 @@
-# nginx vhost for Sparkle Butt — plain static site, no app process.
-# Installed by `sparkle setup` as /etc/nginx/sites-available/__FQDN__
+# nginx vhost for Come By! — plain static site, no app process.
+# Installed by `comeby setup` as /etc/nginx/sites-available/__FQDN__
 # (placeholders __FQDN__ and __ROOT__ substituted via sed).
 #
 # certbot --nginx adds the :443 block + redirect afterwards, copying this
@@ -25,14 +25,6 @@ server {
     location = /index.html {
         include snippets/lab980-security-headers.conf;
         add_header Cache-Control "no-cache" always;
-    }
-
-    # Optional sprite atlas (assets/sprites.png + sprites.json). Cache a
-    # week; art updates can rename or cache-bust if it ever matters.
-    location /assets/ {
-        include snippets/lab980-security-headers.conf;
-        add_header Cache-Control "public, max-age=604800" always;
-        try_files $uri =404;
     }
 
     location / {

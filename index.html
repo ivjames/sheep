@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<meta name="description" content="You are a cat. Eat sparkles. Fart them at grumpy dogs to make them happy.">
-<title>Sparkle Butt</title>
+<meta name="description" content="You are a border collie. Herd every sheep through the gate. Watch out for the defiant ones.">
+<title>Come By!</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;800&display=swap">
 <style>
   :root {
@@ -12,9 +12,9 @@
     --plum-soft: rgba(49, 32, 74, 0.88);
     --cream: #fff6e8;
     --gold: #ffd84d;
-    --pink: #ff8ae0;
+    --sky: #7fd4ff;
     --coral: #ff7b54;
-    --storm: #5a6472;
+    --leaf: #3e7a2a;
     --display: 'Fredoka', 'Comic Sans MS', system-ui, sans-serif;
     --body: 'Nunito', 'Trebuchet MS', system-ui, sans-serif;
   }
@@ -22,7 +22,7 @@
   body {
     margin: 0;
     overflow: hidden;
-    background: #6fb746;
+    background: #55913a;
     font-family: var(--body);
     color: var(--cream);
     -webkit-user-select: none;
@@ -44,7 +44,7 @@
     right: 0;
     display: none;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     padding: 10px 14px;
     pointer-events: none;
     font-family: var(--display);
@@ -62,30 +62,16 @@
     box-shadow: 0 3px 0 rgba(0,0,0,0.18);
     white-space: nowrap;
   }
-  #fuel-pips { display: flex; gap: 4px; }
-  .pip {
-    width: 13px;
-    height: 13px;
-    border-radius: 3px;
-    transform: rotate(45deg);
-    background: rgba(255, 246, 232, 0.18);
-    transition: background 0.15s, box-shadow 0.15s;
-  }
-  .pip.lit {
-    background: var(--gold);
-    box-shadow: 0 0 8px rgba(255, 216, 77, 0.9);
-  }
-  .pip.ready { background: var(--pink); box-shadow: 0 0 8px rgba(255, 138, 224, 0.9); }
   #hud-spacer { flex: 1; }
-  #mute-btn {
+  #mode-btn, #mute-btn {
     pointer-events: auto;
     cursor: pointer;
     border: 0;
     font: inherit;
     color: inherit;
   }
-  /* ---------- Fart button ---------- */
-  #fart-btn {
+  /* ---------- Bark button ---------- */
+  #bark-btn {
     position: fixed;
     right: 22px;
     bottom: 26px;
@@ -98,58 +84,63 @@
     justify-content: center;
     flex-direction: column;
     gap: 0;
-    background: radial-gradient(circle at 35% 30%, #ffa9ec, var(--pink) 60%, #d95cba);
+    background: radial-gradient(circle at 35% 30%, #a8e4ff, var(--sky) 60%, #3d9fd6);
     color: var(--plum);
     font-family: var(--display);
     font-weight: 700;
     font-size: 19px;
     letter-spacing: 0.04em;
-    box-shadow: 0 6px 0 #a03d88, 0 10px 18px rgba(0,0,0,0.25);
+    box-shadow: 0 6px 0 #2a6f99, 0 10px 18px rgba(0,0,0,0.25);
     cursor: pointer;
     touch-action: none;
+    z-index: 20;
   }
-  #fart-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #a03d88; }
-  #fart-btn.empty { filter: grayscale(0.8) brightness(0.8); }
-  #fart-btn .key-hint { font-family: var(--body); font-weight: 800; font-size: 11px; opacity: 0.75; }
-  /* ---------- Steak button ---------- */
-  #steak-btn {
+  #bark-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #2a6f99; }
+  #bark-btn .key-hint { font-family: var(--body); font-weight: 800; font-size: 11px; opacity: 0.75; }
+  /* ---------- Command stack ---------- */
+  #cmd-stack {
     position: fixed;
-    right: 34px;
-    bottom: 138px;
-    width: 72px;
-    height: 72px;
-    border-radius: 50%;
-    border: 0;
+    left: 14px;
+    bottom: 20px;
     display: none;
-    align-items: center;
-    justify-content: center;
     flex-direction: column;
-    font-size: 28px;
-    line-height: 1;
-    background: radial-gradient(circle at 35% 30%, #ffa584, var(--coral) 60%, #c94f2e);
-    box-shadow: 0 5px 0 #93361c, 0 9px 16px rgba(0,0,0,0.25);
-    cursor: pointer;
-    touch-action: none;
+    gap: 8px;
+    z-index: 20;
   }
-  #steak-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #93361c; }
-  #steak-btn.empty { filter: grayscale(0.85) brightness(0.8); }
-  #steak-btn .badge {
-    position: absolute;
-    top: -4px;
-    right: -2px;
-    min-width: 24px;
-    height: 24px;
+  .cmd-btn {
+    border: 0;
     border-radius: 999px;
-    background: var(--plum);
-    color: var(--cream);
-    font-family: var(--display);
-    font-size: 14px;
-    font-weight: 700;
+    padding: 10px 18px 10px 14px;
     display: flex;
     align-items: center;
-    justify-content: center;
+    gap: 9px;
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.05em;
+    color: var(--cream);
+    background: var(--plum-soft);
+    box-shadow: 0 4px 0 rgba(0,0,0,0.28);
+    cursor: pointer;
+    touch-action: none;
+    text-align: left;
   }
-  #steak-btn .key-hint { font-family: var(--body); font-weight: 800; font-size: 10px; color: var(--plum); opacity: 0.75; }
+  .cmd-btn:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,0.28); }
+  .cmd-btn .key-hint {
+    font-family: var(--body);
+    font-weight: 800;
+    font-size: 11px;
+    opacity: 0.55;
+    background: rgba(255,246,232,0.14);
+    border-radius: 6px;
+    padding: 1px 6px;
+  }
+  .cmd-btn.active {
+    background: linear-gradient(180deg, #ffe58a, var(--gold));
+    color: var(--plum);
+    box-shadow: 0 4px 0 #c99b13;
+  }
+  .cmd-btn.active .key-hint { background: rgba(49,32,74,0.14); opacity: 0.7; }
   /* ---------- Overlays ---------- */
   .overlay {
     position: fixed;
@@ -159,12 +150,15 @@
     justify-content: center;
     background: rgba(38, 24, 58, 0.55);
     backdrop-filter: blur(3px);
+    z-index: 30;
   }
   .panel {
     background: var(--plum);
     border-radius: 28px;
-    padding: 34px 38px 30px;
-    max-width: min(430px, calc(100vw - 48px));
+    padding: 32px 36px 28px;
+    max-width: min(470px, calc(100vw - 48px));
+    max-height: calc(100vh - 60px);
+    overflow-y: auto;
     text-align: center;
     box-shadow: 0 10px 0 rgba(0,0,0,0.25), 0 24px 60px rgba(0,0,0,0.35);
   }
@@ -175,7 +169,7 @@
     line-height: 1;
     margin: 0 0 6px;
     color: var(--gold);
-    text-shadow: 0 3px 0 #b3387f, 0 6px 0 rgba(0,0,0,0.2);
+    text-shadow: 0 3px 0 #2a6f99, 0 6px 0 rgba(0,0,0,0.2);
     letter-spacing: 0.01em;
   }
   .panel h2 {
@@ -184,22 +178,22 @@
     font-size: clamp(30px, 7vw, 42px);
     margin: 0 0 10px;
     color: var(--gold);
-    text-shadow: 0 3px 0 #b3387f;
+    text-shadow: 0 3px 0 #2a6f99;
   }
   .panel .tagline {
     font-size: 15px;
     font-weight: 800;
-    color: var(--pink);
-    margin: 0 0 20px;
+    color: var(--sky);
+    margin: 0 0 18px;
     letter-spacing: 0.03em;
   }
   .howto {
     text-align: left;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin: 0 0 24px;
-    font-size: 15px;
+    gap: 9px;
+    margin: 0 0 20px;
+    font-size: 14.5px;
     font-weight: 600;
     line-height: 1.45;
   }
@@ -218,18 +212,26 @@
   .big-btn {
     font-family: var(--display);
     font-weight: 700;
-    font-size: 22px;
+    font-size: 20px;
     letter-spacing: 0.03em;
     color: var(--plum);
     background: linear-gradient(180deg, #ffe58a, var(--gold));
     border: 0;
     border-radius: 999px;
-    padding: 14px 42px;
+    padding: 13px 30px;
     cursor: pointer;
     box-shadow: 0 5px 0 #c99b13, 0 10px 18px rgba(0,0,0,0.25);
   }
   .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #c99b13; }
-  .keys-note { margin: 18px 0 0; font-size: 12.5px; font-weight: 700; opacity: 0.65; }
+  .big-btn.alt {
+    color: var(--cream);
+    background: linear-gradient(180deg, #8f6fe0, #6a4bb8);
+    box-shadow: 0 5px 0 #46307d, 0 10px 18px rgba(0,0,0,0.25);
+  }
+  .big-btn.alt:active { box-shadow: 0 2px 0 #46307d; }
+  .big-btn .sub { display: block; font-family: var(--body); font-size: 11.5px; font-weight: 800; opacity: 0.7; letter-spacing: 0.05em; }
+  .mode-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .keys-note { margin: 16px 0 0; font-size: 12.5px; font-weight: 700; opacity: 0.65; }
   .build-tag { margin: 10px 0 0; font-size: 10.5px; font-weight: 700; opacity: 0.35; letter-spacing: 0.08em; }
   #toast {
     position: fixed;
@@ -250,7 +252,6 @@
   }
   #toast.show { transform: translateX(-50%) translateY(0); }
   #toast.tappable { pointer-events: auto; cursor: pointer; }
-  #hidden { display: none !important; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -259,34 +260,42 @@
 
 <div id="hud">
   <div class="hud-chip" id="level-chip">Level 1</div>
-  <div class="hud-chip">✨ <span id="fuel-pips"></span></div>
-  <div class="hud-chip">🥩 <span id="steak-count" style="font-variant-numeric:tabular-nums">0</span></div>
-  <div class="hud-chip">😾 <span id="dogs-left" style="font-variant-numeric:tabular-nums">0</span> grumpy</div>
+  <div class="hud-chip">🐑 <span id="sheep-count" style="font-variant-numeric:tabular-nums">0/0</span> penned</div>
+  <div class="hud-chip">⏱ <span id="time-chip" style="font-variant-numeric:tabular-nums">0:00</span></div>
   <div id="hud-spacer"></div>
+  <button class="hud-chip" id="mode-btn" aria-label="Switch input mode">🕹️ drag</button>
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
 </div>
 
-<button id="fart-btn" aria-label="Fart sparkles">
-  FART!<span class="key-hint" id="fart-hint">SPACE</span>
+<button id="bark-btn" aria-label="Bark">
+  BARK!<span class="key-hint" id="bark-hint">SPACE</span>
 </button>
 
-<button id="steak-btn" aria-label="Drop a steak">
-  🥩<span class="key-hint" id="steak-hint">E</span><span class="badge" id="steak-badge">0</span>
-</button>
+<div id="cmd-stack">
+  <button class="cmd-btn" data-cmd="cb">🌀 COME BY <span class="key-hint">1</span></button>
+  <button class="cmd-btn" data-cmd="aw">🔄 AWAY <span class="key-hint">2</span></button>
+  <button class="cmd-btn" data-cmd="walk">➡️ WALK ON <span class="key-hint">3</span></button>
+  <button class="cmd-btn" data-cmd="easy">🐢 EASY <span class="key-hint">4</span></button>
+  <button class="cmd-btn" data-cmd="lie">✋ STEADY <span class="key-hint">5</span></button>
+  <button class="cmd-btn" data-cmd="home">🏡 THAT'LL DO <span class="key-hint">6</span></button>
+</div>
 
 <div class="overlay" id="title-overlay">
   <div class="panel">
-    <h1>Sparkle Butt</h1>
-    <p class="tagline">A cat. A meadow. Some very grumpy dogs.</p>
+    <h1>Come By!</h1>
+    <p class="tagline">A border collie. A restless flock. One open gate.</p>
     <div class="howto">
-      <div><span class="glyph">✨</span><span>Scamper around and gobble up sparkles — they fuel your butt.</span></div>
-      <div><span class="glyph">💨</span><span>Chase down a grumpy dog and <strong>fart sparkles</strong> at it (costs 3 sparkles).</span></div>
-      <div><span class="glyph">🐶</span><span>Sparkle-farted dogs become happy dogs. Cheer up every dog to win the level!</span></div>
-      <div><span class="glyph">😠</span><span><strong>Watch out</strong> — some dogs are so grumpy they chase YOU. Get bitten and sparkles fall right out of your butt. Get bitten with none left and the grump takes over…</span></div>
-      <div><span class="glyph">🥩</span><span>Steaks lure every nearby grumpy dog into a snack huddle. Drop one, then gas the whole crowd at once.</span></div>
+      <div><span class="glyph">🐕</span><span>You're the sheepdog. Sheep drift away from you — use that pressure to steer the flock.</span></div>
+      <div><span class="glyph">⛩️</span><span>Push every sheep through the <strong>gate</strong> into the pen to clear the level.</span></div>
+      <div><span class="glyph">🐏</span><span><strong>Defiant sheep</strong> barely care about you. They plant their hooves and stray from the flock. They don't bite — they're just stubborn.</span></div>
+      <div><span class="glyph">📣</span><span><strong>BARK</strong> for a burst of pressure — it's the only thing that moves a planted sheep.</span></div>
+      <div><span class="glyph">🗣️</span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em>, <em>easy</em>, <em>steady</em>, <em>that'll do</em>.</span></div>
     </div>
-    <button class="big-btn" id="start-btn">Let's go!</button>
-    <p class="keys-note" id="keys-note">WASD / arrows to move &nbsp;·&nbsp; SPACE to fart &nbsp;·&nbsp; E drops a steak</p>
+    <div class="mode-row">
+      <button class="big-btn" id="start-drag-btn">🕹️ Drag to herd<span class="sub">steer the dog yourself</span></button>
+      <button class="big-btn alt" id="start-cmd-btn">🗣️ Command mode<span class="sub">whistle the dog around</span></button>
+    </div>
+    <p class="keys-note" id="keys-note">WASD / arrows to run · SPACE barks · 1–6 call commands · swap modes any time</p>
     <p class="build-tag" id="build-tag"></p>
   </div>
 </div>
@@ -294,22 +303,13 @@
 <div class="overlay hidden" id="clear-overlay">
   <div class="panel">
     <h2 id="clear-title">Level clear!</h2>
-    <p class="tagline" id="clear-tag">Every dog in the meadow is wagging.</p>
+    <p class="tagline" id="clear-tag">That'll do, dog. That'll do.</p>
     <div class="stats">
-      <div class="stat"><span class="num" id="stat-sparkles">0</span><span class="lbl">sparkles</span></div>
-      <div class="stat"><span class="num" id="stat-farts">0</span><span class="lbl">farts</span></div>
+      <div class="stat"><span class="num" id="stat-sheep">0</span><span class="lbl">sheep</span></div>
+      <div class="stat"><span class="num" id="stat-barks">0</span><span class="lbl">barks</span></div>
       <div class="stat"><span class="num" id="stat-time">0s</span><span class="lbl">time</span></div>
     </div>
     <button class="big-btn" id="next-btn">Next level</button>
-  </div>
-</div>
-
-<div class="overlay hidden" id="grump-overlay">
-  <div class="panel">
-    <div style="font-size:64px;line-height:1">😾</div>
-    <h2>You got grumped!</h2>
-    <p class="tagline">Bitten with an empty butt — the grump spread to you.</p>
-    <button class="big-btn" id="retry-btn">Shake it off</button>
   </div>
 </div>
 
@@ -320,20 +320,20 @@
   'use strict';
 
   // ---------- constants ----------
-  // Stamped by `sparkle deploy` with the deployed commit; 'dev' in the repo.
+  // Stamped by `comeby deploy` with the deployed commit; 'dev' in the repo.
   const BUILD = 'dev';
-  const WORLD_W = 2200, WORLD_H = 1600;
-  const FUEL_MAX = 9, FART_COST = 3;
-  const FART_RADIUS = 150, FART_LIFE = 0.85;
-  const CAT_SPEED = 340, CAT_ACCEL = 2200, CAT_DRAG = 6;
-  const DOG_FLEE_RANGE = 280;
-  const AGGRO_RANGE = 400;
-  const BITE_RADIUS = 44;
-  const BITE_COST = 3;
-  const START_FUEL = 3;
-  const SPARKLE_COUNT = 16;
-  const STEAK_MAX = 2;
-  const LURE_RANGE = 520, LURE_LIFE = 6, MUNCH_DIST = 50;
+  const HEDGE = 26;               // world border thickness
+  const FIELD_AREA = 1650000;     // world w*h — sized to viewport aspect per level
+  const DOG_SPEED = 345;          // direct-drive top speed
+  const DOG_ACCEL = 2400, DOG_DRAG = 6;
+  const CMD_SPEED = 300;          // command-mode working pace ("easy" scales it)
+  const EASY_SCALE = 0.55;
+  const SHEEP_R = 12, DOG_R = 13;
+  const FLEE_RANGE = 235;         // how far a normal sheep feels the dog
+  const FLEE_RANGE_DEFIANT = 150; // defiant sheep make you get close
+  const SEP_RANGE = 34, COH_RANGE = 170;
+  const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.55;
+  const GATE_W = 112;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
@@ -372,9 +372,9 @@
     osc.start(t0);
     osc.stop(t0 + dur + 0.05);
   }
-  function noiseBurst(dur, vol, fStart, fEnd) {
+  function noiseBurst(dur, vol, fStart, fEnd, delay = 0) {
     if (!audio || muted) return;
-    const t0 = audio.currentTime;
+    const t0 = audio.currentTime + delay;
     const len = Math.floor(audio.sampleRate * dur);
     const buf = audio.createBuffer(1, len, audio.sampleRate);
     const d = buf.getChannelData(0);
@@ -391,42 +391,40 @@
     src.connect(filt).connect(g).connect(audio.destination);
     src.start(t0);
   }
+  // Each shepherd's command has its own whistle — same here.
   const sfx = {
-    pickup() { tone(880, 0.1, 'sine', 0.12); tone(1320, 0.14, 'sine', 0.1, 0.05); },
-    fart() {
-      noiseBurst(0.45, 0.22, 900, 120);
-      tone(170, 0.4, 'square', 0.08, 0, 62);
-      tone(1760, 0.3, 'sine', 0.05, 0.08, 2640);
+    whistle_cb() { tone(950, 0.14, 'sine', 0.12, 0, 1500); tone(1500, 0.2, 'sine', 0.11, 0.14, 700); },
+    whistle_aw() { tone(1400, 0.14, 'sine', 0.12, 0, 800); tone(800, 0.2, 'sine', 0.11, 0.14, 1450); },
+    whistle_walk() { tone(880, 0.09, 'sine', 0.12, 0, 1250); tone(880, 0.09, 'sine', 0.12, 0.13, 1250); },
+    whistle_easy() { tone(720, 0.32, 'sine', 0.09, 0, 640); },
+    whistle_lie() { tone(1250, 0.38, 'sine', 0.11, 0, 520); },
+    whistle_home() { [1300, 1000, 700].forEach((f, i) => tone(f, 0.14, 'sine', 0.11, i * 0.11)); },
+    bark() {
+      noiseBurst(0.09, 0.24, 1800, 300);
+      tone(290, 0.11, 'square', 0.11, 0, 150);
+      noiseBurst(0.08, 0.2, 1600, 280, 0.12);
+      tone(265, 0.1, 'square', 0.1, 0.12, 135);
     },
-    dud() { tone(160, 0.18, 'square', 0.08, 0, 110); },
-    happy() {
-      [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, 'triangle', 0.11, i * 0.07));
+    baa(p) {
+      tone(470 * p, 0.09, 'sawtooth', 0.045);
+      tone(420 * p, 0.11, 'sawtooth', 0.045, 0.09);
+      tone(450 * p, 0.09, 'sawtooth', 0.035, 0.2);
     },
+    stomp() { noiseBurst(0.08, 0.14, 500, 120); },
+    penned() { tone(660, 0.1, 'sine', 0.12); tone(990, 0.14, 'sine', 0.1, 0.06); },
     win() {
       [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.3, 'triangle', 0.12, i * 0.1));
     },
-    bite() {
-      noiseBurst(0.2, 0.2, 2500, 500);
-      tone(340, 0.25, 'sawtooth', 0.1, 0, 120);
-    },
-    growl() { tone(95, 0.3, 'sawtooth', 0.06, 0, 70); },
-    grump() {
-      [392, 330, 262, 196].forEach((f, i) => tone(f, 0.4, 'triangle', 0.12, i * 0.18));
-      noiseBurst(0.6, 0.1, 500, 80);
-    },
-    steak() { tone(392, 0.12, 'sine', 0.12); tone(294, 0.16, 'sine', 0.1, 0.06); },
-    drop() { tone(240, 0.12, 'sine', 0.12, 0, 130); },
-    chomp() { noiseBurst(0.06, 0.09, 1500, 300); },
   };
 
   // ---------- helpers ----------
   const rand = (a, b) => a + Math.random() * (b - a);
+  const randInt = (a, b) => Math.floor(rand(a, b + 1));
   const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
-  const pointClear = (x, y, pad) =>
-    state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + pad) * (o.r + pad));
+
   // push a moving circle out of any obstacle it overlaps, sliding along the edge
-  function collideCircle(e, r) {
+  function collideObstacles(e, r) {
     for (const o of state.obstacles) {
       const dx = e.x - o.x, dy = e.y - o.y;
       const min = r + o.r, dd = dx * dx + dy * dy;
@@ -440,136 +438,221 @@
       }
     }
   }
-
-  // ---------- world decor (fixed per session) ----------
-  const flowers = [], tufts = [];
-  for (let i = 0; i < 46; i++) {
-    flowers.push({ x: rand(60, WORLD_W - 60), y: rand(60, WORLD_H - 60), g: ['🌼','🌸','🌷','🍄'][Math.floor(rand(0, 4))], s: rand(18, 28) });
-  }
-  for (let i = 0; i < 70; i++) {
-    tufts.push({ x: rand(30, WORLD_W - 30), y: rand(30, WORLD_H - 30), s: rand(0.6, 1.3) });
+  // circle vs fence segment: push out along the normal
+  function collideSegs(e, r) {
+    for (const s of state.pen.segs) {
+      const abx = s.x2 - s.x1, aby = s.y2 - s.y1;
+      const len2 = abx * abx + aby * aby || 1;
+      const t = clamp(((e.x - s.x1) * abx + (e.y - s.y1) * aby) / len2, 0, 1);
+      const px = s.x1 + abx * t, py = s.y1 + aby * t;
+      let dx = e.x - px, dy = e.y - py;
+      const dd = dx * dx + dy * dy, min = r + 5;
+      if (dd < min * min) {
+        const d = Math.sqrt(dd);
+        if (d < 0.001) { dx = aby; dy = -abx; }        // dead-center: shove sideways
+        const nx = dx / (d || 1), ny = dy / (d || 1);
+        e.x = px + nx * min;
+        e.y = py + ny * min;
+        const dot = e.vx * nx + e.vy * ny;
+        if (dot < 0) { e.vx -= dot * nx; e.vy -= dot * ny; }
+      }
+    }
   }
 
   // ---------- game state ----------
   const state = {
-    mode: 'title', // title | playing | clear | grumped
+    mode: 'title', // title | playing | clear
+    input: 'drag', // drag | cmd
     level: 1,
-    fuel: 0,
-    cat: { x: WORLD_W / 2, y: WORLD_H / 2, vx: 0, vy: 0, facing: -1, invuln: 0 },
-    dogs: [],
-    sparkles: [],
-    steakPickups: [],
-    lures: [],       // dropped steaks currently being mobbed
-    steaksHeld: 0,
+    world: { w: 1600, h: 1000 },
+    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, cmd: 'lie', bob: 0, barkCd: 0 },
+    easy: false,
+    handler: { x: 800, y: 560 },
+    sheep: [],
+    pen: { segs: [], inner: null },
     obstacles: [],
-    particles: [],
-    floaties: [], // rising emoji (hearts, notes)
-    clouds: [],   // active fart clouds
-    cam: { x: 0, y: 0 },
-    shake: 0,
+    barks: [],    // active bark pressure pulses
+    floaties: [], // rising emoji / command call-outs
     time: 0,
     levelTime: 0,
-    sparklesEaten: 0,
-    fartsUsed: 0,
-    trailTimer: 0,
+    barksUsed: 0,
+    defiantSeen: false,
   };
 
-  function spawnSparkle() {
-    for (let tries = 0; tries < 20; tries++) {
-      const x = rand(80, WORLD_W - 80), y = rand(80, WORLD_H - 80);
-      if ((dist2(x, y, state.cat.x, state.cat.y) > 300 * 300 && pointClear(x, y, 30)) || tries === 19) {
-        state.sparkles.push({ x, y, phase: rand(0, Math.PI * 2) });
-        return;
-      }
+  // ---------- world decor ----------
+  const flowers = [], tufts = [];
+  function makeDecor() {
+    const { w, h } = state.world;
+    flowers.length = 0; tufts.length = 0;
+    const k = (w * h) / FIELD_AREA;
+    for (let i = 0; i < 40 * k; i++) {
+      flowers.push({ x: rand(60, w - 60), y: rand(60, h - 60), g: ['🌼','🌸','🌷','🍄'][Math.floor(rand(0, 4))], s: rand(14, 22) });
     }
+    for (let i = 0; i < 70 * k; i++) {
+      tufts.push({ x: rand(30, w - 30), y: rand(30, h - 30), s: rand(0.5, 1.1) });
+    }
+  }
+
+  // ---------- level generation ----------
+  function makePen(count) {
+    const { w, h } = state.world;
+    const side = randInt(0, 3); // 0 top, 1 right, 2 bottom, 3 left
+    const horiz = side === 0 || side === 2;
+    const along = horiz ? w : h;
+    const W = clamp(210 + count * 9, 250, along - 360);
+    const D = clamp(150 + count * 5, 170, 260);
+    const c = rand(HEDGE + 110 + W / 2, along - HEDGE - 110 - W / 2);
+    const ga = c - GATE_W / 2, gb = c + GATE_W / 2;
+    const seg = (x1, y1, x2, y2) => ({ x1, y1, x2, y2 });
+    let rect, segs, gate, out; // out = unit normal from gate into the field
+    if (side === 0) {
+      rect = { x0: c - W / 2, y0: HEDGE, x1: c + W / 2, y1: HEDGE + D };
+      segs = [seg(rect.x0, rect.y0, rect.x0, rect.y1), seg(rect.x1, rect.y0, rect.x1, rect.y1),
+              seg(rect.x0, rect.y1, ga, rect.y1), seg(gb, rect.y1, rect.x1, rect.y1)];
+      gate = { x1: ga, y1: rect.y1, x2: gb, y2: rect.y1 };
+      out = { x: 0, y: 1 };
+    } else if (side === 2) {
+      rect = { x0: c - W / 2, y0: h - HEDGE - D, x1: c + W / 2, y1: h - HEDGE };
+      segs = [seg(rect.x0, rect.y0, rect.x0, rect.y1), seg(rect.x1, rect.y0, rect.x1, rect.y1),
+              seg(rect.x0, rect.y0, ga, rect.y0), seg(gb, rect.y0, rect.x1, rect.y0)];
+      gate = { x1: ga, y1: rect.y0, x2: gb, y2: rect.y0 };
+      out = { x: 0, y: -1 };
+    } else if (side === 3) {
+      rect = { x0: HEDGE, y0: c - W / 2, x1: HEDGE + D, y1: c + W / 2 };
+      segs = [seg(rect.x0, rect.y0, rect.x1, rect.y0), seg(rect.x0, rect.y1, rect.x1, rect.y1),
+              seg(rect.x1, rect.y0, rect.x1, ga), seg(rect.x1, gb, rect.x1, rect.y1)];
+      gate = { x1: rect.x1, y1: ga, x2: rect.x1, y2: gb };
+      out = { x: 1, y: 0 };
+    } else {
+      rect = { x0: w - HEDGE - D, y0: c - W / 2, x1: w - HEDGE, y1: c + W / 2 };
+      segs = [seg(rect.x0, rect.y0, rect.x1, rect.y0), seg(rect.x0, rect.y1, rect.x1, rect.y1),
+              seg(rect.x0, rect.y0, rect.x0, ga), seg(rect.x0, gb, rect.x0, rect.y1)];
+      gate = { x1: rect.x0, y1: ga, x2: rect.x0, y2: gb };
+      out = { x: -1, y: 0 };
+    }
+    const inset = 16;
+    state.pen = {
+      side, rect, segs, gate, out,
+      cx: (rect.x0 + rect.x1) / 2, cy: (rect.y0 + rect.y1) / 2,
+      gx: (gate.x1 + gate.x2) / 2, gy: (gate.y1 + gate.y2) / 2,
+      inner: { x0: rect.x0 + inset, y0: rect.y0 + inset, x1: rect.x1 - inset, y1: rect.y1 - inset },
+    };
+    // penned counts once a sheep is fully behind the gate line
+    const iz = state.pen.inner;
+    if (side === 0) iz.y1 -= 6; else if (side === 2) iz.y0 += 6;
+    else if (side === 3) iz.x1 -= 6; else iz.x0 += 6;
+  }
+
+  function penClear(x, y, pad) {
+    const r = state.pen.rect;
+    return x < r.x0 - pad || x > r.x1 + pad || y < r.y0 - pad || y > r.y1 + pad;
   }
 
   function startLevel(n) {
     state.level = n;
     state.mode = 'playing';
-    state.fuel = START_FUEL;
-    state.dogs = [];
-    state.sparkles = [];
-    state.particles = [];
-    state.floaties = [];
-    state.clouds = [];
-    state.levelTime = 0;
-    state.sparklesEaten = 0;
-    state.fartsUsed = 0;
-    state.cat.x = WORLD_W / 2; state.cat.y = WORLD_H / 2;
-    state.cat.vx = 0; state.cat.vy = 0;
-    state.cat.invuln = 0;
-    state.steakPickups = [];
-    state.lures = [];
-    state.steaksHeld = 0;
-    // obstacles: trees and rocks to duck behind and corner dogs against
+    // Zoomed-out pasture: the whole field fits on screen, sized to this
+    // device's aspect so it fills the viewport.
+    const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
+    state.world.w = Math.round(Math.sqrt(FIELD_AREA * ar));
+    state.world.h = Math.round(state.world.w / ar);
+    makeDecor();
+
+    // a random-sized flock, growing with the levels
+    const count = Math.min(randInt(5 + n, 7 + n * 2), 40);
+    const defiantCount = n < 2 ? 0 : Math.min(1 + Math.floor((n - 2) / 2), Math.floor(count / 3));
+    makePen(count);
+    const { w, h } = state.world;
+    const P = state.pen;
+
+    // obstacles: trees and rocks, clear of the pen mouth and mid-field
     state.obstacles = [];
-    const obCount = 10 + Math.min(n, 6);
+    const obCount = 3 + Math.min(n, 5);
     for (let i = 0; i < obCount; i++) {
       const kind = Math.random() < 0.6 ? 'tree' : 'rock';
-      const r = kind === 'tree' ? 42 : 28;
-      for (let tries = 0; tries < 30; tries++) {
-        const x = rand(140, WORLD_W - 140), y = rand(140, WORLD_H - 140);
-        if (dist2(x, y, WORLD_W / 2, WORLD_H / 2) < 320 * 320) continue;
-        if (!state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + r + 90) ** 2)) continue;
+      const r = kind === 'tree' ? 32 : 20;
+      for (let tries = 0; tries < 40; tries++) {
+        const x = rand(HEDGE + 90, w - HEDGE - 90), y = rand(HEDGE + 90, h - HEDGE - 90);
+        if (!penClear(x, y, 150)) continue;
+        if (dist2(x, y, P.gx, P.gy) < 260 * 260) continue;
+        if (!state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + r + 110) ** 2)) continue;
         state.obstacles.push({ x, y, r, kind, v: Math.floor(rand(0, 2)) });
         break;
       }
     }
-    const dogCount = 2 + n;
-    const fleeSpeed = Math.min(200 + n * 18, 315);
-    const chaseSpeed = Math.min(240 + n * 10, 330);
-    // temper mix: aggro dogs appear from level 2 and grow to ~half the pack
-    const aggroCount = n < 2 ? 0 : Math.min(Math.ceil((n - 1) / 2), Math.floor(dogCount / 2));
-    const chillCount = Math.max(1, Math.floor((dogCount - aggroCount) / 2));
+
+    // the flock spawns bunched, far from the pen
+    let fcx, fcy;
+    do {
+      fcx = rand(HEDGE + 190, w - HEDGE - 190);
+      fcy = rand(HEDGE + 190, h - HEDGE - 190);
+    } while (dist2(fcx, fcy, P.cx, P.cy) < (Math.hypot(w, h) * 0.45) ** 2 || !penClear(fcx, fcy, 220));
+    state.sheep = [];
     const tempers = [];
-    for (let i = 0; i < aggroCount; i++) tempers.push('aggro');
-    for (let i = 0; i < chillCount; i++) tempers.push('chill');
-    while (tempers.length < dogCount) tempers.push('scaredy');
-    for (let i = 0; i < dogCount; i++) {
+    for (let i = 0; i < defiantCount; i++) tempers.push(true);
+    while (tempers.length < count) tempers.push(false);
+    for (let i = tempers.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [tempers[i], tempers[j]] = [tempers[j], tempers[i]];
+    }
+    for (let i = 0; i < count; i++) {
       let x, y;
-      do { x = rand(120, WORLD_W - 120); y = rand(120, WORLD_H - 120); }
-      while (dist2(x, y, state.cat.x, state.cat.y) < 450 * 450 || !pointClear(x, y, 60));
-      state.dogs.push({
-        x, y, vx: 0, vy: 0, happy: false, facing: -1, temper: tempers[i],
-        fleeSpeed, chaseSpeed, wanderA: rand(0, Math.PI * 2), wanderT: 0, bob: rand(0, Math.PI * 2),
+      for (let tries = 0; tries < 30; tries++) {
+        const a = rand(0, Math.PI * 2), rr = rand(10, 60 + count * 4);
+        x = clamp(fcx + Math.cos(a) * rr, HEDGE + 40, w - HEDGE - 40);
+        y = clamp(fcy + Math.sin(a) * rr, HEDGE + 40, h - HEDGE - 40);
+        if (penClear(x, y, 60) && state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + 30) ** 2)) break;
+      }
+      state.sheep.push({
+        x, y, vx: 0, vy: 0, facing: -1, penned: false,
+        defiant: tempers[i], panic: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
+        wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
     }
-    const steakCount = n >= 5 ? 3 : 2;
-    for (let i = 0; i < steakCount; i++) {
-      for (let tries = 0; tries < 30; tries++) {
-        const x = rand(120, WORLD_W - 120), y = rand(120, WORLD_H - 120);
-        if (dist2(x, y, state.cat.x, state.cat.y) > 400 * 400 && pointClear(x, y, 40)) {
-          state.steakPickups.push({ x, y, phase: rand(0, Math.PI * 2) });
-          break;
-        }
-      }
-    }
-    for (let i = 0; i < SPARKLE_COUNT; i++) spawnSparkle();
+
+    // handler stands off to one side of the gate; the dog starts at heel
+    const tx = -P.out.y, ty = P.out.x;
+    state.handler.x = clamp(P.gx + P.out.x * 150 + tx * (GATE_W / 2 + 90), HEDGE + 40, w - HEDGE - 40);
+    state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (GATE_W / 2 + 90), HEDGE + 40, h - HEDGE - 40);
+    state.dog.x = state.handler.x + 24; state.dog.y = state.handler.y + 20;
+    state.dog.vx = 0; state.dog.vy = 0;
+    state.dog.cmd = 'lie';
+    state.dog.barkCd = 0;
+    state.easy = false;
+    state.barks = [];
+    state.floaties = [];
+    state.levelTime = 0;
+    state.barksUsed = 0;
+
     hud.style.display = 'flex';
-    fartBtn.style.display = 'flex';
-    steakBtn.style.display = 'flex';
+    barkBtn.style.display = 'flex';
     titleOverlay.classList.add('hidden');
     clearOverlay.classList.add('hidden');
-    grumpOverlay.classList.add('hidden');
+    applyInputMode();
     updateHud();
+    toast('🐑 Herd all ' + count + ' sheep through the gate!');
+    if (defiantCount && !state.defiantSeen) {
+      state.defiantSeen = true;
+      setTimeout(() => toast('🐏 A defiant sheep joined the flock — BARK to budge it!'), 3400);
+    }
   }
 
   // ---------- input ----------
   const keys = {};
+  const CMD_KEYS = { 1: 'cb', 2: 'aw', 3: 'walk', 4: 'easy', 5: 'lie', 6: 'home' };
   addEventListener('keydown', (e) => {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     keys[e.key.toLowerCase()] = true;
-    if (e.key === ' ' && !e.repeat) tryFart();
-    if (e.key.toLowerCase() === 'e' && !e.repeat) tryDropSteak();
+    if (e.key === ' ' && !e.repeat) tryBark();
+    if (!e.repeat && CMD_KEYS[e.key] && state.input === 'cmd') issueCommand(CMD_KEYS[e.key]);
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-  // virtual joystick: drag anywhere on canvas
+  // virtual joystick (drag mode): drag anywhere on canvas
   const joy = { active: false, id: null, sx: 0, sy: 0, dx: 0, dy: 0 };
   canvas.addEventListener('pointerdown', (e) => {
     ensureAudio();
-    if (joy.active) return;
+    if (joy.active || state.input !== 'drag') return;
     joy.active = true; joy.id = e.pointerId;
     joy.sx = e.clientX; joy.sy = e.clientY;
     joy.dx = 0; joy.dy = 0;
@@ -616,14 +699,13 @@
   }
 
   // ---------- gamepad ----------
-  // Bluetooth controllers (Xbox / PlayStation / MFi) via the Gamepad API —
-  // works in iPad/iPhone Safari too. Controllers only show up in
-  // getGamepads() after a button press, so we poll every frame.
+  // Bluetooth controllers via the Gamepad API — iPad/iPhone Safari included.
+  // Controllers only show up in getGamepads() after a button press, so poll.
   const pad = { x: 0, y: 0, prev: [] };
   addEventListener('gamepadconnected', (e) => {
     toast('🎮 ' + (e.gamepad.id.split('(')[0].trim() || 'Controller') + ' connected');
     document.getElementById('keys-note').textContent =
-      '🎮 Stick to scamper · Ⓐ fart · Ⓧ drops a steak';
+      '🎮 Stick to run · Ⓐ barks · in command mode: R1 come by, L1 away, Ⓧ walk on, Ⓑ steady, Ⓨ that\'ll do';
   });
   addEventListener('gamepaddisconnected', () => { pad.x = 0; pad.y = 0; pad.prev = []; });
 
@@ -643,21 +725,25 @@
     if (down[13]) pad.y += 1;
     const hit = (i) => down[i] && !pad.prev[i];
     if (state.mode === 'playing') {
-      if (hit(0) || hit(7) || hit(5)) tryFart();       // A / R2 / R1
-      if (hit(1) || hit(2) || hit(6) || hit(4)) tryDropSteak(); // B / X / L2 / L1
-    } else if (hit(0) || hit(9)) {                     // A / Start on a menu
-      const btn = state.mode === 'title' ? startBtn
-        : state.mode === 'clear' ? nextBtn : retryBtn;
-      btn.click();
+      if (hit(0)) tryBark();                              // A
+      if (state.input === 'cmd') {
+        if (hit(5)) issueCommand('cb');                   // R1
+        if (hit(4)) issueCommand('aw');                   // L1
+        if (hit(2)) issueCommand('walk');                 // X
+        if (hit(1)) issueCommand('lie');                  // B
+        if (hit(3)) issueCommand('home');                 // Y
+        if (hit(7) || hit(6)) issueCommand('easy');       // R2 / L2
+      }
+    } else if (hit(0) || hit(9)) {                        // A / Start on a menu
+      (state.mode === 'title' ? startDragBtn : nextBtn).click();
     }
     pad.prev = down;
   }
 
   // ---------- update check ----------
   // nginx serves index.html with no-cache, but a tab that's already open
-  // (an iPad basically never closes Safari) keeps running the old build.
-  // On load and whenever the tab comes back to the foreground, fetch our own
-  // page fresh and compare build stamps.
+  // keeps running the old build. On load and whenever the tab comes back to
+  // the foreground, fetch our own page fresh and compare build stamps.
   async function checkForUpdate() {
     if (location.protocol === 'file:') return;
     try {
@@ -670,12 +756,12 @@
         await fetch(location.pathname, { cache: 'reload' }).catch(() => {});
         location.reload();
       };
-      const guard = 'sb-autoreload-' + m[1];
+      const guard = 'cb-autoreload-' + m[1];
       if (state.mode === 'title' && !sessionStorage.getItem(guard)) {
         sessionStorage.setItem(guard, '1');
         apply();
       } else {
-        toast('✨ New build ' + m[1] + ' — tap to update', apply);
+        toast('🐑 New build ' + m[1] + ' — tap to update', apply);
       }
     } catch { /* offline or blocked: never mind */ }
   }
@@ -684,284 +770,296 @@
     if (!document.hidden) checkForUpdate();
   });
 
-  // ---------- steak lure ----------
-  function tryDropSteak() {
-    if (state.mode !== 'playing') return;
+  // ---------- commands ----------
+  const CMD_INFO = {
+    cb:   { label: 'come by',    whistle: 'whistle_cb' },
+    aw:   { label: 'away',       whistle: 'whistle_aw' },
+    walk: { label: 'walk on',    whistle: 'whistle_walk' },
+    easy: { label: 'easy',       whistle: 'whistle_easy' },
+    lie:  { label: 'steady',     whistle: 'whistle_lie' },
+    home: { label: "that'll do", whistle: 'whistle_home' },
+  };
+  function issueCommand(cmd) {
+    if (state.mode !== 'playing' || state.input !== 'cmd') return;
     ensureAudio();
-    if (state.steaksHeld <= 0) { sfx.dud(); return; }
-    state.steaksHeld--;
-    const c = state.cat;
-    state.lures.push({
-      x: clamp(c.x - c.facing * 46, 60, WORLD_W - 60),
-      y: clamp(c.y + 8, 60, WORLD_H - 60),
-      t: 0,
+    if (cmd === 'easy') {
+      state.easy = !state.easy;
+      sfx.whistle_easy();
+    } else {
+      state.dog.cmd = cmd;
+      sfx[CMD_INFO[cmd].whistle]();
+    }
+    state.floaties.push({
+      x: state.dog.x, y: state.dog.y - 34, vy: -46, t: 0, life: 1,
+      txt: CMD_INFO[cmd].label + (cmd === 'easy' && !state.easy ? ' off' : ''), s: 16,
     });
-    sfx.drop();
-    updateHud();
+    updateCmdButtons();
   }
 
-  // ---------- fart ----------
-  function tryFart() {
+  // ---------- bark ----------
+  function tryBark() {
     if (state.mode !== 'playing') return;
     ensureAudio();
-    if (state.fuel < FART_COST) { sfx.dud(); state.shake = reducedMotion ? 0 : 3; return; }
-    state.fuel -= FART_COST;
-    state.fartsUsed++;
-    const c = state.cat;
-    // cloud bursts in a radius around the cat
-    const bx = c.x, by = c.y;
-    state.clouds.push({ x: bx, y: by, t: 0 });
-    // propulsion: boost along current movement; no kick when stationary
-    const mspd = Math.hypot(c.vx, c.vy);
-    const mx = mspd > 40 ? c.vx / mspd : 0, my = mspd > 40 ? c.vy / mspd : 0;
-    c.vx += mx * 320;
-    c.vy += my * 320;
-    // rainbow burst (exhaust trails opposite the boost when moving)
-    const hues = [0, 35, 60, 140, 200, 280, 320];
-    for (let i = 0; i < 46; i++) {
-      const a = rand(0, Math.PI * 2), sp = rand(30, 240);
-      state.particles.push({
-        x: bx, y: by,
-        vx: Math.cos(a) * sp - mx * rand(40, 160),
-        vy: Math.sin(a) * sp - my * rand(40, 160),
-        life: rand(0.5, 1.0), t: 0,
-        hue: hues[i % hues.length],
-        size: rand(3, 8),
-      });
+    const d = state.dog;
+    if (d.barkCd > 0) return;
+    d.barkCd = BARK_COOLDOWN;
+    state.barksUsed++;
+    state.barks.push({ x: d.x, y: d.y, t: 0 });
+    sfx.bark();
+    state.floaties.push({ x: d.x + d.facing * -26, y: d.y - 26, vy: -60, t: 0, life: 0.7, g: '💢', s: 20 });
+  }
+
+  // ---------- update ----------
+  function flockInfo() {
+    let n = 0, cx = 0, cy = 0;
+    for (const s of state.sheep) {
+      if (s.penned) continue;
+      n++; cx += s.x; cy += s.y;
     }
-    sfx.fart();
-    state.shake = reducedMotion ? 0 : 8;
-    // convert dogs in radius
-    let converted = 0;
-    for (const d of state.dogs) {
-      if (!d.happy && dist2(d.x, d.y, bx, by) < FART_RADIUS * FART_RADIUS) {
-        d.happy = true;
-        converted++;
-        for (let i = 0; i < 10; i++) {
-          state.floaties.push({
-            x: d.x + rand(-20, 20), y: d.y + rand(-30, 0),
-            vy: rand(-90, -50), t: 0, life: rand(0.8, 1.4),
-            g: ['❤️','💛','🎵','⭐'][Math.floor(rand(0, 4))], s: rand(16, 26),
-          });
+    if (!n) return null;
+    cx /= n; cy /= n;
+    let r = 0;
+    for (const s of state.sheep) {
+      if (s.penned) continue;
+      r = Math.max(r, Math.hypot(s.x - cx, s.y - cy));
+    }
+    return { n, cx, cy, r };
+  }
+
+  function updateDog(dt) {
+    const d = state.dog;
+    d.barkCd = Math.max(0, d.barkCd - dt);
+    let desx = 0, desy = 0;
+    if (state.input === 'drag') {
+      let ix = 0, iy = 0;
+      if (keys['a'] || keys['arrowleft']) ix -= 1;
+      if (keys['d'] || keys['arrowright']) ix += 1;
+      if (keys['w'] || keys['arrowup']) iy -= 1;
+      if (keys['s'] || keys['arrowdown']) iy += 1;
+      if (joy.active) {
+        const len = Math.hypot(joy.dx, joy.dy);
+        if (len > 8) { ix = joy.dx / 70; iy = joy.dy / 70; }
+      }
+      ix += pad.x; iy += pad.y;
+      const ilen = Math.hypot(ix, iy);
+      if (ilen > 1) { ix /= ilen; iy /= ilen; }
+      d.vx += ix * DOG_ACCEL * dt;
+      d.vy += iy * DOG_ACCEL * dt;
+      d.vx -= d.vx * DOG_DRAG * dt;
+      d.vy -= d.vy * DOG_DRAG * dt;
+      const spd = Math.hypot(d.vx, d.vy);
+      if (spd > DOG_SPEED) { d.vx *= DOG_SPEED / spd; d.vy *= DOG_SPEED / spd; }
+    } else {
+      // command mode: the dog works the flock on its own
+      const pace = CMD_SPEED * (state.easy ? EASY_SCALE : 1);
+      const flock = flockInfo();
+      let cmd = d.cmd;
+      if (!flock && (cmd === 'cb' || cmd === 'aw' || cmd === 'walk')) cmd = 'lie';
+      if (cmd === 'home') {
+        const hx = state.handler.x - d.x, hy = state.handler.y - d.y;
+        const hd = Math.hypot(hx, hy);
+        if (hd < 30) { d.cmd = 'lie'; updateCmdButtons(); }
+        else { desx = hx / hd * pace; desy = hy / hd * pace; }
+      } else if (cmd === 'walk') {
+        const hx = flock.cx - d.x, hy = flock.cy - d.y;
+        const hd = Math.hypot(hx, hy) || 1;
+        desx = hx / hd * pace; desy = hy / hd * pace;
+      } else if (cmd === 'cb' || cmd === 'aw') {
+        // flanking run: orbit the flock just outside its edge.
+        // "come by" = clockwise (as seen from above), "away to me" = counter.
+        const dir = cmd === 'cb' ? 1 : -1;
+        let rx = d.x - flock.cx, ry = d.y - flock.cy;
+        let rr = Math.hypot(rx, ry);
+        if (rr < 1) { rx = 1; ry = 0; rr = 1; }
+        const R = clamp(flock.r, 70, 320) + 85;
+        const a = Math.atan2(ry, rx);
+        // canvas y grows downward, so increasing angle sweeps clockwise on screen
+        const tx = -Math.sin(a) * dir, ty = Math.cos(a) * dir;
+        const corr = (R - rr) * 2.2;
+        desx = tx * pace + (rx / rr) * corr;
+        desy = ty * pace + (ry / rr) * corr;
+        const dl = Math.hypot(desx, desy) || 1;
+        desx = desx / dl * pace; desy = desy / dl * pace;
+      } // lie: desired stays 0
+      d.vx += (desx - d.vx) * 4 * dt;
+      d.vy += (desy - d.vy) * 4 * dt;
+    }
+    const { w, h } = state.world;
+    d.x = clamp(d.x + d.vx * dt, HEDGE + 16, w - HEDGE - 16);
+    d.y = clamp(d.y + d.vy * dt, HEDGE + 16, h - HEDGE - 16);
+    collideSegs(d, DOG_R);
+    collideObstacles(d, DOG_R);
+    if (Math.abs(d.vx) > 30) d.facing = d.vx > 0 ? 1 : -1;
+    d.bob += dt * (Math.hypot(d.vx, d.vy) > 40 ? 12 : 3);
+  }
+
+  function updateSheep(dt) {
+    const { w, h } = state.world;
+    const d = state.dog;
+    const iz = state.pen.inner;
+    const grazing = state.mode === 'title';
+    for (const s of state.sheep) {
+      s.bob += dt * (2 + s.panic * 9);
+      if (s.penned) {
+        // settled: mill about gently inside the pen
+        s.wanderT -= dt;
+        if (s.wanderT <= 0) { s.wanderT = rand(1.5, 4); s.wanderA = rand(0, Math.PI * 2); }
+        s.vx += (Math.cos(s.wanderA) * 14 - s.vx) * 2 * dt;
+        s.vy += (Math.sin(s.wanderA) * 14 - s.vy) * 2 * dt;
+        s.x = clamp(s.x + s.vx * dt, iz.x0 + 4, iz.x1 - 4);
+        s.y = clamp(s.y + s.vy * dt, iz.y0 + 4, iz.y1 - 4);
+        if (Math.abs(s.vx) > 4) s.facing = s.vx > 0 ? 1 : -1;
+        continue;
+      }
+      s.panic = Math.max(0, s.panic - dt * 0.35);
+      s.plantCd = Math.max(0, s.plantCd - dt);
+
+      let fx = 0, fy = 0;
+      // --- flocking: separation, cohesion, alignment ---
+      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0;
+      for (const o of state.sheep) {
+        if (o === s || o.penned) continue;
+        const dx = s.x - o.x, dy = s.y - o.y;
+        const dd = dx * dx + dy * dy;
+        if (dd < SEP_RANGE * SEP_RANGE && dd > 0.01) {
+          const dl = Math.sqrt(dd);
+          const k = 1 - dl / SEP_RANGE;
+          fx += (dx / dl) * k * 320;
+          fy += (dy / dl) * k * 320;
+        }
+        if (dd < COH_RANGE * COH_RANGE) { cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy; }
+      }
+      if (cn && !s.planted) {
+        // scared sheep bunch tighter — defiant ones barely flock at all
+        const cw = (s.defiant ? 4 : 12) + s.panic * (s.defiant ? 10 : 46);
+        const tx = cx / cn - s.x, ty = cy / cn - s.y;
+        const tl = Math.hypot(tx, ty);
+        if (tl > 26) { fx += (tx / tl) * cw; fy += (ty / tl) * cw; }
+        fx += (avx / cn - s.vx) * 0.8;
+        fy += (avy / cn - s.vy) * 0.8;
+      }
+      // --- dog pressure ---
+      if (!grazing) {
+        const range = s.defiant ? FLEE_RANGE_DEFIANT : FLEE_RANGE;
+        const ddx = s.x - d.x, ddy = s.y - d.y;
+        const dd = Math.hypot(ddx, ddy);
+        if (dd < range && dd > 0.01) {
+          const k = 1 - dd / range;
+          const mult = s.defiant ? 0.55 : 1;
+          if (s.defiant && !s.planted && s.plantCd <= 0 && k > 0.3 && Math.random() < dt * 0.55) {
+            // digs in: full stop until barked at (or nearly trodden on)
+            s.planted = true;
+            s.plantT = rand(0.9, 2.4);
+            sfx.stomp();
+          }
+          if (s.planted && dd < 55) unplant(s, ddx / dd, ddy / dd); // dog right on top of it
+          if (!s.planted) {
+            fx += (ddx / dd) * k * 520 * mult;
+            fy += (ddy / dd) * k * 520 * mult;
+          }
+          s.panic = Math.max(s.panic, Math.min(1, k * (s.defiant ? 0.8 : 1.15)));
         }
       }
-    }
-    if (converted) sfx.happy();
-    updateHud();
-    if (state.dogs.every(d => d.happy)) levelClear();
-  }
-
-  // ---------- getting bitten ----------
-  function biteCat(dog) {
-    const c = state.cat;
-    if (state.fuel <= 0) { gotGrumped(); return; }
-    const lost = Math.min(state.fuel, BITE_COST);
-    state.fuel -= lost;
-    // knocked-out sparkles scatter onto the grass, re-collectable
-    for (let i = 0; i < lost; i++) {
-      let sx = c.x, sy = c.y;
-      for (let tries = 0; tries < 8; tries++) {
-        const a = rand(0, Math.PI * 2), r = rand(70, 150);
-        sx = clamp(c.x + Math.cos(a) * r, 60, WORLD_W - 60);
-        sy = clamp(c.y + Math.sin(a) * r, 60, WORLD_H - 60);
-        if (pointClear(sx, sy, 30)) break;
+      // --- bark pulses ---
+      for (const b of state.barks) {
+        const bdx = s.x - b.x, bdy = s.y - b.y;
+        const bd = Math.hypot(bdx, bdy);
+        if (bd < BARK_RANGE && bd > 0.01 && b.t < BARK_LIFE) {
+          const k = (1 - b.t / BARK_LIFE) * (1 - bd / BARK_RANGE);
+          if (s.planted) unplant(s, bdx / bd, bdy / bd);
+          fx += (bdx / bd) * k * 1500;
+          fy += (bdy / bd) * k * 1500;
+          s.panic = 1;
+        }
       }
-      state.sparkles.push({ x: sx, y: sy, phase: rand(0, Math.PI * 2) });
+      // --- keep off the hedge ---
+      const wp = 60, wk = 140;
+      if (s.x < HEDGE + wp) fx += wk * (1 - (s.x - HEDGE) / wp);
+      if (s.x > w - HEDGE - wp) fx -= wk * (1 - (w - HEDGE - s.x) / wp);
+      if (s.y < HEDGE + wp) fy += wk * (1 - (s.y - HEDGE) / wp);
+      if (s.y > h - HEDGE - wp) fy -= wk * (1 - (h - HEDGE - s.y) / wp);
+      // --- graze when nothing's happening ---
+      if (s.panic < 0.1 && !s.planted) {
+        s.wanderT -= dt;
+        if (s.wanderT <= 0) { s.wanderT = rand(1.5, 4.5); s.wanderA = rand(0, Math.PI * 2); }
+        fx += Math.cos(s.wanderA) * 16;
+        fy += Math.sin(s.wanderA) * 16;
+      }
+
+      s.vx += fx * dt;
+      s.vy += fy * dt;
+      s.vx -= s.vx * 2.4 * dt;
+      s.vy -= s.vy * 2.4 * dt;
+      const cap = s.planted ? 10 : 26 + s.panic * (s.defiant ? 180 : 150);
+      const spd = Math.hypot(s.vx, s.vy);
+      if (spd > cap) { s.vx *= cap / spd; s.vy *= cap / spd; }
+      s.x = clamp(s.x + s.vx * dt, HEDGE + 14, w - HEDGE - 14);
+      s.y = clamp(s.y + s.vy * dt, HEDGE + 14, h - HEDGE - 14);
+      collideSegs(s, SHEEP_R);
+      collideObstacles(s, SHEEP_R);
+      if (Math.abs(s.vx) > 6) s.facing = s.vx > 0 ? 1 : -1;
+
+      if (s.planted) {
+        s.plantT -= dt;
+        if (s.plantT <= 0) unplant(s, rand(-1, 1), rand(-1, 1));
+      }
+
+      // through the gate and settled in
+      if (!grazing && s.x > iz.x0 && s.x < iz.x1 && s.y > iz.y0 && s.y < iz.y1) {
+        s.penned = true;
+        s.panic = 0;
+        s.planted = false;
+        sfx.penned();
+        state.floaties.push({ x: s.x, y: s.y - 24, vy: -55, t: 0, life: 1, g: '✅', s: 20 });
+        updateHud();
+        if (state.sheep.every(sh => sh.penned)) levelClear();
+      }
+
+      if (Math.random() < dt * (0.008 + s.panic * 0.1)) sfx.baa(rand(0.75, 1.3));
     }
-    // knockback: cat away from dog, dog recoils
-    const dl = Math.hypot(c.x - dog.x, c.y - dog.y) || 1;
-    const kx = (c.x - dog.x) / dl, ky = (c.y - dog.y) / dl;
-    c.vx += kx * 520; c.vy += ky * 520;
-    dog.vx -= kx * 260; dog.vy -= ky * 260;
-    c.invuln = 1.3;
-    state.shake = reducedMotion ? 0 : 10;
-    sfx.bite();
-    state.floaties.push({ x: c.x, y: c.y - 40, vy: -70, t: 0, life: 0.9, g: '💥', s: 30 });
-    updateHud();
   }
 
-  function gotGrumped() {
-    state.mode = 'grumped';
-    sfx.grump();
-    state.shake = reducedMotion ? 0 : 12;
-    grumpOverlay.classList.remove('hidden');
-    fartBtn.style.display = 'none';
-    steakBtn.style.display = 'none';
+  function unplant(s, nx, ny) {
+    s.planted = false;
+    s.plantT = 0;
+    s.plantCd = 2.5;
+    const nl = Math.hypot(nx, ny) || 1;
+    const a = Math.atan2(ny / nl, nx / nl) + rand(-0.6, 0.6);
+    s.vx += Math.cos(a) * 220;
+    s.vy += Math.sin(a) * 220;
+    s.panic = 1;
+    state.floaties.push({ x: s.x, y: s.y - 26, vy: -55, t: 0, life: 0.8, g: '❗', s: 18 });
   }
 
   function levelClear() {
     state.mode = 'clear';
     sfx.win();
-    statSparkles.textContent = state.sparklesEaten;
-    statFarts.textContent = state.fartsUsed;
+    statSheep.textContent = state.sheep.length;
+    statBarks.textContent = state.barksUsed;
     statTime.textContent = Math.round(state.levelTime) + 's';
     clearTitle.textContent = 'Level ' + state.level + ' clear!';
-    clearTag.textContent = ['Every dog in the meadow is wagging.',
-      'Not a single grump left standing.',
-      'The meadow smells like victory. And glitter.',
-      'Tails: wagging. Mission: accomplished.'][state.level % 4];
+    clearTag.textContent = ["That'll do, dog. That'll do.",
+      'Not a single stray in the heather.',
+      'The gate swings shut. The flock is home.',
+      'Ewe did it. Every last one.'][state.level % 4];
     clearOverlay.classList.remove('hidden');
-    fartBtn.style.display = 'none';
-    steakBtn.style.display = 'none';
+    barkBtn.style.display = 'none';
+    cmdStack.style.display = 'none';
   }
 
-  // ---------- update ----------
   function update(dt) {
-    state.shake = Math.max(0, state.shake - dt * 22);
+    if (state.mode === 'title') {
+      // the title screen keeps a quiet flock grazing behind the panel
+      updateSheep(dt);
+      return;
+    }
     if (state.mode !== 'playing') return;
     state.levelTime += dt;
-    const c = state.cat;
-    c.invuln = Math.max(0, c.invuln - dt);
-
-    // input vector
-    let ix = 0, iy = 0;
-    if (keys['a'] || keys['arrowleft']) ix -= 1;
-    if (keys['d'] || keys['arrowright']) ix += 1;
-    if (keys['w'] || keys['arrowup']) iy -= 1;
-    if (keys['s'] || keys['arrowdown']) iy += 1;
-    if (joy.active) {
-      const len = Math.hypot(joy.dx, joy.dy);
-      if (len > 8) { ix = joy.dx / 70; iy = joy.dy / 70; }
-    }
-    ix += pad.x; iy += pad.y;
-    const ilen = Math.hypot(ix, iy);
-    if (ilen > 1) { ix /= ilen; iy /= ilen; }
-
-    c.vx += ix * CAT_ACCEL * dt;
-    c.vy += iy * CAT_ACCEL * dt;
-    c.vx -= c.vx * CAT_DRAG * dt;
-    c.vy -= c.vy * CAT_DRAG * dt;
-    const spd = Math.hypot(c.vx, c.vy);
-    if (spd > CAT_SPEED * 1.4) { c.vx *= CAT_SPEED * 1.4 / spd; c.vy *= CAT_SPEED * 1.4 / spd; }
-    c.x = clamp(c.x + c.vx * dt, 40, WORLD_W - 40);
-    c.y = clamp(c.y + c.vy * dt, 40, WORLD_H - 40);
-    collideCircle(c, 24);
-    if (Math.abs(c.vx) > 30) c.facing = c.vx > 0 ? 1 : -1;
-
-    // sparkle trail while zooming
-    state.trailTimer -= dt;
-    if (spd > 180 && state.trailTimer <= 0 && !reducedMotion) {
-      state.trailTimer = 0.06;
-      state.particles.push({
-        x: c.x - c.facing * 24, y: c.y + 16,
-        vx: rand(-15, 15), vy: rand(-30, -10),
-        life: 0.45, t: 0, hue: state.fuel >= FART_COST ? 315 : 48, size: rand(2, 4),
-      });
-    }
-
-    // pickups
-    for (let i = state.sparkles.length - 1; i >= 0; i--) {
-      const s = state.sparkles[i];
-      if (dist2(s.x, s.y, c.x, c.y) < 42 * 42) {
-        state.sparkles.splice(i, 1);
-        state.sparklesEaten++;
-        if (state.fuel < FUEL_MAX) state.fuel++;
-        sfx.pickup();
-        for (let j = 0; j < 5; j++) {
-          state.particles.push({
-            x: s.x, y: s.y, vx: rand(-70, 70), vy: rand(-90, -20),
-            life: 0.5, t: 0, hue: 48, size: rand(2, 5),
-          });
-        }
-        if (state.sparkles.length < SPARKLE_COUNT) spawnSparkle();
-        updateHud();
-      }
-    }
-
-    // steak pickups
-    if (state.steaksHeld < STEAK_MAX) {
-      for (let i = state.steakPickups.length - 1; i >= 0; i--) {
-        const s = state.steakPickups[i];
-        if (dist2(s.x, s.y, c.x, c.y) < 44 * 44) {
-          state.steakPickups.splice(i, 1);
-          state.steaksHeld++;
-          sfx.steak();
-          state.floaties.push({ x: c.x, y: c.y - 40, vy: -60, t: 0, life: 0.8, g: '🥩', s: 22 });
-          updateHud();
-          if (state.steaksHeld >= STEAK_MAX) break;
-        }
-      }
-    }
-
-    // dogs
-    for (const d of state.dogs) {
-      d.bob += dt * (d.happy ? 9 : 5);
-      if (d.happy) {
-        // gentle frolic
-        d.wanderT -= dt;
-        if (d.wanderT <= 0) { d.wanderT = rand(0.8, 2.2); d.wanderA = rand(0, Math.PI * 2); }
-        d.vx += (Math.cos(d.wanderA) * 60 - d.vx) * 2 * dt;
-        d.vy += (Math.sin(d.wanderA) * 60 - d.vy) * 2 * dt;
-        if (Math.random() < dt * 0.4) {
-          state.floaties.push({ x: d.x, y: d.y - 30, vy: -50, t: 0, life: 1.1, g: Math.random() < 0.5 ? '❤️' : '🎵', s: 16 });
-        }
-      } else {
-        // a dropped steak trumps whatever a grumpy dog was doing
-        let lure = null, ld2 = LURE_RANGE * LURE_RANGE;
-        for (const L of state.lures) {
-          const lda = dist2(d.x, d.y, L.x, L.y);
-          if (lda < ld2) { ld2 = lda; lure = L; }
-        }
-        d.munching = false;
-        const dd = dist2(d.x, d.y, c.x, c.y);
-        if (lure) {
-          const dl = Math.sqrt(ld2) || 1;
-          if (dl < MUNCH_DIST) {
-            d.munching = true;
-            d.vx -= d.vx * 8 * dt; d.vy -= d.vy * 8 * dt;
-            if (Math.random() < dt * 2) {
-              sfx.chomp();
-              state.particles.push({
-                x: lure.x + rand(-12, 12), y: lure.y + rand(-6, 6),
-                vx: rand(-40, 40), vy: rand(-60, -20),
-                life: 0.4, t: 0, hue: 15, size: rand(2, 4),
-              });
-            }
-          } else {
-            const hx = (lure.x - d.x) / dl, hy = (lure.y - d.y) / dl;
-            const sp = Math.max(d.fleeSpeed, 230);
-            d.vx += (hx * sp - d.vx) * 4 * dt;
-            d.vy += (hy * sp - d.vy) * 4 * dt;
-          }
-        } else if (d.temper === 'aggro' && dd < AGGRO_RANGE * AGGRO_RANGE) {
-          // hunt the cat
-          const dl = Math.sqrt(dd) || 1;
-          const hx = (c.x - d.x) / dl, hy = (c.y - d.y) / dl;
-          d.vx += (hx * d.chaseSpeed - d.vx) * 4 * dt;
-          d.vy += (hy * d.chaseSpeed - d.vy) * 4 * dt;
-          if (Math.random() < dt * 0.7) sfx.growl();
-          if (dd < BITE_RADIUS * BITE_RADIUS && c.invuln <= 0) biteCat(d);
-        } else if (d.temper === 'scaredy' && dd < DOG_FLEE_RANGE * DOG_FLEE_RANGE) {
-          const dl = Math.sqrt(dd) || 1;
-          const fx = (d.x - c.x) / dl, fy = (d.y - c.y) / dl;
-          d.vx += (fx * d.fleeSpeed - d.vx) * 4 * dt;
-          d.vy += (fy * d.fleeSpeed - d.vy) * 4 * dt;
-        } else {
-          // chill dogs (and anyone out of range) just mope around
-          const pace = d.temper === 'chill' ? 40 : 70;
-          d.wanderT -= dt;
-          if (d.wanderT <= 0) { d.wanderT = rand(1, 3); d.wanderA = rand(0, Math.PI * 2); }
-          d.vx += (Math.cos(d.wanderA) * pace - d.vx) * 2 * dt;
-          d.vy += (Math.sin(d.wanderA) * pace - d.vy) * 2 * dt;
-        }
-      }
-      d.x += d.vx * dt; d.y += d.vy * dt;
-      // bounce off world edges
-      if (d.x < 60) { d.x = 60; d.vx = Math.abs(d.vx); d.wanderA = 0; }
-      if (d.x > WORLD_W - 60) { d.x = WORLD_W - 60; d.vx = -Math.abs(d.vx); d.wanderA = Math.PI; }
-      if (d.y < 60) { d.y = 60; d.vy = Math.abs(d.vy); d.wanderA = Math.PI / 2; }
-      if (d.y > WORLD_H - 60) { d.y = WORLD_H - 60; d.vy = -Math.abs(d.vy); d.wanderA = -Math.PI / 2; }
-      collideCircle(d, 22);
-      if (Math.abs(d.vx) > 20) d.facing = d.vx > 0 ? 1 : -1;
-    }
-
-    // particles / floaties / clouds
-    for (let i = state.particles.length - 1; i >= 0; i--) {
-      const p = state.particles[i];
-      p.t += dt;
-      if (p.t >= p.life) { state.particles.splice(i, 1); continue; }
-      p.x += p.vx * dt; p.y += p.vy * dt;
-      p.vy += 40 * dt; p.vx *= (1 - 1.5 * dt);
+    updateDog(dt);
+    updateSheep(dt);
+    for (let i = state.barks.length - 1; i >= 0; i--) {
+      state.barks[i].t += dt;
+      if (state.barks[i].t >= 0.6) state.barks.splice(i, 1);
     }
     for (let i = state.floaties.length - 1; i >= 0; i--) {
       const f = state.floaties[i];
@@ -969,42 +1067,19 @@
       if (f.t >= f.life) { state.floaties.splice(i, 1); continue; }
       f.y += f.vy * dt;
     }
-    for (let i = state.clouds.length - 1; i >= 0; i--) {
-      state.clouds[i].t += dt;
-      if (state.clouds[i].t >= FART_LIFE) state.clouds.splice(i, 1);
+    const tc = Math.floor(state.levelTime);
+    if (tc !== lastTimeShown) {
+      lastTimeShown = tc;
+      timeChip.textContent = Math.floor(tc / 60) + ':' + String(tc % 60).padStart(2, '0');
     }
-    for (let i = state.lures.length - 1; i >= 0; i--) {
-      state.lures[i].t += dt;
-      if (state.lures[i].t >= LURE_LIFE) state.lures.splice(i, 1);
-    }
-
-    // camera
-    state.cam.x = clamp(c.x - vw / 2, 0, Math.max(0, WORLD_W - vw));
-    state.cam.y = clamp(c.y - vh / 2, 0, Math.max(0, WORLD_H - vh));
   }
 
   // ---------- sprites ----------
-  // Optional sprite atlas: drop assets/sprites.png + assets/sprites.json next to
-  // this file (see ART-SPEC.md). Any sprite missing from the atlas — or the whole
-  // atlas — falls back to emoji, so partial art deliveries are playable instantly.
-  let atlas = null;
-  (async () => {
-    try {
-      const res = await fetch('assets/sprites.json');
-      if (!res.ok) return;
-      const data = await res.json();
-      const img = new Image();
-      img.src = 'assets/' + ((data.meta && data.meta.image) || 'sprites.png');
-      await img.decode();
-      atlas = { img, frames: data.frames || {}, anims: data.anims || {} };
-    } catch { /* no atlas: emoji mode */ }
-  })();
-
   // Some platforms are missing individual emoji glyphs, and a missing glyph
-  // draws *nothing* on canvas (the cat becomes an invisible butt-glow orb).
-  // Probe candidates on an offscreen canvas and keep the first that actually
-  // renders in color; a monochrome tofu box painted in our probe color fails.
-  // Add ?noemoji to the URL to preview the vector stand-ins.
+  // draws *nothing* on canvas. Probe candidates on an offscreen canvas and
+  // keep the first that actually renders in color; a monochrome tofu box
+  // painted in our probe color fails. Add ?noemoji to preview the vector
+  // stand-ins.
   const forceVector = location.search.includes('noemoji');
   const probe = document.createElement('canvas');
   probe.width = probe.height = 32;
@@ -1024,188 +1099,167 @@
   }
   const EMOJI = {};
   for (const [name, cands] of Object.entries({
-    cat_idle: ['🐈', '🐱'], cat_run: ['🐈', '🐱'], cat_grumped: ['😾', '🙀', '🐱'],
-    dog_scaredy: ['🐕', '🐶'], dog_chill: ['🐕', '🐶'], dog_aggro: ['🐕', '🐶'],
-    dog_happy: ['🐕', '🐶'], dog_munch: ['🐕', '🐶'],
-    steak: ['🥩', '🍖'], tree: ['🌳', '🌲'], rock: ['🪨', '🌰'],
+    sheep: ['🐑', '🐏'], ram: ['🐏', '🐑'],
+    dog: ['🐕', '🐶'], handler: ['🧑‍🌾', '👩‍🌾', '👨‍🌾', '🧍'],
+    tree: ['🌳', '🌲'], rock: ['🪨', '🌰'],
   })) {
     EMOJI[name] = forceVector ? null : (cands.find(glyphRenders) || null);
   }
 
-  function drawActor(name, x, y, size, flip = false, rot = 0, animT = 0) {
-    if (atlas) {
-      let fr = null;
-      const anim = atlas.anims[name];
-      if (anim && anim.frames.length) {
-        fr = atlas.frames[anim.frames[Math.floor(animT * (anim.fps || 8)) % anim.frames.length]];
-      } else {
-        fr = atlas.frames[name] || atlas.frames[name + '_0'];
-      }
-      if (fr) {
-        ctx.save();
-        ctx.translate(x, y);
-        if (rot) ctx.rotate(rot);
-        if (flip) ctx.scale(-1, 1);
-        const sc = size / Math.max(fr.w, fr.h);
-        ctx.drawImage(atlas.img, fr.x, fr.y, fr.w, fr.h, -fr.w * sc / 2, -fr.h * sc / 2, fr.w * sc, fr.h * sc);
-        ctx.restore();
-        return;
-      }
+  // Emoji are rasterized once per glyph+size to an offscreen canvas, then
+  // drawImage'd. Never fillText an emoji under a mirrored transform: iPad
+  // Safari silently draws nothing. drawImage mirrors fine everywhere, and
+  // the cache beats per-frame emoji fillText on phones.
+  const glyphCache = new Map();
+  function glyphSprite(g, size) {
+    const key = g + '@' + size;
+    let spr = glyphCache.get(key);
+    if (!spr) {
+      const pad = Math.ceil(size * 1.4); // emoji can overhang the em box
+      spr = document.createElement('canvas');
+      spr.width = spr.height = pad * 2;  // 2x for retina crispness
+      const g2 = spr.getContext('2d');
+      g2.font = size * 2 + 'px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+      g2.textAlign = 'center';
+      g2.textBaseline = 'middle';
+      g2.fillText(g, pad, pad);
+      glyphCache.set(key, spr);
     }
-    if (name === 'sparkle') { drawSparkle(x, y, size, animT); return; }
-    const g = EMOJI[name] || EMOJI[name.replace(/_\d+$/, '')];
+    return spr;
+  }
+  function drawEmoji(g, x, y, size, flip = false, rot = 0) {
+    // quantize so continuous sizes don't grow the cache unbounded
+    const spr = glyphSprite(g, Math.max(2, Math.round(size / 2) * 2));
+    const w = spr.width / 2;
+    ctx.save();
+    ctx.translate(x, y);
+    if (rot) ctx.rotate(rot);
+    if (flip) ctx.scale(-1, 1);
+    ctx.drawImage(spr, -w / 2, -w / 2, w, w);
+    ctx.restore();
+  }
+
+  function drawActor(name, x, y, size, flip = false, rot = 0) {
+    const g = EMOJI[name];
     if (g) { drawEmoji(g, x, y, size, flip, rot); return; }
     // no usable glyph on this device: canvas-drawn stand-ins
     ctx.save();
     ctx.translate(x, y);
     if (rot) ctx.rotate(rot);
     if (flip) ctx.scale(-1, 1);
-    const base = name.replace(/_\d+$/, '');
-    if (name.startsWith('cat')) drawVectorCat(size, name === 'cat_grumped');
-    else if (name.startsWith('dog')) drawVectorDog(size, name === 'dog_happy');
-    else if (base === 'tree') drawVectorTree(size);
-    else if (base === 'rock') drawVectorRock(size);
-    else if (name === 'steak') drawVectorSteak(size);
+    if (name === 'sheep' || name === 'ram') drawVectorSheep(size, name === 'ram');
+    else if (name === 'dog') drawVectorDog(size);
+    else if (name === 'handler') drawVectorHandler(size);
+    else if (name === 'tree') drawVectorTree(size);
+    else if (name === 'rock') drawVectorRock(size);
     ctx.restore();
   }
 
-  // ---------- vector stand-ins & sparkle ----------
-  function starPath(r) {
-    const inner = r * 0.3;
-    ctx.beginPath();
-    ctx.moveTo(0, -r);
-    for (let i = 0; i < 4; i++) {
-      const a = -Math.PI / 2 + i * Math.PI / 2;
-      const mid = a + Math.PI / 4, next = a + Math.PI / 2;
-      ctx.quadraticCurveTo(Math.cos(mid) * inner, Math.sin(mid) * inner, Math.cos(next) * r, Math.sin(next) * r);
-    }
-    ctx.closePath();
-  }
-
-  // gold 4-point star with a cream outline and hard drop shadow — reads
-  // against the grass far better than the old ✨ emoji did
-  function drawSparkle(x, y, size, animT) {
-    const r = size / 2, rot = animT * 0.8;
-    ctx.save();
-    ctx.translate(x, y);
-    const glow = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 2.1);
-    glow.addColorStop(0, 'rgba(255, 216, 77, 0.5)');
-    glow.addColorStop(1, 'rgba(255, 216, 77, 0)');
-    ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 2.1, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.save();
-    ctx.translate(2, 3.5);
-    ctx.rotate(rot);
-    starPath(r);
-    ctx.fillStyle = 'rgba(30, 70, 22, 0.4)';
-    ctx.fill();
-    ctx.restore();
-    ctx.rotate(rot);
-    starPath(r);
-    ctx.fillStyle = '#ffd84d';
-    ctx.fill();
-    ctx.strokeStyle = '#fff6e8';
-    ctx.lineWidth = Math.max(2, size * 0.08);
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-    ctx.fillStyle = '#fffdf5';
-    ctx.beginPath();
-    ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  function drawVectorCat(s, grumped) {
-    const u = s / 52;
-    const body = grumped ? '#8a93a5' : '#f5a33b';
-    const dark = grumped ? '#5c667a' : '#c9761e';
+  // ---------- vector stand-ins ----------
+  function drawVectorSheep(s, ram) {
+    const u = s / 44;
+    const wool = ram ? '#c9b8a0' : '#f4efe4';
+    const skin = ram ? '#4a3b30' : '#3b3b46';
     ctx.lineJoin = ctx.lineCap = 'round';
-    ctx.strokeStyle = body;
-    ctx.lineWidth = 6 * u;
-    ctx.beginPath();
-    ctx.moveTo(16 * u, 4 * u);
-    ctx.quadraticCurveTo(30 * u, 2 * u, 26 * u, -14 * u);
-    ctx.stroke();
-    ctx.fillStyle = dark;
-    for (const lx of [-12, -4, 6, 14]) ctx.fillRect((lx - 2.5) * u, 8 * u, 5 * u, 12 * u);
-    ctx.fillStyle = body;
-    ctx.beginPath();
-    ctx.ellipse(2 * u, 2 * u, 19 * u, 12 * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = dark;
-    ctx.lineWidth = 3 * u;
-    ctx.beginPath();
-    ctx.moveTo(6 * u, -8 * u); ctx.quadraticCurveTo(9 * u, -2 * u, 6 * u, 4 * u);
-    ctx.moveTo(14 * u, -6 * u); ctx.quadraticCurveTo(17 * u, -1 * u, 14 * u, 4 * u);
-    ctx.stroke();
-    ctx.fillStyle = body;
-    ctx.beginPath();
-    ctx.moveTo(-26 * u, -14 * u); ctx.lineTo(-23 * u, -27 * u); ctx.lineTo(-16 * u, -16 * u);
-    ctx.moveTo(-14 * u, -16 * u); ctx.lineTo(-9 * u, -27 * u); ctx.lineTo(-6 * u, -14 * u);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(-16 * u, -6 * u, 12 * u, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#31204a';
-    ctx.beginPath();
-    ctx.arc(-21 * u, -8 * u, 1.9 * u, 0, Math.PI * 2);
-    ctx.fill();
-    if (grumped) {
-      ctx.strokeStyle = '#31204a';
-      ctx.lineWidth = 1.8 * u;
+    ctx.fillStyle = skin;
+    for (const lx of [-9, -2, 6, 12]) ctx.fillRect((lx - 2) * u, 8 * u, 4 * u, 9 * u);
+    ctx.fillStyle = wool;
+    for (const [bx, by, br] of [[-6, 0, 12], [6, -2, 11], [0, -6, 11], [12, 2, 8], [-12, 3, 8]]) {
       ctx.beginPath();
-      ctx.moveTo(-25 * u, -13 * u); ctx.lineTo(-18 * u, -11 * u);
-      ctx.moveTo(-25 * u, 0); ctx.quadraticCurveTo(-22 * u, -3 * u, -18 * u, -1 * u);
-      ctx.stroke();
-    }
-    ctx.fillStyle = '#ff8ae0';
-    ctx.beginPath();
-    ctx.moveTo(-29.5 * u, -5 * u); ctx.lineTo(-25.5 * u, -5 * u); ctx.lineTo(-27.5 * u, -2 * u);
-    ctx.closePath();
-    ctx.fill();
-  }
-
-  function drawVectorDog(s, happy) {
-    const u = s / 48;
-    const body = '#b9855a', dark = '#87603e';
-    ctx.lineJoin = ctx.lineCap = 'round';
-    ctx.strokeStyle = body;
-    ctx.lineWidth = 5 * u;
-    ctx.beginPath();
-    ctx.moveTo(17 * u, 0);
-    ctx.quadraticCurveTo(26 * u, -4 * u, 24 * u, -13 * u);
-    ctx.stroke();
-    ctx.fillStyle = dark;
-    for (const lx of [-11, -3, 7, 15]) ctx.fillRect((lx - 2.5) * u, 8 * u, 5 * u, 12 * u);
-    ctx.fillStyle = body;
-    ctx.beginPath();
-    ctx.ellipse(3 * u, 2 * u, 18 * u, 11 * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(-14 * u, -8 * u, 11 * u, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(-24 * u, -5 * u, 7 * u, 5 * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = dark;
-    ctx.beginPath();
-    ctx.ellipse(-8 * u, -12 * u, 4.5 * u, 8 * u, 0.5, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(-30 * u, -6 * u, 2.4 * u, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#31204a';
-    ctx.beginPath();
-    ctx.arc(-17 * u, -11 * u, 1.9 * u, 0, Math.PI * 2);
-    ctx.fill();
-    if (happy) {
-      ctx.fillStyle = '#ff8ae0';
-      ctx.beginPath();
-      ctx.ellipse(-22 * u, 2 * u, 3 * u, 5 * u, -0.4, 0, Math.PI * 2);
+      ctx.arc(bx * u, by * u, br * u, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(-17 * u, -4 * u, 7.5 * u, 6 * u, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = wool;
+    ctx.beginPath();
+    ctx.arc(-15 * u, -10 * u, 5 * u, 0, Math.PI * 2);
+    ctx.fill();
+    if (ram) {
+      ctx.strokeStyle = '#e0d3b8';
+      ctx.lineWidth = 3 * u;
+      ctx.beginPath();
+      ctx.arc(-13 * u, -8 * u, 5.5 * u, -0.5, 2.4);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.arc(-20 * u, -6 * u, 1.8 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1c1c24';
+    ctx.beginPath();
+    ctx.arc(-20.5 * u, -6 * u, 1 * u, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawVectorDog(s) {
+    const u = s / 48;
+    const coat = '#2b2b33', white = '#f4efe4';
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.strokeStyle = coat;
+    ctx.lineWidth = 5 * u;
+    ctx.beginPath();
+    ctx.moveTo(17 * u, -2 * u);
+    ctx.quadraticCurveTo(27 * u, -6 * u, 25 * u, -15 * u);
+    ctx.stroke();
+    ctx.fillStyle = white; // tail tip
+    ctx.beginPath();
+    ctx.arc(25 * u, -15 * u, 3 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = coat;
+    for (const lx of [-11, -3, 7, 15]) ctx.fillRect((lx - 2.5) * u, 8 * u, 5 * u, 11 * u);
+    ctx.beginPath();
+    ctx.ellipse(3 * u, 0, 18 * u, 10 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = white; // chest
+    ctx.beginPath();
+    ctx.ellipse(-9 * u, 3 * u, 7 * u, 7 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = coat; // head
+    ctx.beginPath();
+    ctx.arc(-14 * u, -10 * u, 10 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath(); // ears
+    ctx.moveTo(-20 * u, -18 * u); ctx.lineTo(-17 * u, -26 * u); ctx.lineTo(-13 * u, -18 * u);
+    ctx.moveTo(-11 * u, -18 * u); ctx.lineTo(-7 * u, -25 * u); ctx.lineTo(-5 * u, -16 * u);
+    ctx.fill();
+    ctx.fillStyle = white; // muzzle blaze
+    ctx.beginPath();
+    ctx.ellipse(-21 * u, -8 * u, 6 * u, 4.5 * u, -0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#1c1c24';
+    ctx.beginPath();
+    ctx.arc(-26 * u, -9 * u, 2 * u, 0, Math.PI * 2); // nose
+    ctx.arc(-16 * u, -12 * u, 1.8 * u, 0, Math.PI * 2); // eye
+    ctx.fill();
+  }
+
+  function drawVectorHandler(s) {
+    const u = s / 44;
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.fillStyle = '#4a6741'; // coat
+    ctx.beginPath();
+    ctx.moveTo(-8 * u, -4 * u); ctx.lineTo(8 * u, -4 * u); ctx.lineTo(6 * u, 16 * u); ctx.lineTo(-6 * u, 16 * u);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#e8b88a'; // head
+    ctx.beginPath();
+    ctx.arc(0, -12 * u, 6.5 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#7a5b3a'; // hat
+    ctx.beginPath();
+    ctx.ellipse(0, -16 * u, 10 * u, 3 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillRect(-5 * u, -24 * u, 10 * u, 8 * u);
+    ctx.strokeStyle = '#8a5f3c'; // crook
+    ctx.lineWidth = 2.5 * u;
+    ctx.beginPath();
+    ctx.moveTo(12 * u, 16 * u);
+    ctx.lineTo(12 * u, -14 * u);
+    ctx.arc(9 * u, -14 * u, 3 * u, 0, Math.PI, true);
+    ctx.stroke();
   }
 
   function drawVectorTree(s) {
@@ -1245,237 +1299,234 @@
     ctx.fill();
   }
 
-  function drawVectorSteak(s) {
-    const u = s / 32;
-    ctx.fillStyle = '#c0392b';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 14 * u, 9 * u, -0.4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#fff6e8';
-    ctx.lineWidth = 3 * u;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, 14 * u, 9 * u, -0.4, 0.6, 2.6);
-    ctx.stroke();
-  }
-
   // ---------- render ----------
-  // Emoji are rasterized once per glyph+size to an offscreen canvas, then
-  // drawImage'd. Never fillText an emoji under a mirrored transform: iPad
-  // Safari silently draws nothing (which is how the cat — the one actor
-  // that flips whenever it runs right — kept vanishing). drawImage mirrors
-  // fine everywhere, and the cache beats per-frame emoji fillText on phones.
-  const glyphCache = new Map();
-  function glyphSprite(g, size) {
-    const key = g + '@' + size;
-    let spr = glyphCache.get(key);
-    if (!spr) {
-      const pad = Math.ceil(size * 1.4); // emoji can overhang the em box
-      spr = document.createElement('canvas');
-      spr.width = spr.height = pad * 2;  // 2x for retina crispness
-      const g2 = spr.getContext('2d');
-      g2.font = size * 2 + 'px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
-      g2.textAlign = 'center';
-      g2.textBaseline = 'middle';
-      g2.fillText(g, pad, pad);
-      glyphCache.set(key, spr);
-    }
-    return spr;
-  }
-  function drawEmoji(g, x, y, size, flip = false, rot = 0) {
-    // quantize so continuous sizes (floaties) don't grow the cache unbounded
-    const spr = glyphSprite(g, Math.max(2, Math.round(size / 2) * 2));
-    const w = spr.width / 2;
-    ctx.save();
-    ctx.translate(x, y);
-    if (rot) ctx.rotate(rot);
-    if (flip) ctx.scale(-1, 1);
-    ctx.drawImage(spr, -w / 2, -w / 2, w, w);
-    ctx.restore();
-  }
-
   function render(now) {
+    const { w, h } = state.world;
+    const scale = Math.min(vw / w, vh / h);
+    const ox = (vw - w * scale) / 2, oy = (vh - h * scale) / 2;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    // ground
-    ctx.fillStyle = '#7ec850';
+    // surround (letterbox) — darker turf so the field pops
+    ctx.fillStyle = '#4a7c33';
     ctx.fillRect(0, 0, vw, vh);
-
     ctx.save();
-    let shx = 0, shy = 0;
-    if (state.shake > 0.5) { shx = rand(-state.shake, state.shake); shy = rand(-state.shake, state.shake); }
-    ctx.translate(-state.cam.x + shx, -state.cam.y + shy);
+    ctx.translate(ox, oy);
+    ctx.scale(scale, scale);
 
-    // mowed stripes
+    // field
+    ctx.fillStyle = '#7ec850';
+    ctx.fillRect(0, 0, w, h);
     ctx.fillStyle = '#6fb746';
     const stripe = 140;
-    for (let sx = 0; sx < WORLD_W; sx += stripe * 2) {
-      ctx.fillRect(sx, 0, stripe, WORLD_H);
+    for (let sx = 0; sx < w; sx += stripe * 2) {
+      ctx.fillRect(sx, 0, stripe, h);
     }
     // world border hedge
     ctx.strokeStyle = '#3e7a2a';
-    ctx.lineWidth = 26;
-    ctx.strokeRect(13, 13, WORLD_W - 26, WORLD_H - 26);
+    ctx.lineWidth = HEDGE;
+    ctx.strokeRect(HEDGE / 2, HEDGE / 2, w - HEDGE, h - HEDGE);
 
     // grass tufts
     ctx.strokeStyle = 'rgba(62, 122, 42, 0.5)';
     ctx.lineWidth = 2;
-    for (const t of tufts) {
+    for (const tf of tufts) {
       ctx.beginPath();
-      ctx.moveTo(t.x - 5 * t.s, t.y);
-      ctx.quadraticCurveTo(t.x - 4 * t.s, t.y - 9 * t.s, t.x - 6 * t.s, t.y - 12 * t.s);
-      ctx.moveTo(t.x, t.y);
-      ctx.quadraticCurveTo(t.x, t.y - 10 * t.s, t.x - 1 * t.s, t.y - 14 * t.s);
-      ctx.moveTo(t.x + 5 * t.s, t.y);
-      ctx.quadraticCurveTo(t.x + 4 * t.s, t.y - 9 * t.s, t.x + 6 * t.s, t.y - 12 * t.s);
+      ctx.moveTo(tf.x - 5 * tf.s, tf.y);
+      ctx.quadraticCurveTo(tf.x - 4 * tf.s, tf.y - 9 * tf.s, tf.x - 6 * tf.s, tf.y - 12 * tf.s);
+      ctx.moveTo(tf.x, tf.y);
+      ctx.quadraticCurveTo(tf.x, tf.y - 10 * tf.s, tf.x - 1 * tf.s, tf.y - 14 * tf.s);
+      ctx.moveTo(tf.x + 5 * tf.s, tf.y);
+      ctx.quadraticCurveTo(tf.x + 4 * tf.s, tf.y - 9 * tf.s, tf.x + 6 * tf.s, tf.y - 12 * tf.s);
       ctx.stroke();
     }
     for (const f of flowers) drawEmoji(f.g, f.x, f.y, f.s);
 
     const t = now / 1000;
+    const inGame = state.mode === 'playing' || state.mode === 'clear';
 
-    // sparkles
-    for (const s of state.sparkles) {
-      const pulse = 1 + 0.18 * Math.sin(t * 4 + s.phase);
-      drawActor('sparkle', s.x, s.y + Math.sin(t * 2.5 + s.phase) * 4, 26 * pulse, false, 0, t + s.phase);
+    // pen: trodden dirt + gate glow (fence rails draw above the actors)
+    if (inGame) {
+      const P = state.pen;
+      ctx.fillStyle = 'rgba(146, 106, 60, 0.30)';
+      ctx.fillRect(P.rect.x0, P.rect.y0, P.rect.x1 - P.rect.x0, P.rect.y1 - P.rect.y0);
+      // animated chevrons pointing in through the gate
+      const gA = Math.atan2(-P.out.y, -P.out.x); // into the pen
+      for (let i = 0; i < 3; i++) {
+        const k = ((t * 0.7 + i / 3) % 1);
+        const cxx = P.gx + P.out.x * (110 - k * 130);
+        const cyy = P.gy + P.out.y * (110 - k * 130);
+        ctx.save();
+        ctx.translate(cxx, cyy);
+        ctx.rotate(gA);
+        ctx.strokeStyle = `rgba(255, 216, 77, ${0.75 * (1 - Math.abs(k - 0.5) * 2)})`;
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-10, -16); ctx.lineTo(6, 0); ctx.lineTo(-10, 16);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
-    // steak pickups
-    for (const s of state.steakPickups) {
-      ctx.fillStyle = 'rgba(0,0,0,0.14)';
+    // dog influence ring (a faint pressure aura helps read the herding range)
+    if (state.mode === 'playing') {
+      const dg = state.dog;
+      ctx.fillStyle = 'rgba(255, 246, 232, 0.05)';
       ctx.beginPath();
-      ctx.ellipse(s.x, s.y + 14, 16, 6, 0, 0, Math.PI * 2);
+      ctx.arc(dg.x, dg.y, FLEE_RANGE, 0, Math.PI * 2);
       ctx.fill();
-      drawActor('steak', s.x, s.y + Math.sin(t * 2.5 + s.phase) * 4, 32, false, 0, t);
-    }
-
-    // dropped lures shrink as they get eaten
-    for (const L of state.lures) {
-      const kk = clamp(1 - L.t / LURE_LIFE, 0, 1);
-      ctx.fillStyle = 'rgba(0,0,0,0.14)';
+      ctx.strokeStyle = 'rgba(255, 246, 232, 0.14)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([10, 14]);
       ctx.beginPath();
-      ctx.ellipse(L.x, L.y + 10, 18 * kk + 6, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-      drawActor('steak', L.x, L.y, 38 * (0.5 + 0.5 * kk), false, 0, t);
+      ctx.arc(dg.x, dg.y, FLEE_RANGE, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
 
-    // fart clouds
-    for (const cl of state.clouds) {
-      const k = cl.t / FART_LIFE;
-      const r = FART_RADIUS * (0.35 + 0.65 * k);
-      const grad = ctx.createRadialGradient(cl.x, cl.y, r * 0.1, cl.x, cl.y, r);
-      grad.addColorStop(0, `hsla(${(t * 400) % 360}, 90%, 80%, ${0.55 * (1 - k)})`);
-      grad.addColorStop(0.6, `hsla(${(t * 400 + 90) % 360}, 90%, 75%, ${0.35 * (1 - k)})`);
-      grad.addColorStop(1, 'hsla(300, 90%, 75%, 0)');
-      ctx.fillStyle = grad;
+    // bark shockwaves
+    for (const b of state.barks) {
+      const k = b.t / 0.6;
+      ctx.strokeStyle = `rgba(127, 212, 255, ${0.6 * (1 - k)})`;
+      ctx.lineWidth = 5 * (1 - k) + 1;
       ctx.beginPath();
-      ctx.arc(cl.x, cl.y, r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(b.x, b.y, BARK_RANGE * (0.25 + 0.75 * k), 0, Math.PI * 2);
+      ctx.stroke();
     }
 
-    // particles
-    for (const p of state.particles) {
-      const a = 1 - p.t / p.life;
-      ctx.fillStyle = `hsla(${p.hue}, 95%, 68%, ${a})`;
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.t * 5);
-      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
-      ctx.restore();
-    }
-
-    // obstacles, dogs, and cat — y-sorted for depth
-    const c = state.cat;
-
+    // ---- actors, y-sorted for depth ----
     const drawObstacle = (o) => {
       ctx.fillStyle = 'rgba(0,0,0,0.16)';
       ctx.beginPath();
-      ctx.ellipse(o.x, o.y + (o.kind === 'tree' ? 12 : 14), o.r * 1.15, o.r * 0.4, 0, 0, Math.PI * 2);
+      ctx.ellipse(o.x, o.y + (o.kind === 'tree' ? 10 : 11), o.r * 1.15, o.r * 0.4, 0, 0, Math.PI * 2);
       ctx.fill();
-      if (o.kind === 'tree') drawActor('tree_' + o.v, o.x, o.y - 34, 116);
-      else drawActor('rock_' + o.v, o.x, o.y - 4, 60);
+      if (o.kind === 'tree') drawActor('tree', o.x, o.y - 26, 90);
+      else drawActor('rock', o.x, o.y - 3, 44);
     };
 
-    const drawDog = (d) => {
-      const hop = d.happy ? Math.abs(Math.sin(d.bob)) * 10 : Math.sin(d.bob) * 2;
-      ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    const drawSheep = (s) => {
+      const hop = s.panic > 0.25 ? Math.abs(Math.sin(s.bob)) * 5 : Math.sin(s.bob) * 1.2;
+      ctx.fillStyle = 'rgba(0,0,0,0.14)';
       ctx.beginPath();
-      ctx.ellipse(d.x, d.y + 24, 24, 8, 0, 0, Math.PI * 2);
+      ctx.ellipse(s.x, s.y + 13, 15, 5, 0, 0, Math.PI * 2);
       ctx.fill();
-      if (!d.happy) {
-        // temper tint: red menace for aggro, storm grey otherwise
-        ctx.fillStyle = d.temper === 'aggro'
-          ? `rgba(235, 60, 40, ${0.24 + 0.12 * Math.abs(Math.sin(t * 5 + d.bob))})`
-          : 'rgba(90, 100, 114, 0.28)';
+      if (s.defiant && !s.penned) {
+        ctx.fillStyle = `rgba(60, 44, 28, ${0.2 + 0.1 * Math.abs(Math.sin(t * 4 + s.bob))})`;
         ctx.beginPath();
-        ctx.arc(d.x, d.y - hop, d.temper === 'aggro' ? 36 : 32, 0, Math.PI * 2);
+        ctx.arc(s.x, s.y - hop, 21, 0, Math.PI * 2);
         ctx.fill();
       }
-      const sprite = d.happy ? 'dog_happy' : d.munching ? 'dog_munch' : 'dog_' + d.temper;
-      drawActor(sprite, d.x, d.y - hop, d.temper === 'aggro' ? 50 : 46, d.facing === 1, 0, t + d.bob);
-      if (d.happy) {
-        drawEmoji('😊', d.x + 24, d.y - 38 - hop, 17);
-      } else if (d.munching) {
-        drawEmoji('😋', d.x + 22, d.y - 42 - hop + Math.sin(t * 7 + d.bob) * 2, 18);
-      } else if (d.temper === 'aggro') {
-        drawEmoji('💢', d.x + 26, d.y - 40 - hop + Math.sin(t * 8 + d.bob) * 3, 24);
-        drawEmoji('😤', d.x - 4, d.y - 54 - hop, 20);
-      } else if (d.temper === 'chill') {
-        drawEmoji('💤', d.x + 22, d.y - 44 - hop + Math.sin(t * 3 + d.bob) * 3, 18);
-      } else {
-        drawEmoji('💢', d.x + 24, d.y - 38 - hop + Math.sin(t * 6 + d.bob) * 2, 18);
-        drawEmoji('☁️', d.x - 2, d.y - 52 - hop, 24);
+      drawActor(s.defiant ? 'ram' : 'sheep', s.x, s.y - hop, s.defiant ? 32 : 30, s.facing === 1);
+      if (s.planted) {
+        drawEmoji('😤', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
+      } else if (!s.penned && s.panic > 0.75) {
+        drawEmoji('💦', s.x + 13, s.y - 24 - hop, 12);
+      } else if (s.penned && Math.sin(t * 2 + s.bob) > 0.965) {
+        drawEmoji('🎵', s.x + 12, s.y - 26, 12);
       }
     };
 
-    const drawCat = () => {
-      const cSpd = Math.hypot(c.vx, c.vy);
-      const lean = clamp(c.vx / 900, -0.18, 0.18);
+    const drawDog = () => {
+      const dg = state.dog;
+      const spd = Math.hypot(dg.vx, dg.vy);
+      const lying = state.input === 'cmd' && dg.cmd === 'lie' && spd < 20;
       ctx.fillStyle = 'rgba(0,0,0,0.16)';
       ctx.beginPath();
-      ctx.ellipse(c.x, c.y + 26, 26, 8, 0, 0, Math.PI * 2);
+      ctx.ellipse(dg.x, dg.y + 15, 17, 5.5, 0, 0, Math.PI * 2);
       ctx.fill();
-      const bounce = cSpd > 40 ? Math.abs(Math.sin(t * 14)) * 5 : Math.sin(t * 2) * 1.5;
-      // butt glow when fart is ready
-      if (state.mode !== 'grumped' && state.fuel >= FART_COST) {
-        const gl = ctx.createRadialGradient(c.x - c.facing * 22, c.y + 8, 2, c.x - c.facing * 22, c.y + 8, 26);
-        gl.addColorStop(0, `hsla(${(t * 240) % 360}, 95%, 72%, 0.75)`);
-        gl.addColorStop(1, 'hsla(315, 95%, 72%, 0)');
-        ctx.fillStyle = gl;
-        ctx.beginPath();
-        ctx.arc(c.x - c.facing * 22, c.y + 8, 26, 0, Math.PI * 2);
-        ctx.fill();
+      const bounce = spd > 40 ? Math.abs(Math.sin(dg.bob)) * 4 : Math.sin(dg.bob) * 1;
+      const lean = clamp(dg.vx / 900, -0.16, 0.16);
+      drawActor('dog', dg.x, dg.y - bounce + (lying ? 4 : 0), lying ? 30 : 34, dg.facing === 1, lean);
+      if (lying && state.mode === 'playing') {
+        drawEmoji('💤', dg.x + 14, dg.y - 22 + Math.sin(t * 3) * 2, 13);
       }
-      if (state.mode === 'grumped') {
-        // the grump has taken over
-        ctx.fillStyle = 'rgba(90, 100, 114, 0.3)';
-        ctx.beginPath();
-        ctx.arc(c.x, c.y, 36, 0, Math.PI * 2);
-        ctx.fill();
-        drawActor('cat_grumped', c.x, c.y, 48);
-        drawEmoji('☁️', c.x - 2, c.y - 46, 26);
-      } else if (c.invuln <= 0 || Math.sin(t * 30) > -0.3) {
-        // blink while invulnerable after a bite
-        drawActor(cSpd > 60 ? 'cat_run' : 'cat_idle', c.x, c.y - bounce, 52, c.facing === 1, lean, t);
-      }
+    };
+
+    const drawHandler = () => {
+      const hd = state.handler;
+      ctx.fillStyle = 'rgba(0,0,0,0.16)';
+      ctx.beginPath();
+      ctx.ellipse(hd.x, hd.y + 18, 13, 4.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawActor('handler', hd.x, hd.y, 38);
     };
 
     const ents = [];
     for (const o of state.obstacles) ents.push({ y: o.y, draw: () => drawObstacle(o) });
-    for (const d of state.dogs) ents.push({ y: d.y, draw: () => drawDog(d) });
-    ents.push({ y: c.y, draw: drawCat });
+    for (const s of state.sheep) ents.push({ y: s.y, draw: () => drawSheep(s) });
+    if (inGame) {
+      ents.push({ y: state.dog.y, draw: drawDog });
+      ents.push({ y: state.handler.y, draw: drawHandler });
+    }
     ents.sort((a, b) => a.y - b.y);
     for (const e of ents) e.draw();
 
-    // floaties (hearts, notes, impact stars)
+    // pen fence rails on top (thin, top-down)
+    if (inGame) {
+      const P = state.pen;
+      for (const sgm of P.segs) {
+        ctx.strokeStyle = '#8a5f3c';
+        ctx.lineWidth = 7;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(sgm.x1, sgm.y1); ctx.lineTo(sgm.x2, sgm.y2);
+        ctx.stroke();
+        ctx.strokeStyle = '#b98a5a';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(sgm.x1, sgm.y1); ctx.lineTo(sgm.x2, sgm.y2);
+        ctx.stroke();
+        // posts
+        const sl = Math.hypot(sgm.x2 - sgm.x1, sgm.y2 - sgm.y1);
+        const np = Math.max(1, Math.round(sl / 52));
+        for (let i = 0; i <= np; i++) {
+          const px = sgm.x1 + (sgm.x2 - sgm.x1) * (i / np);
+          const py = sgm.y1 + (sgm.y2 - sgm.y1) * (i / np);
+          ctx.fillStyle = '#6e4a2c';
+          ctx.beginPath();
+          ctx.arc(px, py, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      // gate flags
+      for (const [fx, fy] of [[P.gate.x1, P.gate.y1], [P.gate.x2, P.gate.y2]]) {
+        ctx.strokeStyle = '#5c3d22';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(fx, fy); ctx.lineTo(fx, fy - 30);
+        ctx.stroke();
+        const wave = reducedMotion ? 0 : Math.sin(t * 5 + fx) * 2;
+        ctx.fillStyle = '#e2483d';
+        ctx.beginPath();
+        ctx.moveTo(fx, fy - 30);
+        ctx.lineTo(fx + 16, fy - 25 + wave);
+        ctx.lineTo(fx, fy - 20);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // floaties: emoji and command call-outs
     for (const f of state.floaties) {
       ctx.globalAlpha = clamp(1 - f.t / f.life, 0, 1);
-      drawEmoji(f.g, f.x, f.y, f.s);
+      if (f.txt) {
+        ctx.font = '700 ' + f.s + 'px Fredoka, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = 'rgba(49, 32, 74, 0.85)';
+        ctx.strokeText(f.txt, f.x, f.y);
+        ctx.fillStyle = '#fff6e8';
+        ctx.fillText(f.txt, f.x, f.y);
+      } else {
+        drawEmoji(f.g, f.x, f.y, f.s);
+      }
     }
     ctx.globalAlpha = 1;
 
     ctx.restore();
 
-    // joystick indicator
-    if (joy.active && state.mode === 'playing') {
+    // joystick indicator (screen space)
+    if (joy.active && state.mode === 'playing' && state.input === 'drag') {
       ctx.strokeStyle = 'rgba(255, 246, 232, 0.5)';
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -1488,62 +1539,107 @@
     }
   }
 
-  // ---------- HUD ----------
+  // ---------- HUD & buttons ----------
   const hud = document.getElementById('hud');
-  const fartBtn = document.getElementById('fart-btn');
-  const steakBtn = document.getElementById('steak-btn');
-  const steakCount = document.getElementById('steak-count');
-  const steakBadge = document.getElementById('steak-badge');
+  const barkBtn = document.getElementById('bark-btn');
+  const cmdStack = document.getElementById('cmd-stack');
   const titleOverlay = document.getElementById('title-overlay');
   const clearOverlay = document.getElementById('clear-overlay');
-  const grumpOverlay = document.getElementById('grump-overlay');
   const levelChip = document.getElementById('level-chip');
-  const dogsLeft = document.getElementById('dogs-left');
-  const fuelPips = document.getElementById('fuel-pips');
-  const statSparkles = document.getElementById('stat-sparkles');
-  const statFarts = document.getElementById('stat-farts');
+  const sheepCount = document.getElementById('sheep-count');
+  const timeChip = document.getElementById('time-chip');
+  const modeBtn = document.getElementById('mode-btn');
+  const statSheep = document.getElementById('stat-sheep');
+  const statBarks = document.getElementById('stat-barks');
   const statTime = document.getElementById('stat-time');
   const clearTitle = document.getElementById('clear-title');
   const clearTag = document.getElementById('clear-tag');
-
-  for (let i = 0; i < FUEL_MAX; i++) {
-    const pip = document.createElement('span');
-    pip.className = 'pip';
-    fuelPips.appendChild(pip);
-  }
-  const pips = [...fuelPips.children];
+  let lastTimeShown = -1;
 
   function updateHud() {
     levelChip.textContent = 'Level ' + state.level;
-    dogsLeft.textContent = state.dogs.filter(d => !d.happy).length;
-    const ready = state.fuel >= FART_COST;
-    pips.forEach((p, i) => {
-      p.className = 'pip' + (i < state.fuel ? (ready ? ' lit ready' : ' lit') : '');
-    });
-    fartBtn.classList.toggle('empty', !ready);
-    steakCount.textContent = state.steaksHeld;
-    steakBadge.textContent = state.steaksHeld;
-    steakBtn.classList.toggle('empty', state.steaksHeld <= 0);
+    const penned = state.sheep.filter(s => s.penned).length;
+    sheepCount.textContent = penned + '/' + state.sheep.length;
+    modeBtn.textContent = state.input === 'drag' ? '🕹️ drag' : '🗣️ commands';
   }
 
-  const startBtn = document.getElementById('start-btn');
+  const cmdBtns = [...cmdStack.querySelectorAll('.cmd-btn')];
+  function updateCmdButtons() {
+    for (const b of cmdBtns) {
+      const c = b.dataset.cmd;
+      b.classList.toggle('active', c === 'easy' ? state.easy : state.dog.cmd === c);
+    }
+  }
+  for (const b of cmdBtns) {
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); issueCommand(b.dataset.cmd); });
+  }
+
+  function applyInputMode() {
+    if (state.mode === 'playing') {
+      cmdStack.style.display = state.input === 'cmd' ? 'flex' : 'none';
+    }
+    if (state.input === 'cmd') {
+      state.dog.cmd = 'lie';
+      updateCmdButtons();
+    } else if (joy.active) {
+      joy.active = false; joy.id = null;
+    }
+    updateHud();
+  }
+  modeBtn.addEventListener('click', () => {
+    state.input = state.input === 'drag' ? 'cmd' : 'drag';
+    applyInputMode();
+    toast(state.input === 'drag'
+      ? '🕹️ Drag mode — steer the dog yourself'
+      : '🗣️ Command mode — whistle the dog around');
+  });
+
+  const startDragBtn = document.getElementById('start-drag-btn');
+  const startCmdBtn = document.getElementById('start-cmd-btn');
   const nextBtn = document.getElementById('next-btn');
-  const retryBtn = document.getElementById('retry-btn');
-  startBtn.addEventListener('click', () => { ensureAudio(); startLevel(1); });
+  startDragBtn.addEventListener('click', () => { ensureAudio(); state.input = 'drag'; startLevel(1); });
+  startCmdBtn.addEventListener('click', () => { ensureAudio(); state.input = 'cmd'; startLevel(1); });
   nextBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
-  retryBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level); });
   document.getElementById('build-tag').textContent = 'build ' + BUILD;
-  fartBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryFart(); });
-  steakBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryDropSteak(); });
+  barkBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryBark(); });
   document.getElementById('mute-btn').addEventListener('click', (e) => {
     muted = !muted;
     e.currentTarget.textContent = muted ? '🔇' : '🔊';
   });
   if (isTouch) {
-    document.getElementById('fart-hint').textContent = 'TAP';
-    document.getElementById('steak-hint').textContent = 'TAP';
-    document.getElementById('keys-note').textContent = 'Drag anywhere to scamper · tap FART! to fart · tap 🥩 to drop a steak';
+    document.getElementById('bark-hint').textContent = 'TAP';
+    document.getElementById('keys-note').textContent =
+      'Drag anywhere to run · tap BARK! · tap the calls in command mode · swap modes any time';
   }
+
+  // ---------- title backdrop ----------
+  // a few sheep grazing behind the title panel
+  function setupBackdrop() {
+    const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
+    state.world.w = Math.round(Math.sqrt(FIELD_AREA * ar));
+    state.world.h = Math.round(state.world.w / ar);
+    makeDecor();
+    state.pen.segs = [];
+    state.obstacles = [];
+    const { w, h } = state.world;
+    for (let i = 0; i < 4; i++) {
+      const kind = Math.random() < 0.6 ? 'tree' : 'rock';
+      state.obstacles.push({
+        x: rand(HEDGE + 120, w - HEDGE - 120), y: rand(HEDGE + 120, h - HEDGE - 120),
+        r: kind === 'tree' ? 32 : 20, kind, v: 0,
+      });
+    }
+    state.sheep = [];
+    for (let i = 0; i < 9; i++) {
+      state.sheep.push({
+        x: rand(HEDGE + 120, w - HEDGE - 120), y: rand(HEDGE + 120, h - HEDGE - 120),
+        vx: 0, vy: 0, facing: -1, penned: false, defiant: i === 0,
+        panic: 0, planted: false, plantT: 0, plantCd: 99,
+        wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
+      });
+    }
+  }
+  setupBackdrop();
 
   // ---------- main loop ----------
   let last = performance.now();
@@ -1558,7 +1654,7 @@
   requestAnimationFrame(frame);
 
   // debug/test handle
-  window.__sb = { state, startLevel, tryFart, tryDropSteak };
+  window.__cb = { state, startLevel, issueCommand, tryBark };
 })();
 </script>
 </body>

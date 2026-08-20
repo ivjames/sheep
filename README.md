@@ -1,16 +1,18 @@
-# Sparkle Butt
+# Come By!
 
-You are a cat. You run around a meadow gobbling up sparkles, which fuel your
-butt. When you've banked enough sparkle fuel, you chase down grumpy dogs and
-fart sparkles at them, which makes them happy. Cheer up every dog to clear the
-level.
+You are a border collie. A flock of sheep grazes somewhere on the pasture, and
+there's one open gate into the pen. Sheep drift away from you — that pressure
+is your only tool. Get behind them, push them where you want, and walk every
+last one through the gate to clear the level.
 
-An idea by a dad and his daughter, roughly fifteen years in the making.
+Sparkle Butt's sibling: same one-file, zero-dependency engine, a very
+different game. Where Sparkle Butt is chase-and-zap, Come By! is slow
+pressure and positioning — a sheepdog trial in miniature.
 
 ## Play it
 
-Live at **[sparkle.lab980.com](https://sparkle.lab980.com)** (deployment notes
-in [DEPLOY.md](DEPLOY.md)). Or locally — the whole game is one file with zero
+Live at **comeby.lab980.com** once provisioned (deployment notes in
+[DEPLOY.md](DEPLOY.md)). Or locally — the whole game is one file with zero
 dependencies:
 
 ```
@@ -23,73 +25,62 @@ or serve it (needed for some browsers' autoplay/audio policies):
 npx serve .
 ```
 
-**Controls:** WASD / arrow keys to move, SPACE to fart, E to drop a steak. On
-touch devices, drag anywhere to scamper and tap the FART! / 🥩 buttons. Or
-pair a Bluetooth gamepad (Xbox, PlayStation, MFi — works in iPad Safari too):
-left stick or d-pad to move, A / R2 to fart, B / X to drop a steak, A or
-Start on menus.
+## Two ways to drive the dog
 
-**Rules:** sparkles are worth 1 fuel each, a fart costs 3, and only grumpy dogs
-caught inside the rainbow cloud convert. You start each level with 3 fuel.
-Each level adds more, faster dogs.
+Pick one on the title screen, swap any time mid-game with the HUD toggle:
 
-**Dog tempers** — every grumpy dog has one:
+- **🕹️ Drag mode** — steer the dog yourself: WASD / arrow keys, drag anywhere
+  on touch, or a Bluetooth gamepad stick. Same feel as Sparkle Butt's cat.
+- **🗣️ Command mode** — the dog works the flock alone and you call real
+  sheepdog-trial commands (keys 1–6, tap the buttons, or gamepad):
 
-- **Scaredy** (storm cloud ☁️): flees when you get close — corner it against
-  the hedge.
-- **Chill** (💤): too mopey to care. Wanders slowly. Easy pickings.
-- **Aggro** (red aura, 😤): hunts you down from level 2 onward. A bite knocks
-  up to 3 sparkles out of your butt — they scatter on the grass, so scramble
-  and re-collect them. Get bitten with an empty butt and the grump takes over:
-  you become a grumpy cat and retry the level.
+  | Command | Means | The dog… |
+  |---|---|---|
+  | **Come by** | flank clockwise | circles the flock clockwise |
+  | **Away** (to me) | flank counter-clockwise | circles the other way |
+  | **Walk on** | drive | pushes straight at the flock |
+  | **Easy** | slow down | toggles a gentler working pace |
+  | **Steady** | hold | stops and holds position |
+  | **That'll do** | done | returns to the handler and lies down |
 
-**Steaks 🥩:** a couple spawn per level (carry up to 2). Press E (or tap 🥩)
-to drop one — every grumpy dog nearby abandons what it's doing, mobs the
-steak, and munches for ~6 seconds. Even aggro dogs. Herd them into a huddle,
-then gas the whole crowd with one fart.
+  Each command has its own synth whistle, like a real handler's.
 
-**Obstacles:** trees and rocks block movement (fart gas passes through).
-Corner scaredy dogs against them, or break an aggro dog's chase around one.
+**BARK** (SPACE / tap / Ⓐ) works in both modes: a burst of extra pressure in
+a ring around the dog.
+
+## Rules
+
+- Levels are zoomed out — the whole field fits on screen. Each level has a
+  **random-sized flock** (bigger as you go) and a fenced pen against one
+  edge with a flagged gate. Pen every sheep to clear the level. No fail
+  state, just you, the flock, and the clock.
+- Sheep are boids: they bunch when scared, graze and drift when calm, and
+  squirt around obstacles. Pressure from directly behind moves them where
+  you want; pressure from the side scatters them.
+- **Defiant sheep** (dark wool 🐏, from level 2): they don't attack — they're
+  just hard to wrangle. They barely feel the dog, stray from the flock, and
+  **plant their hooves** (😤) and refuse to move. A BARK — or the dog walking
+  right up to them — startles them loose.
+- Trees and rocks block movement. The hedge keeps everyone on the field.
 
 ## Tech
 
 - Single `index.html` — vanilla JS, canvas rendering, WebAudio synth SFX
-  (no audio assets). No build step, no dependencies.
-- Works on desktop and mobile browsers; DPR-aware rendering, virtual joystick,
-  `prefers-reduced-motion` respected (no screen shake).
-- **Sprite pipeline:** characters render through a sprite-atlas layer with
-  emoji fallbacks. Drop `assets/sprites.png` + `assets/sprites.json` next to
-  `index.html` and real art replaces the emoji with zero code changes —
-  see [ART-SPEC.md](ART-SPEC.md) for the full artist brief (sprite list,
-  sizes, naming, JSON schema).
-- **Sprite manager:** open [tools/sprite-manager.html](tools/sprite-manager.html)
-  in a browser to track and assemble the art — a grid of frame slots per sprite,
-  drag-and-drop uploads, live animation previews, and one-click export of the
-  packed `sprites.png` + `sprites.json`. On the live site it runs against a
-  shared store (nginx WebDAV, link access — see [DEPLOY.md](DEPLOY.md)) so
-  anyone with the link sees and uploads the same art; opened locally it falls
-  back to browser-only autosave.
-
-## Release paths
-
-The zero-dependency single-file approach is deliberate — it keeps every
-platform on the table:
-
-| Platform | Path | Effort |
-|---|---|---|
-| **itch.io** | Zip `index.html`, upload as an HTML5 game. Done. | Minutes |
-| **Web** | Host the file anywhere static (GitHub Pages, Netlify, your own nginx). | Minutes |
-| **Steam** | Wrap in [Tauri](https://tauri.app) (tiny binaries) or Electron; add Steamworks via [steamworks.js](https://github.com/ceifa/steamworks.js). Needs the $100 Steam Direct fee, store assets, and achievements/cloud-save polish to feel at home there. | Days–weeks |
-| **Mobile** | [Capacitor](https://capacitorjs.com) wraps it for App Store / Play Store; or ship as an installable PWA (add a manifest + service worker) with no store at all. | Days |
-
-Suggested order: itch.io + web first (free, instant, real feedback), mobile PWA
-second, Steam last — Steam buyers expect more content (more level variety,
-progression, settings, gamepad support) than a prototype has.
+  (whistles, barks, bleats — no audio assets). No build step, no dependencies.
+- Works on desktop and mobile browsers; DPR-aware, fit-to-screen world sized
+  to the device aspect, virtual joystick, gamepad support,
+  `prefers-reduced-motion` respected.
+- Emoji sprites with per-glyph render probing and canvas-drawn vector
+  fallbacks (add `?noemoji` to preview them) — same pipeline lessons as
+  Sparkle Butt: glyphs are rasterized to cached offscreen canvases because
+  iPad Safari silently drops mirrored emoji `fillText`.
+- Build stamp + self-update: deploys stamp the commit into `BUILD`, and open
+  tabs poll their own URL and offer/auto-apply a refresh.
 
 ## Roadmap ideas
 
-- Dog breeds with behaviors (fast chihuahua, oblivious bulldog, pack leader
-  that re-grumps others)
-- More power-ups: chili flake (mega fart radius), catnip (speed), golden
-  sparkle
-- Timed/score modes, local co-op (two cats, one meadow)
+- Sheepdog trial scoring: points for lines, penalties for scattering
+- Split gates / multi-pen levels ("shed five into the left pen")
+- Hazards: a stream with a bridge, mud that slows the flock
+- Two-dog co-op (one drag, one commands)
+- Lambs that follow a specific ewe

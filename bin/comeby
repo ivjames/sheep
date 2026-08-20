@@ -1,32 +1,29 @@
 #!/usr/bin/env bash
-# sparkle — operate CLI for sparkle.lab980.com (Sparkle Butt).
+# comeby — operate CLI for comeby.lab980.com (Come By!).
 #
 # The site is a single static index.html served straight by nginx: no app
 # process, no local port, no pm2, no build step. This script is the whole
 # lifecycle:
 #
-#   sparkle setup      one-time on the droplet: DNS A record (doctl), static
-#                      nginx vhost from deploy/nginx.conf.template, TLS via
-#                      certbot, /usr/local/bin symlink. Idempotent.
-#   sparkle deploy     sync this checkout to origin/main (fetch + hard reset)
-#   sparkle status     HEAD, live-site probe, cert days remaining
-#   sparkle art-setup  enable the shared art store (/art/): WebDAV + JSON
-#                      autoindex, open to anyone with the link, files in
-#                      /var/lib/sparkle-art — still no app process. Idempotent.
+#   comeby setup      one-time on the droplet: DNS A record (doctl), static
+#                     nginx vhost from deploy/nginx.conf.template, TLS via
+#                     certbot, /usr/local/bin symlink. Idempotent.
+#   comeby deploy     sync this checkout to origin/main (fetch + hard reset)
+#   comeby status     HEAD, live-site probe, cert days remaining
 #
 # Env overrides:
-#   SPARKLE_FQDN     default sparkle.lab980.com
-#   SPARKLE_BRANCH   default main
+#   COMEBY_FQDN     default comeby.lab980.com
+#   COMEBY_BRANCH   default main
 #
 # The web root is wherever this script's repo checkout lives (normally
-# /var/www/sparkle) — derived from the script's own path, so the
+# /var/www/comeby) — derived from the script's own path, so the
 # /usr/local/bin symlink resolves back here.
 set -euo pipefail
 
 SELF="$(readlink -f "$0")"
 ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
-FQDN="${SPARKLE_FQDN:-sparkle.lab980.com}"
-BRANCH="${SPARKLE_BRANCH:-main}"
+FQDN="${COMEBY_FQDN:-comeby.lab980.com}"
+BRANCH="${COMEBY_BRANCH:-main}"
 DOMAIN="${FQDN#*.}"
 STUB="${FQDN%%.*}"
 
@@ -37,20 +34,16 @@ die()  { printf '%serror:%s %s\n' "$c_red" "$c_off" "$*" >&2; exit 1; }
 
 usage() {
   cat <<'USAGE'
-sparkle — operate sparkle.lab980.com (static single-file game, nginx-only).
+comeby — operate comeby.lab980.com (static single-file game, nginx-only).
 
 Usage:
-  sparkle setup [--no-dns] [--no-tls] [--ip IP]   provision DNS + vhost + TLS
-  sparkle deploy                                  sync checkout to origin/main
-  sparkle status                                  HEAD + live probe + cert
-  sparkle art-setup                               enable shared art store (/art/)
+  comeby setup [--no-dns] [--no-tls] [--ip IP]   provision DNS + vhost + TLS
+  comeby deploy                                  sync checkout to origin/main
+  comeby status                                  HEAD + live probe + cert
 
-Env: SPARKLE_FQDN (default sparkle.lab980.com), SPARKLE_BRANCH (default main).
+Env: COMEBY_FQDN (default comeby.lab980.com), COMEBY_BRANCH (default main).
 USAGE
 }
-
-ART_DIR="/var/lib/sparkle-art"
-ART_SNIPPET="/etc/nginx/snippets/sparkle-art.conf"
 
 cmd_setup() {
   local DO_DNS=1 DO_TLS=1 IP=""
@@ -63,7 +56,7 @@ cmd_setup() {
     esac
   done
   [ "$(id -u)" -eq 0 ] || die "setup must run as root."
-  [ -f "$ROOT/index.html" ] || die "no index.html in $ROOT — is this the sparkle-butt checkout?"
+  [ -f "$ROOT/index.html" ] || die "no index.html in $ROOT — is this the come-by checkout?"
 
   log "Setting up $FQDN  (web root: $ROOT)"
 
@@ -147,9 +140,9 @@ EOF
   fi
 
   # ---- operate-CLI symlink (per lab980 convention) ----
-  if [ "$SELF" != "/usr/local/bin/sparkle" ]; then
-    ln -sf "$ROOT/bin/sparkle" /usr/local/bin/sparkle
-    log "symlinked /usr/local/bin/sparkle -> $ROOT/bin/sparkle"
+  if [ "$SELF" != "/usr/local/bin/comeby" ]; then
+    ln -sf "$ROOT/bin/comeby" /usr/local/bin/comeby
+    log "symlinked /usr/local/bin/comeby -> $ROOT/bin/comeby"
   fi
 
   log "Done. Site: https://$FQDN/"
@@ -185,58 +178,6 @@ cmd_deploy() {
   log " see the new build stamp and offer/auto-apply a refresh.)"
 }
 
-# Shared art store: the sprite manager (tools/sprite-manager.html) talks to
-# /art/ with plain fetch — PUT/DELETE via nginx's WebDAV module, listings via
-# autoindex_format json. Files live outside the checkout so `sparkle deploy`
-# (hard reset) never touches them. No auth: anyone with the link can view and
-# upload — acceptable for an unlisted art scratchpad; the store is a single
-# confined directory with an 8 MB body cap.
-cmd_art_setup() {
-  [ "$(id -u)" -eq 0 ] || die "art-setup must run as root."
-  nginx -V 2>&1 | grep -q 'http_dav_module' \
-    || die "this nginx lacks http_dav_module (need PUT/DELETE for /art/). Install Ubuntu's nginx-full."
-
-  log "art store: $ART_DIR (frames/)"
-  mkdir -p "$ART_DIR/frames"
-  chown -R www-data:www-data "$ART_DIR"
-  chmod 750 "$ART_DIR"
-
-  # The location lives in a snippet so it can be injected into the live vhost
-  # (which certbot owns after TLS) without regenerating it from the template.
-  log "nginx: writing $ART_SNIPPET"
-  cat > "$ART_SNIPPET" <<EOF
-# Shared art store for tools/sprite-manager.html — managed by \`sparkle art-setup\`.
-# nginx-only backend: WebDAV writes + JSON directory listings, no auth (link
-# access). Uploads live outside the git checkout so deploys never touch them.
-location ^~ /art/ {
-    alias $ART_DIR/;
-    autoindex on;
-    autoindex_format json;
-    dav_methods PUT DELETE;
-    create_full_put_path on;
-    client_max_body_size 8m;
-    include snippets/lab980-security-headers.conf;
-    add_header Cache-Control "no-cache" always;
-}
-EOF
-
-  local conf="/etc/nginx/sites-available/$FQDN"
-  [ -f "$conf" ] || die "vhost $conf not found — run 'sparkle setup' first."
-  if grep -q 'snippets/sparkle-art.conf' "$conf"; then
-    log "nginx: $conf already includes the art snippet"
-  else
-    # After every server_name line, so both the :80 and certbot's :443 block
-    # get it. certbot only rewrites its own cert lines on renew, so this edit
-    # survives.
-    sed -i "s|^\([[:space:]]*\)server_name $FQDN;|&\n\1include snippets/sparkle-art.conf;|" "$conf"
-    grep -q 'snippets/sparkle-art.conf' "$conf" \
-      || die "couldn't inject the include into $conf — add 'include snippets/sparkle-art.conf;' to its server block(s) by hand."
-    log "nginx: injected art snippet include into $conf"
-  fi
-  nginx -t && systemctl reload nginx
-  log "Done. Store: https://$FQDN/art/  Tool: https://$FQDN/tools/sprite-manager.html"
-}
-
 cmd_status() {
   cd "$ROOT"
   printf 'checkout:  %s  %s\n' "$(git rev-parse --short HEAD)" "$(git log -1 --format=%s)"
@@ -246,13 +187,6 @@ cmd_status() {
   build="$(printf '%s' "$page" | grep -o "const BUILD = '[^']*'" | cut -d"'" -f2)"
   printf 'live:      https://%s/  ->  HTTP %s  (build %s)\n' \
     "$FQDN" "${code:-unreachable}" "${build:-unknown}"
-  local art
-  art="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$FQDN/art/frames/" || true)"
-  case "$art" in
-    200) printf 'art store: enabled\n';;
-    404) printf 'art store: not enabled (run: sparkle art-setup)\n';;
-    *)   printf 'art store: /art/frames/ -> HTTP %s\n' "${art:-unreachable}";;
-  esac
   local pem="/etc/letsencrypt/live/$FQDN/cert.pem"
   if [ -r "$pem" ]; then
     local end days
@@ -268,7 +202,6 @@ case "${1:-}" in
   setup)     shift; cmd_setup "$@";;
   deploy)    shift; cmd_deploy "$@";;
   status)    shift; cmd_status "$@";;
-  art-setup) shift; cmd_art_setup "$@";;
   -h|--help|help|"") usage;;
   *) die "unknown command: $1 (see --help)";;
 esac
