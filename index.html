@@ -226,8 +226,9 @@
     font-weight: 600;
     line-height: 1.45;
   }
-  .howto div { display: flex; gap: 10px; align-items: baseline; }
-  .howto .glyph { font-size: 20px; flex: 0 0 26px; text-align: center; }
+  .howto div { display: flex; gap: 10px; align-items: flex-start; }
+  .howto .glyph { flex: 0 0 26px; display: flex; justify-content: center; margin-top: -1px; }
+  .howto .glyph svg { width: 24px; height: 24px; display: block; }
   .stats {
     display: flex;
     justify-content: center;
@@ -259,6 +260,8 @@
   }
   .big-btn.alt:active { box-shadow: 0 2px 0 #46307d; }
   .big-btn .sub { display: block; font-family: var(--body); font-size: 11.5px; font-weight: 800; opacity: 0.7; letter-spacing: 0.05em; }
+  .big-btn .btn-label { display: flex; align-items: center; justify-content: center; gap: 9px; }
+  .big-btn .btn-label svg { width: 21px; height: 21px; flex: 0 0 21px; display: block; }
   .mode-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .keys-note { margin: 16px 0 0; font-size: 12.5px; font-weight: 700; opacity: 0.65; }
   .build-tag { margin: 10px 0 0; font-size: 10.5px; font-weight: 700; opacity: 0.35; letter-spacing: 0.08em; }
@@ -314,15 +317,62 @@
     <h1>Come By!</h1>
     <p class="tagline">A border collie. A restless flock. One open gate.</p>
     <div class="howto">
-      <div><span class="glyph">🐕</span><span>You're the sheepdog. Sheep drift away from you — use that pressure to steer the flock.</span></div>
-      <div><span class="glyph">⛩️</span><span>Push every sheep through the <strong>gate</strong> into the pen to clear the level.</span></div>
-      <div><span class="glyph">🐏</span><span><strong>Defiant sheep</strong> barely care about you. They plant their hooves and stray from the flock. They don't bite — they're just stubborn.</span></div>
-      <div><span class="glyph">📣</span><span><strong>Charge</strong> right at a sheep and the dog <strong>barks</strong> — a burst of pressure, and the only thing that moves a planted sheep.</span></div>
-      <div><span class="glyph">🗣️</span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em> (faster each tap), <em>easy</em> (slower), <em>steady</em> (halt), <em>to me</em> (call off), <em>that'll do</em>.</span></div>
+      <div><span class="glyph"><svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6.3 10.2 5 6 10.4 7.2Z" fill="#26262e" stroke="#26262e" stroke-width="2.4" stroke-linejoin="round"/>
+        <path d="M17.7 10.2 19 6 13.6 7.2Z" fill="#26262e" stroke="#26262e" stroke-width="2.4" stroke-linejoin="round"/>
+        <path d="M7 9 6.4 7 9 7.8Z" fill="#f4efe4"/>
+        <path d="M17 9 17.6 7 15 7.8Z" fill="#f4efe4"/>
+        <ellipse cx="12" cy="13.8" rx="7.2" ry="6.8" fill="#f4efe4"/>
+        <path d="M6.4 12.9C6.4 8.3 8.9 5.6 12 5.6s5.6 2.7 5.6 7.3Z" fill="#26262e"/>
+        <path d="M12 7 13.7 13.6h-3.4Z" fill="#f4efe4"/>
+        <circle cx="8.9" cy="14.4" r="1.3" fill="#26262e"/>
+        <circle cx="15.1" cy="14.4" r="1.3" fill="#26262e"/>
+        <ellipse cx="12" cy="17.6" rx="2" ry="1.5" fill="#111116"/>
+      </svg></span><span>You're the sheepdog. Sheep drift away from you — use that pressure to steer the flock.</span></div>
+      <div><span class="glyph"><svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M6 3.8 11 5.4 6 7Z" fill="#ffd84d"/>
+        <path d="M6.6 17.8 17.4 9.6" fill="none" stroke="#fff6e8" stroke-width="1.8" stroke-linecap="round"/>
+        <rect x="4.4" y="8.4" width="15.2" height="2.2" rx="1.1" fill="#fff6e8"/>
+        <rect x="4.4" y="12.2" width="15.2" height="2.2" rx="1.1" fill="#fff6e8"/>
+        <rect x="4.4" y="16" width="15.2" height="2.2" rx="1.1" fill="#fff6e8"/>
+        <rect x="3.4" y="3.4" width="2.6" height="17" rx="1.3" fill="#fff6e8"/>
+        <rect x="18" y="6.6" width="2.6" height="13.8" rx="1.3" fill="#fff6e8"/>
+      </svg></span><span>Push every sheep through the <strong>gate</strong> into the pen to clear the level.</span></div>
+      <div><span class="glyph"><svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7.4 8.8c-3.6 0-5.2 3.2-3.2 5.5 1.5 1.7 4 1 4-1" fill="none" stroke="#e0d3b8" stroke-width="2.1" stroke-linecap="round"/>
+        <path d="M16.6 8.8c3.6 0 5.2 3.2 3.2 5.5-1.5 1.7-4 1-4-1" fill="none" stroke="#e0d3b8" stroke-width="2.1" stroke-linecap="round"/>
+        <ellipse cx="12" cy="13.8" rx="3.9" ry="4.5" fill="#4a3b30"/>
+        <circle cx="8.6" cy="9.6" r="2.7" fill="#d9c6a8"/>
+        <circle cx="15.4" cy="9.6" r="2.7" fill="#d9c6a8"/>
+        <circle cx="12" cy="8" r="3.3" fill="#d9c6a8"/>
+        <circle cx="10.2" cy="12.6" r="1.05" fill="#f6f1e6"/>
+        <circle cx="13.8" cy="12.6" r="1.05" fill="#f6f1e6"/>
+        <ellipse cx="12" cy="16.4" rx="2.2" ry="1.5" fill="#5f4c3e"/>
+      </svg></span><span><strong>Defiant sheep</strong> barely care about you. They plant their hooves and stray from the flock. They don't bite — they're just stubborn.</span></div>
+      <div><span class="glyph"><svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="5.6" y="13.6" width="2.8" height="5.6" rx="1.4" fill="#e8b93a"/>
+        <path d="M4 9.6 11.6 6v12L4 14.4Z" fill="#ffd84d" stroke="#ffd84d" stroke-width="1.8" stroke-linejoin="round"/>
+        <rect x="1.4" y="10.4" width="3" height="3.2" rx="1.5" fill="#e8b93a"/>
+        <path d="M14.6 9.4c1.8 1.5 1.8 4.1 0 5.6" fill="none" stroke="#fff6e8" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M18.2 7.2c3 2.6 3 7 0 9.6" fill="none" stroke="#fff6e8" stroke-width="1.8" stroke-linecap="round"/>
+      </svg></span><span><strong>Charge</strong> right at a sheep and the dog <strong>barks</strong> — a burst of pressure, and the only thing that moves a planted sheep.</span></div>
+      <div><span class="glyph"><svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M2.8 8.6H7v1.8h2.6V8.6h4.8c3.4 0 3.4 7.8-1 7.8-2.9 0-5.1-2.2-6.4-3.6H2.8a2 2 0 0 1 0-4Z" fill="currentColor"/>
+        <path d="M18.2 9c1.9 1.8 1.9 5 0 6.8" fill="none" stroke="#ffd84d" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M20.6 7.4c2.6 2.6 2.6 6.8 0 9.4" fill="none" stroke="#ffd84d" stroke-width="1.8" stroke-linecap="round"/>
+      </svg></span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em> (faster each tap), <em>easy</em> (slower), <em>steady</em> (halt), <em>to me</em> (call off), <em>that'll do</em>.</span></div>
     </div>
     <div class="mode-row">
-      <button class="big-btn" id="start-drag-btn">🎯 Guide the dog<span class="sub">it chases your finger</span></button>
-      <button class="big-btn alt" id="start-cmd-btn">🗣️ Command mode<span class="sub">whistle the dog around</span></button>
+      <button class="big-btn" id="start-drag-btn"><span class="btn-label"><svg viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="8.2" fill="none" stroke="currentColor" stroke-width="2.2"/>
+        <circle cx="12" cy="12" r="3.9" fill="none" stroke="currentColor" stroke-width="2.2"/>
+        <circle cx="12" cy="12" r="1.6" fill="currentColor"/>
+      </svg>Guide the dog</span><span class="sub">it chases your finger</span></button>
+      <button class="big-btn alt" id="start-cmd-btn"><span class="btn-label"><svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M2.8 8.6H7v1.8h2.6V8.6h4.8c3.4 0 3.4 7.8-1 7.8-2.9 0-5.1-2.2-6.4-3.6H2.8a2 2 0 0 1 0-4Z" fill="currentColor"/>
+        <path d="M18.2 9c1.9 1.8 1.9 5 0 6.8" fill="none" stroke="#ffd84d" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M20.6 7.4c2.6 2.6 2.6 6.8 0 9.4" fill="none" stroke="#ffd84d" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>Command mode</span><span class="sub">whistle the dog around</span></button>
     </div>
     <p class="keys-note" id="keys-note">Click to send the dog (or WASD / arrows) · charge a sheep to bark · 1–7 call commands · swap modes any time</p>
     <p class="build-tag" id="build-tag"></p>
