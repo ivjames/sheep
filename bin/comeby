@@ -56,7 +56,7 @@ cmd_setup() {
     esac
   done
   [ "$(id -u)" -eq 0 ] || die "setup must run as root."
-  [ -f "$ROOT/index.html" ] || die "no index.html in $ROOT — is this the come-by checkout?"
+  [ -f "$ROOT/index.html" ] || die "no index.html in $ROOT — is this the sheep (Come By!) checkout?"
 
   log "Setting up $FQDN  (web root: $ROOT)"
 

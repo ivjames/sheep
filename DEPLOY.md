@@ -15,7 +15,7 @@ the exact same shape as sparkle-butt's `bin/sparkle`.
 ## One-time bring-up (on the droplet, as root)
 
 ```bash
-git clone https://github.com/ivjames/come-by /var/www/comeby
+git clone https://github.com/ivjames/sheep /var/www/comeby
 ln -sf /var/www/comeby/bin/comeby /usr/local/bin/comeby
 comeby setup
 ```
