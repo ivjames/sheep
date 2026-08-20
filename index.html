@@ -884,11 +884,37 @@
     } catch { /* no atlas: emoji mode */ }
   })();
 
-  const EMOJI = {
-    cat_idle: '🐈', cat_run: '🐈', cat_grumped: '😾',
-    dog_scaredy: '🐕', dog_chill: '🐕', dog_aggro: '🐕', dog_happy: '🐕', dog_munch: '🐕',
-    sparkle: '✨', steak: '🥩', tree: '🌳', rock: '🪨',
-  };
+  // Some platforms are missing individual emoji glyphs, and a missing glyph
+  // draws *nothing* on canvas (the cat becomes an invisible butt-glow orb).
+  // Probe candidates on an offscreen canvas and keep the first that actually
+  // renders in color; a monochrome tofu box painted in our probe color fails.
+  // Add ?noemoji to the URL to preview the vector stand-ins.
+  const forceVector = location.search.includes('noemoji');
+  const probe = document.createElement('canvas');
+  probe.width = probe.height = 32;
+  const ptx = probe.getContext('2d', { willReadFrequently: true });
+  function glyphRenders(g) {
+    ptx.clearRect(0, 0, 32, 32);
+    ptx.font = '26px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+    ptx.textAlign = 'center';
+    ptx.textBaseline = 'middle';
+    ptx.fillStyle = '#00ff00';
+    ptx.fillText(g, 16, 16);
+    const d = ptx.getImageData(0, 0, 32, 32).data;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] > 40 && !(d[i] < 60 && d[i + 1] > 180 && d[i + 2] < 60)) return true;
+    }
+    return false;
+  }
+  const EMOJI = {};
+  for (const [name, cands] of Object.entries({
+    cat_idle: ['🐈', '🐱'], cat_run: ['🐈', '🐱'], cat_grumped: ['😾', '🙀', '🐱'],
+    dog_scaredy: ['🐕', '🐶'], dog_chill: ['🐕', '🐶'], dog_aggro: ['🐕', '🐶'],
+    dog_happy: ['🐕', '🐶'], dog_munch: ['🐕', '🐶'],
+    steak: ['🥩', '🍖'], tree: ['🌳', '🌲'], rock: ['🪨', '🌰'],
+  })) {
+    EMOJI[name] = forceVector ? null : (cands.find(glyphRenders) || null);
+  }
 
   function drawActor(name, x, y, size, flip = false, rot = 0, animT = 0) {
     if (atlas) {
@@ -910,7 +936,210 @@
         return;
       }
     }
-    drawEmoji(EMOJI[name] || EMOJI[name.replace(/_\d+$/, '')] || name, x, y, size, flip, rot);
+    if (name === 'sparkle') { drawSparkle(x, y, size, animT); return; }
+    const g = EMOJI[name] || EMOJI[name.replace(/_\d+$/, '')];
+    if (g) { drawEmoji(g, x, y, size, flip, rot); return; }
+    // no usable glyph on this device: canvas-drawn stand-ins
+    ctx.save();
+    ctx.translate(x, y);
+    if (rot) ctx.rotate(rot);
+    if (flip) ctx.scale(-1, 1);
+    const base = name.replace(/_\d+$/, '');
+    if (name.startsWith('cat')) drawVectorCat(size, name === 'cat_grumped');
+    else if (name.startsWith('dog')) drawVectorDog(size, name === 'dog_happy');
+    else if (base === 'tree') drawVectorTree(size);
+    else if (base === 'rock') drawVectorRock(size);
+    else if (name === 'steak') drawVectorSteak(size);
+    ctx.restore();
+  }
+
+  // ---------- vector stand-ins & sparkle ----------
+  function starPath(r) {
+    const inner = r * 0.3;
+    ctx.beginPath();
+    ctx.moveTo(0, -r);
+    for (let i = 0; i < 4; i++) {
+      const a = -Math.PI / 2 + i * Math.PI / 2;
+      const mid = a + Math.PI / 4, next = a + Math.PI / 2;
+      ctx.quadraticCurveTo(Math.cos(mid) * inner, Math.sin(mid) * inner, Math.cos(next) * r, Math.sin(next) * r);
+    }
+    ctx.closePath();
+  }
+
+  // gold 4-point star with a cream outline and hard drop shadow — reads
+  // against the grass far better than the old ✨ emoji did
+  function drawSparkle(x, y, size, animT) {
+    const r = size / 2, rot = animT * 0.8;
+    ctx.save();
+    ctx.translate(x, y);
+    const glow = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r * 2.1);
+    glow.addColorStop(0, 'rgba(255, 216, 77, 0.5)');
+    glow.addColorStop(1, 'rgba(255, 216, 77, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 2.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.save();
+    ctx.translate(2, 3.5);
+    ctx.rotate(rot);
+    starPath(r);
+    ctx.fillStyle = 'rgba(30, 70, 22, 0.4)';
+    ctx.fill();
+    ctx.restore();
+    ctx.rotate(rot);
+    starPath(r);
+    ctx.fillStyle = '#ffd84d';
+    ctx.fill();
+    ctx.strokeStyle = '#fff6e8';
+    ctx.lineWidth = Math.max(2, size * 0.08);
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+    ctx.fillStyle = '#fffdf5';
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawVectorCat(s, grumped) {
+    const u = s / 52;
+    const body = grumped ? '#8a93a5' : '#f5a33b';
+    const dark = grumped ? '#5c667a' : '#c9761e';
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.strokeStyle = body;
+    ctx.lineWidth = 6 * u;
+    ctx.beginPath();
+    ctx.moveTo(16 * u, 4 * u);
+    ctx.quadraticCurveTo(30 * u, 2 * u, 26 * u, -14 * u);
+    ctx.stroke();
+    ctx.fillStyle = dark;
+    for (const lx of [-12, -4, 6, 14]) ctx.fillRect((lx - 2.5) * u, 8 * u, 5 * u, 12 * u);
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.ellipse(2 * u, 2 * u, 19 * u, 12 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = dark;
+    ctx.lineWidth = 3 * u;
+    ctx.beginPath();
+    ctx.moveTo(6 * u, -8 * u); ctx.quadraticCurveTo(9 * u, -2 * u, 6 * u, 4 * u);
+    ctx.moveTo(14 * u, -6 * u); ctx.quadraticCurveTo(17 * u, -1 * u, 14 * u, 4 * u);
+    ctx.stroke();
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(-26 * u, -14 * u); ctx.lineTo(-23 * u, -27 * u); ctx.lineTo(-16 * u, -16 * u);
+    ctx.moveTo(-14 * u, -16 * u); ctx.lineTo(-9 * u, -27 * u); ctx.lineTo(-6 * u, -14 * u);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-16 * u, -6 * u, 12 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#31204a';
+    ctx.beginPath();
+    ctx.arc(-21 * u, -8 * u, 1.9 * u, 0, Math.PI * 2);
+    ctx.fill();
+    if (grumped) {
+      ctx.strokeStyle = '#31204a';
+      ctx.lineWidth = 1.8 * u;
+      ctx.beginPath();
+      ctx.moveTo(-25 * u, -13 * u); ctx.lineTo(-18 * u, -11 * u);
+      ctx.moveTo(-25 * u, 0); ctx.quadraticCurveTo(-22 * u, -3 * u, -18 * u, -1 * u);
+      ctx.stroke();
+    }
+    ctx.fillStyle = '#ff8ae0';
+    ctx.beginPath();
+    ctx.moveTo(-29.5 * u, -5 * u); ctx.lineTo(-25.5 * u, -5 * u); ctx.lineTo(-27.5 * u, -2 * u);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawVectorDog(s, happy) {
+    const u = s / 48;
+    const body = '#b9855a', dark = '#87603e';
+    ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.strokeStyle = body;
+    ctx.lineWidth = 5 * u;
+    ctx.beginPath();
+    ctx.moveTo(17 * u, 0);
+    ctx.quadraticCurveTo(26 * u, -4 * u, 24 * u, -13 * u);
+    ctx.stroke();
+    ctx.fillStyle = dark;
+    for (const lx of [-11, -3, 7, 15]) ctx.fillRect((lx - 2.5) * u, 8 * u, 5 * u, 12 * u);
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.ellipse(3 * u, 2 * u, 18 * u, 11 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-14 * u, -8 * u, 11 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(-24 * u, -5 * u, 7 * u, 5 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = dark;
+    ctx.beginPath();
+    ctx.ellipse(-8 * u, -12 * u, 4.5 * u, 8 * u, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(-30 * u, -6 * u, 2.4 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#31204a';
+    ctx.beginPath();
+    ctx.arc(-17 * u, -11 * u, 1.9 * u, 0, Math.PI * 2);
+    ctx.fill();
+    if (happy) {
+      ctx.fillStyle = '#ff8ae0';
+      ctx.beginPath();
+      ctx.ellipse(-22 * u, 2 * u, 3 * u, 5 * u, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  function drawVectorTree(s) {
+    const u = s / 116;
+    ctx.fillStyle = '#8a5f3c';
+    ctx.fillRect(-7 * u, 10 * u, 14 * u, 42 * u);
+    ctx.fillStyle = '#3e7a2a';
+    for (const [cx, cy, r] of [[-22, -8, 26], [22, -8, 26], [0, -30, 30], [0, 2, 28]]) {
+      ctx.beginPath();
+      ctx.arc(cx * u, cy * u, r * u, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#4f9636';
+    ctx.beginPath();
+    ctx.arc(-8 * u, -22 * u, 20 * u, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawVectorRock(s) {
+    const u = s / 60;
+    ctx.fillStyle = '#9aa2ad';
+    ctx.beginPath();
+    ctx.moveTo(-26 * u, 16 * u);
+    ctx.lineTo(-20 * u, -10 * u);
+    ctx.lineTo(-2 * u, -20 * u);
+    ctx.lineTo(20 * u, -8 * u);
+    ctx.lineTo(26 * u, 16 * u);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#7d8794';
+    ctx.beginPath();
+    ctx.moveTo(-2 * u, -20 * u);
+    ctx.lineTo(20 * u, -8 * u);
+    ctx.lineTo(26 * u, 16 * u);
+    ctx.lineTo(4 * u, 16 * u);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawVectorSteak(s) {
+    const u = s / 32;
+    ctx.fillStyle = '#c0392b';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14 * u, 9 * u, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff6e8';
+    ctx.lineWidth = 3 * u;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 14 * u, 9 * u, -0.4, 0.6, 2.6);
+    ctx.stroke();
   }
 
   // ---------- render ----------
@@ -968,11 +1197,7 @@
     // sparkles
     for (const s of state.sparkles) {
       const pulse = 1 + 0.18 * Math.sin(t * 4 + s.phase);
-      ctx.save();
-      ctx.shadowColor = 'rgba(255, 216, 77, 0.9)';
-      ctx.shadowBlur = 14;
       drawActor('sparkle', s.x, s.y + Math.sin(t * 2.5 + s.phase) * 4, 26 * pulse, false, 0, t + s.phase);
-      ctx.restore();
     }
 
     // steak pickups
