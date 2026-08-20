@@ -38,12 +38,25 @@ Each level adds more, faster dogs.
   and re-collect them. Get bitten with an empty butt and the grump takes over:
   you become a grumpy cat and retry the level.
 
+**Steaks 🥩:** a couple spawn per level (carry up to 2). Press E (or tap 🥩)
+to drop one — every grumpy dog nearby abandons what it's doing, mobs the
+steak, and munches for ~6 seconds. Even aggro dogs. Herd them into a huddle,
+then gas the whole crowd with one fart.
+
+**Obstacles:** trees and rocks block movement (fart gas passes through).
+Corner scaredy dogs against them, or break an aggro dog's chase around one.
+
 ## Tech
 
 - Single `index.html` — vanilla JS, canvas rendering, WebAudio synth SFX
-  (no audio assets), emoji sprites. No build step, no dependencies.
+  (no audio assets). No build step, no dependencies.
 - Works on desktop and mobile browsers; DPR-aware rendering, virtual joystick,
   `prefers-reduced-motion` respected (no screen shake).
+- **Sprite pipeline:** characters render through a sprite-atlas layer with
+  emoji fallbacks. Drop `assets/sprites.png` + `assets/sprites.json` next to
+  `index.html` and real art replaces the emoji with zero code changes —
+  see [ART-SPEC.md](ART-SPEC.md) for the full artist brief (sprite list,
+  sizes, naming, JSON schema).
 
 ## Release paths
 
@@ -63,9 +76,8 @@ progression, settings, gamepad support) than a prototype has.
 
 ## Roadmap ideas
 
-- Obstacles and yards to corner dogs in; dog breeds with behaviors (fast
-  chihuahua, oblivious bulldog, pack leader that re-grumps others)
-- Power-ups: chili flake (mega fart radius), catnip (speed), golden sparkle
-- Real sprite art instead of emoji (the drawing layer is one function:
-  `drawEmoji` — swap in sprite sheets there)
+- Dog breeds with behaviors (fast chihuahua, oblivious bulldog, pack leader
+  that re-grumps others)
+- More power-ups: chili flake (mega fart radius), catnip (speed), golden
+  sparkle
 - Gamepad support, timed/score modes, local co-op (two cats, one meadow)

@@ -111,6 +111,45 @@
   #fart-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #a03d88; }
   #fart-btn.empty { filter: grayscale(0.8) brightness(0.8); }
   #fart-btn .key-hint { font-family: var(--body); font-weight: 800; font-size: 11px; opacity: 0.75; }
+  /* ---------- Steak button ---------- */
+  #steak-btn {
+    position: fixed;
+    right: 34px;
+    bottom: 138px;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    border: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    font-size: 28px;
+    line-height: 1;
+    background: radial-gradient(circle at 35% 30%, #ffa584, var(--coral) 60%, #c94f2e);
+    box-shadow: 0 5px 0 #93361c, 0 9px 16px rgba(0,0,0,0.25);
+    cursor: pointer;
+    touch-action: none;
+  }
+  #steak-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #93361c; }
+  #steak-btn.empty { filter: grayscale(0.85) brightness(0.8); }
+  #steak-btn .badge {
+    position: absolute;
+    top: -4px;
+    right: -2px;
+    min-width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background: var(--plum);
+    color: var(--cream);
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #steak-btn .key-hint { font-family: var(--body); font-weight: 800; font-size: 10px; color: var(--plum); opacity: 0.75; }
   /* ---------- Overlays ---------- */
   .overlay {
     position: fixed;
@@ -201,6 +240,7 @@
 <div id="hud">
   <div class="hud-chip" id="level-chip">Level 1</div>
   <div class="hud-chip">✨ <span id="fuel-pips"></span></div>
+  <div class="hud-chip">🥩 <span id="steak-count" style="font-variant-numeric:tabular-nums">0</span></div>
   <div class="hud-chip">😾 <span id="dogs-left" style="font-variant-numeric:tabular-nums">0</span> grumpy</div>
   <div id="hud-spacer"></div>
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
@@ -208,6 +248,10 @@
 
 <button id="fart-btn" aria-label="Fart sparkles">
   FART!<span class="key-hint" id="fart-hint">SPACE</span>
+</button>
+
+<button id="steak-btn" aria-label="Drop a steak">
+  🥩<span class="key-hint" id="steak-hint">E</span><span class="badge" id="steak-badge">0</span>
 </button>
 
 <div class="overlay" id="title-overlay">
@@ -219,9 +263,10 @@
       <div><span class="glyph">💨</span><span>Chase down a grumpy dog and <strong>fart sparkles</strong> at it (costs 3 sparkles).</span></div>
       <div><span class="glyph">🐶</span><span>Sparkle-farted dogs become happy dogs. Cheer up every dog to win the level!</span></div>
       <div><span class="glyph">😠</span><span><strong>Watch out</strong> — some dogs are so grumpy they chase YOU. Get bitten and sparkles fall right out of your butt. Get bitten with none left and the grump takes over…</span></div>
+      <div><span class="glyph">🥩</span><span>Steaks lure every nearby grumpy dog into a snack huddle. Drop one, then gas the whole crowd at once.</span></div>
     </div>
     <button class="big-btn" id="start-btn">Let's go!</button>
-    <p class="keys-note" id="keys-note">WASD / arrows to move &nbsp;·&nbsp; SPACE to fart</p>
+    <p class="keys-note" id="keys-note">WASD / arrows to move &nbsp;·&nbsp; SPACE to fart &nbsp;·&nbsp; E drops a steak</p>
   </div>
 </div>
 
@@ -262,6 +307,8 @@
   const BITE_COST = 3;
   const START_FUEL = 3;
   const SPARKLE_COUNT = 16;
+  const STEAK_MAX = 2;
+  const LURE_RANGE = 520, LURE_LIFE = 6, MUNCH_DIST = 50;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
@@ -342,12 +389,32 @@
       [392, 330, 262, 196].forEach((f, i) => tone(f, 0.4, 'triangle', 0.12, i * 0.18));
       noiseBurst(0.6, 0.1, 500, 80);
     },
+    steak() { tone(392, 0.12, 'sine', 0.12); tone(294, 0.16, 'sine', 0.1, 0.06); },
+    drop() { tone(240, 0.12, 'sine', 0.12, 0, 130); },
+    chomp() { noiseBurst(0.06, 0.09, 1500, 300); },
   };
 
   // ---------- helpers ----------
   const rand = (a, b) => a + Math.random() * (b - a);
   const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const pointClear = (x, y, pad) =>
+    state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + pad) * (o.r + pad));
+  // push a moving circle out of any obstacle it overlaps, sliding along the edge
+  function collideCircle(e, r) {
+    for (const o of state.obstacles) {
+      const dx = e.x - o.x, dy = e.y - o.y;
+      const min = r + o.r, dd = dx * dx + dy * dy;
+      if (dd < min * min) {
+        const d = Math.sqrt(dd);
+        const nx = d > 0.001 ? dx / d : 1, ny = d > 0.001 ? dy / d : 0;
+        e.x = o.x + nx * min;
+        e.y = o.y + ny * min;
+        const dot = e.vx * nx + e.vy * ny;
+        if (dot < 0) { e.vx -= dot * nx; e.vy -= dot * ny; }
+      }
+    }
+  }
 
   // ---------- world decor (fixed per session) ----------
   const flowers = [], tufts = [];
@@ -366,6 +433,10 @@
     cat: { x: WORLD_W / 2, y: WORLD_H / 2, vx: 0, vy: 0, facing: -1, invuln: 0 },
     dogs: [],
     sparkles: [],
+    steakPickups: [],
+    lures: [],       // dropped steaks currently being mobbed
+    steaksHeld: 0,
+    obstacles: [],
     particles: [],
     floaties: [], // rising emoji (hearts, notes)
     clouds: [],   // active fart clouds
@@ -381,7 +452,7 @@
   function spawnSparkle() {
     for (let tries = 0; tries < 20; tries++) {
       const x = rand(80, WORLD_W - 80), y = rand(80, WORLD_H - 80);
-      if (dist2(x, y, state.cat.x, state.cat.y) > 300 * 300 || tries === 19) {
+      if ((dist2(x, y, state.cat.x, state.cat.y) > 300 * 300 && pointClear(x, y, 30)) || tries === 19) {
         state.sparkles.push({ x, y, phase: rand(0, Math.PI * 2) });
         return;
       }
@@ -403,6 +474,23 @@
     state.cat.x = WORLD_W / 2; state.cat.y = WORLD_H / 2;
     state.cat.vx = 0; state.cat.vy = 0;
     state.cat.invuln = 0;
+    state.steakPickups = [];
+    state.lures = [];
+    state.steaksHeld = 0;
+    // obstacles: trees and rocks to duck behind and corner dogs against
+    state.obstacles = [];
+    const obCount = 10 + Math.min(n, 6);
+    for (let i = 0; i < obCount; i++) {
+      const kind = Math.random() < 0.6 ? 'tree' : 'rock';
+      const r = kind === 'tree' ? 42 : 28;
+      for (let tries = 0; tries < 30; tries++) {
+        const x = rand(140, WORLD_W - 140), y = rand(140, WORLD_H - 140);
+        if (dist2(x, y, WORLD_W / 2, WORLD_H / 2) < 320 * 320) continue;
+        if (!state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + r + 90) ** 2)) continue;
+        state.obstacles.push({ x, y, r, kind, v: Math.floor(rand(0, 2)) });
+        break;
+      }
+    }
     const dogCount = 2 + n;
     const fleeSpeed = Math.min(200 + n * 18, 315);
     const chaseSpeed = Math.min(240 + n * 10, 330);
@@ -416,15 +504,26 @@
     for (let i = 0; i < dogCount; i++) {
       let x, y;
       do { x = rand(120, WORLD_W - 120); y = rand(120, WORLD_H - 120); }
-      while (dist2(x, y, state.cat.x, state.cat.y) < 450 * 450);
+      while (dist2(x, y, state.cat.x, state.cat.y) < 450 * 450 || !pointClear(x, y, 60));
       state.dogs.push({
         x, y, vx: 0, vy: 0, happy: false, facing: -1, temper: tempers[i],
         fleeSpeed, chaseSpeed, wanderA: rand(0, Math.PI * 2), wanderT: 0, bob: rand(0, Math.PI * 2),
       });
     }
+    const steakCount = n >= 5 ? 3 : 2;
+    for (let i = 0; i < steakCount; i++) {
+      for (let tries = 0; tries < 30; tries++) {
+        const x = rand(120, WORLD_W - 120), y = rand(120, WORLD_H - 120);
+        if (dist2(x, y, state.cat.x, state.cat.y) > 400 * 400 && pointClear(x, y, 40)) {
+          state.steakPickups.push({ x, y, phase: rand(0, Math.PI * 2) });
+          break;
+        }
+      }
+    }
     for (let i = 0; i < SPARKLE_COUNT; i++) spawnSparkle();
     hud.style.display = 'flex';
     fartBtn.style.display = 'flex';
+    steakBtn.style.display = 'flex';
     titleOverlay.classList.add('hidden');
     clearOverlay.classList.add('hidden');
     grumpOverlay.classList.add('hidden');
@@ -437,6 +536,7 @@
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     keys[e.key.toLowerCase()] = true;
     if (e.key === ' ' && !e.repeat) tryFart();
+    if (e.key.toLowerCase() === 'e' && !e.repeat) tryDropSteak();
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
@@ -468,6 +568,22 @@
   }
   canvas.addEventListener('pointerup', joyEnd);
   canvas.addEventListener('pointercancel', joyEnd);
+
+  // ---------- steak lure ----------
+  function tryDropSteak() {
+    if (state.mode !== 'playing') return;
+    ensureAudio();
+    if (state.steaksHeld <= 0) { sfx.dud(); return; }
+    state.steaksHeld--;
+    const c = state.cat;
+    state.lures.push({
+      x: clamp(c.x - c.facing * 46, 60, WORLD_W - 60),
+      y: clamp(c.y + 8, 60, WORLD_H - 60),
+      t: 0,
+    });
+    sfx.drop();
+    updateHud();
+  }
 
   // ---------- fart ----------
   function tryFart() {
@@ -525,12 +641,14 @@
     state.fuel -= lost;
     // knocked-out sparkles scatter onto the grass, re-collectable
     for (let i = 0; i < lost; i++) {
-      const a = rand(0, Math.PI * 2), r = rand(70, 150);
-      state.sparkles.push({
-        x: clamp(c.x + Math.cos(a) * r, 60, WORLD_W - 60),
-        y: clamp(c.y + Math.sin(a) * r, 60, WORLD_H - 60),
-        phase: rand(0, Math.PI * 2),
-      });
+      let sx = c.x, sy = c.y;
+      for (let tries = 0; tries < 8; tries++) {
+        const a = rand(0, Math.PI * 2), r = rand(70, 150);
+        sx = clamp(c.x + Math.cos(a) * r, 60, WORLD_W - 60);
+        sy = clamp(c.y + Math.sin(a) * r, 60, WORLD_H - 60);
+        if (pointClear(sx, sy, 30)) break;
+      }
+      state.sparkles.push({ x: sx, y: sy, phase: rand(0, Math.PI * 2) });
     }
     // knockback: cat away from dog, dog recoils
     const dl = Math.hypot(c.x - dog.x, c.y - dog.y) || 1;
@@ -550,6 +668,7 @@
     state.shake = reducedMotion ? 0 : 12;
     grumpOverlay.classList.remove('hidden');
     fartBtn.style.display = 'none';
+    steakBtn.style.display = 'none';
   }
 
   function levelClear() {
@@ -565,6 +684,7 @@
       'Tails: wagging. Mission: accomplished.'][state.level % 4];
     clearOverlay.classList.remove('hidden');
     fartBtn.style.display = 'none';
+    steakBtn.style.display = 'none';
   }
 
   // ---------- update ----------
@@ -596,6 +716,7 @@
     if (spd > CAT_SPEED * 1.4) { c.vx *= CAT_SPEED * 1.4 / spd; c.vy *= CAT_SPEED * 1.4 / spd; }
     c.x = clamp(c.x + c.vx * dt, 40, WORLD_W - 40);
     c.y = clamp(c.y + c.vy * dt, 40, WORLD_H - 40);
+    collideCircle(c, 24);
     if (Math.abs(c.vx) > 30) c.facing = c.vx > 0 ? 1 : -1;
 
     // sparkle trail while zooming
@@ -628,6 +749,21 @@
       }
     }
 
+    // steak pickups
+    if (state.steaksHeld < STEAK_MAX) {
+      for (let i = state.steakPickups.length - 1; i >= 0; i--) {
+        const s = state.steakPickups[i];
+        if (dist2(s.x, s.y, c.x, c.y) < 44 * 44) {
+          state.steakPickups.splice(i, 1);
+          state.steaksHeld++;
+          sfx.steak();
+          state.floaties.push({ x: c.x, y: c.y - 40, vy: -60, t: 0, life: 0.8, g: '🥩', s: 22 });
+          updateHud();
+          if (state.steaksHeld >= STEAK_MAX) break;
+        }
+      }
+    }
+
     // dogs
     for (const d of state.dogs) {
       d.bob += dt * (d.happy ? 9 : 5);
@@ -641,8 +777,34 @@
           state.floaties.push({ x: d.x, y: d.y - 30, vy: -50, t: 0, life: 1.1, g: Math.random() < 0.5 ? '❤️' : '🎵', s: 16 });
         }
       } else {
+        // a dropped steak trumps whatever a grumpy dog was doing
+        let lure = null, ld2 = LURE_RANGE * LURE_RANGE;
+        for (const L of state.lures) {
+          const lda = dist2(d.x, d.y, L.x, L.y);
+          if (lda < ld2) { ld2 = lda; lure = L; }
+        }
+        d.munching = false;
         const dd = dist2(d.x, d.y, c.x, c.y);
-        if (d.temper === 'aggro' && dd < AGGRO_RANGE * AGGRO_RANGE) {
+        if (lure) {
+          const dl = Math.sqrt(ld2) || 1;
+          if (dl < MUNCH_DIST) {
+            d.munching = true;
+            d.vx -= d.vx * 8 * dt; d.vy -= d.vy * 8 * dt;
+            if (Math.random() < dt * 2) {
+              sfx.chomp();
+              state.particles.push({
+                x: lure.x + rand(-12, 12), y: lure.y + rand(-6, 6),
+                vx: rand(-40, 40), vy: rand(-60, -20),
+                life: 0.4, t: 0, hue: 15, size: rand(2, 4),
+              });
+            }
+          } else {
+            const hx = (lure.x - d.x) / dl, hy = (lure.y - d.y) / dl;
+            const sp = Math.max(d.fleeSpeed, 230);
+            d.vx += (hx * sp - d.vx) * 4 * dt;
+            d.vy += (hy * sp - d.vy) * 4 * dt;
+          }
+        } else if (d.temper === 'aggro' && dd < AGGRO_RANGE * AGGRO_RANGE) {
           // hunt the cat
           const dl = Math.sqrt(dd) || 1;
           const hx = (c.x - d.x) / dl, hy = (c.y - d.y) / dl;
@@ -670,6 +832,7 @@
       if (d.x > WORLD_W - 60) { d.x = WORLD_W - 60; d.vx = -Math.abs(d.vx); d.wanderA = Math.PI; }
       if (d.y < 60) { d.y = 60; d.vy = Math.abs(d.vy); d.wanderA = Math.PI / 2; }
       if (d.y > WORLD_H - 60) { d.y = WORLD_H - 60; d.vy = -Math.abs(d.vy); d.wanderA = -Math.PI / 2; }
+      collideCircle(d, 22);
       if (Math.abs(d.vx) > 20) d.facing = d.vx > 0 ? 1 : -1;
     }
 
@@ -691,10 +854,60 @@
       state.clouds[i].t += dt;
       if (state.clouds[i].t >= FART_LIFE) state.clouds.splice(i, 1);
     }
+    for (let i = state.lures.length - 1; i >= 0; i--) {
+      state.lures[i].t += dt;
+      if (state.lures[i].t >= LURE_LIFE) state.lures.splice(i, 1);
+    }
 
     // camera
     state.cam.x = clamp(c.x - vw / 2, 0, Math.max(0, WORLD_W - vw));
     state.cam.y = clamp(c.y - vh / 2, 0, Math.max(0, WORLD_H - vh));
+  }
+
+  // ---------- sprites ----------
+  // Optional sprite atlas: drop assets/sprites.png + assets/sprites.json next to
+  // this file (see ART-SPEC.md). Any sprite missing from the atlas — or the whole
+  // atlas — falls back to emoji, so partial art deliveries are playable instantly.
+  let atlas = null;
+  (async () => {
+    try {
+      const res = await fetch('assets/sprites.json');
+      if (!res.ok) return;
+      const data = await res.json();
+      const img = new Image();
+      img.src = 'assets/' + ((data.meta && data.meta.image) || 'sprites.png');
+      await img.decode();
+      atlas = { img, frames: data.frames || {}, anims: data.anims || {} };
+    } catch { /* no atlas: emoji mode */ }
+  })();
+
+  const EMOJI = {
+    cat_idle: '🐈', cat_run: '🐈', cat_grumped: '😾',
+    dog_scaredy: '🐕', dog_chill: '🐕', dog_aggro: '🐕', dog_happy: '🐕', dog_munch: '🐕',
+    sparkle: '✨', steak: '🥩', tree: '🌳', rock: '🪨',
+  };
+
+  function drawActor(name, x, y, size, flip = false, rot = 0, animT = 0) {
+    if (atlas) {
+      let fr = null;
+      const anim = atlas.anims[name];
+      if (anim && anim.frames.length) {
+        fr = atlas.frames[anim.frames[Math.floor(animT * (anim.fps || 8)) % anim.frames.length]];
+      } else {
+        fr = atlas.frames[name] || atlas.frames[name + '_0'];
+      }
+      if (fr) {
+        ctx.save();
+        ctx.translate(x, y);
+        if (rot) ctx.rotate(rot);
+        if (flip) ctx.scale(-1, 1);
+        const sc = size / Math.max(fr.w, fr.h);
+        ctx.drawImage(atlas.img, fr.x, fr.y, fr.w, fr.h, -fr.w * sc / 2, -fr.h * sc / 2, fr.w * sc, fr.h * sc);
+        ctx.restore();
+        return;
+      }
+    }
+    drawEmoji(EMOJI[name] || EMOJI[name.replace(/_\d+$/, '')] || name, x, y, size, flip, rot);
   }
 
   // ---------- render ----------
@@ -755,8 +968,27 @@
       ctx.save();
       ctx.shadowColor = 'rgba(255, 216, 77, 0.9)';
       ctx.shadowBlur = 14;
-      drawEmoji('✨', s.x, s.y + Math.sin(t * 2.5 + s.phase) * 4, 26 * pulse);
+      drawActor('sparkle', s.x, s.y + Math.sin(t * 2.5 + s.phase) * 4, 26 * pulse, false, 0, t + s.phase);
       ctx.restore();
+    }
+
+    // steak pickups
+    for (const s of state.steakPickups) {
+      ctx.fillStyle = 'rgba(0,0,0,0.14)';
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y + 14, 16, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawActor('steak', s.x, s.y + Math.sin(t * 2.5 + s.phase) * 4, 32, false, 0, t);
+    }
+
+    // dropped lures shrink as they get eaten
+    for (const L of state.lures) {
+      const kk = clamp(1 - L.t / LURE_LIFE, 0, 1);
+      ctx.fillStyle = 'rgba(0,0,0,0.14)';
+      ctx.beginPath();
+      ctx.ellipse(L.x, L.y + 10, 18 * kk + 6, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawActor('steak', L.x, L.y, 38 * (0.5 + 0.5 * kk), false, 0, t);
     }
 
     // fart clouds
@@ -784,10 +1016,20 @@
       ctx.restore();
     }
 
-    // dogs
-    for (const d of state.dogs) {
+    // obstacles, dogs, and cat — y-sorted for depth
+    const c = state.cat;
+
+    const drawObstacle = (o) => {
+      ctx.fillStyle = 'rgba(0,0,0,0.16)';
+      ctx.beginPath();
+      ctx.ellipse(o.x, o.y + (o.kind === 'tree' ? 12 : 14), o.r * 1.15, o.r * 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (o.kind === 'tree') drawActor('tree_' + o.v, o.x, o.y - 34, 116);
+      else drawActor('rock_' + o.v, o.x, o.y - 4, 60);
+    };
+
+    const drawDog = (d) => {
       const hop = d.happy ? Math.abs(Math.sin(d.bob)) * 10 : Math.sin(d.bob) * 2;
-      // shadow
       ctx.fillStyle = 'rgba(0,0,0,0.16)';
       ctx.beginPath();
       ctx.ellipse(d.x, d.y + 24, 24, 8, 0, 0, Math.PI * 2);
@@ -801,9 +1043,12 @@
         ctx.arc(d.x, d.y - hop, d.temper === 'aggro' ? 36 : 32, 0, Math.PI * 2);
         ctx.fill();
       }
-      drawEmoji('🐕', d.x, d.y - hop, d.temper === 'aggro' ? 50 : 46, d.facing === 1);
+      const sprite = d.happy ? 'dog_happy' : d.munching ? 'dog_munch' : 'dog_' + d.temper;
+      drawActor(sprite, d.x, d.y - hop, d.temper === 'aggro' ? 50 : 46, d.facing === 1, 0, t + d.bob);
       if (d.happy) {
         drawEmoji('😊', d.x + 24, d.y - 38 - hop, 17);
+      } else if (d.munching) {
+        drawEmoji('😋', d.x + 22, d.y - 42 - hop + Math.sin(t * 7 + d.bob) * 2, 18);
       } else if (d.temper === 'aggro') {
         drawEmoji('💢', d.x + 26, d.y - 40 - hop + Math.sin(t * 8 + d.bob) * 3, 24);
         drawEmoji('😤', d.x - 4, d.y - 54 - hop, 20);
@@ -813,41 +1058,53 @@
         drawEmoji('💢', d.x + 24, d.y - 38 - hop + Math.sin(t * 6 + d.bob) * 2, 18);
         drawEmoji('☁️', d.x - 2, d.y - 52 - hop, 24);
       }
-    }
+    };
 
-    // cat
-    const c = state.cat;
-    const cSpd = Math.hypot(c.vx, c.vy);
-    const lean = clamp(c.vx / 900, -0.18, 0.18);
-    ctx.fillStyle = 'rgba(0,0,0,0.16)';
-    ctx.beginPath();
-    ctx.ellipse(c.x, c.y + 26, 26, 8, 0, 0, Math.PI * 2);
-    ctx.fill();
-    const bounce = cSpd > 40 ? Math.abs(Math.sin(t * 14)) * 5 : Math.sin(t * 2) * 1.5;
-    // butt glow when fart is ready
-    if (state.fuel >= FART_COST) {
-      const gl = ctx.createRadialGradient(c.x - c.facing * 22, c.y + 8, 2, c.x - c.facing * 22, c.y + 8, 26);
-      gl.addColorStop(0, `hsla(${(t * 240) % 360}, 95%, 72%, 0.75)`);
-      gl.addColorStop(1, 'hsla(315, 95%, 72%, 0)');
-      ctx.fillStyle = gl;
+    const drawCat = () => {
+      const cSpd = Math.hypot(c.vx, c.vy);
+      const lean = clamp(c.vx / 900, -0.18, 0.18);
+      ctx.fillStyle = 'rgba(0,0,0,0.16)';
       ctx.beginPath();
-      ctx.arc(c.x - c.facing * 22, c.y + 8, 26, 0, Math.PI * 2);
+      ctx.ellipse(c.x, c.y + 26, 26, 8, 0, 0, Math.PI * 2);
       ctx.fill();
-    }
-    if (state.mode === 'grumped') {
-      // the grump has taken over
-      ctx.fillStyle = 'rgba(90, 100, 114, 0.3)';
-      ctx.beginPath();
-      ctx.arc(c.x, c.y, 36, 0, Math.PI * 2);
-      ctx.fill();
-      drawEmoji('😾', c.x, c.y, 48);
-      drawEmoji('☁️', c.x - 2, c.y - 46, 26);
-    } else {
-      // blink while invulnerable after a bite
-      if (c.invuln <= 0 || Math.sin(t * 30) > -0.3) {
-        drawEmoji('🐈', c.x, c.y - bounce, 52, c.facing === 1, lean);
+      const bounce = cSpd > 40 ? Math.abs(Math.sin(t * 14)) * 5 : Math.sin(t * 2) * 1.5;
+      // butt glow when fart is ready
+      if (state.mode !== 'grumped' && state.fuel >= FART_COST) {
+        const gl = ctx.createRadialGradient(c.x - c.facing * 22, c.y + 8, 2, c.x - c.facing * 22, c.y + 8, 26);
+        gl.addColorStop(0, `hsla(${(t * 240) % 360}, 95%, 72%, 0.75)`);
+        gl.addColorStop(1, 'hsla(315, 95%, 72%, 0)');
+        ctx.fillStyle = gl;
+        ctx.beginPath();
+        ctx.arc(c.x - c.facing * 22, c.y + 8, 26, 0, Math.PI * 2);
+        ctx.fill();
       }
+      if (state.mode === 'grumped') {
+        // the grump has taken over
+        ctx.fillStyle = 'rgba(90, 100, 114, 0.3)';
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 36, 0, Math.PI * 2);
+        ctx.fill();
+        drawActor('cat_grumped', c.x, c.y, 48);
+        drawEmoji('☁️', c.x - 2, c.y - 46, 26);
+      } else if (c.invuln <= 0 || Math.sin(t * 30) > -0.3) {
+        // blink while invulnerable after a bite
+        drawActor(cSpd > 60 ? 'cat_run' : 'cat_idle', c.x, c.y - bounce, 52, c.facing === 1, lean, t);
+      }
+    };
+
+    const ents = [];
+    for (const o of state.obstacles) ents.push({ y: o.y, draw: () => drawObstacle(o) });
+    for (const d of state.dogs) ents.push({ y: d.y, draw: () => drawDog(d) });
+    ents.push({ y: c.y, draw: drawCat });
+    ents.sort((a, b) => a.y - b.y);
+    for (const e of ents) e.draw();
+
+    // floaties (hearts, notes, impact stars)
+    for (const f of state.floaties) {
+      ctx.globalAlpha = clamp(1 - f.t / f.life, 0, 1);
+      drawEmoji(f.g, f.x, f.y, f.s);
     }
+    ctx.globalAlpha = 1;
 
     ctx.restore();
 
@@ -868,6 +1125,9 @@
   // ---------- HUD ----------
   const hud = document.getElementById('hud');
   const fartBtn = document.getElementById('fart-btn');
+  const steakBtn = document.getElementById('steak-btn');
+  const steakCount = document.getElementById('steak-count');
+  const steakBadge = document.getElementById('steak-badge');
   const titleOverlay = document.getElementById('title-overlay');
   const clearOverlay = document.getElementById('clear-overlay');
   const grumpOverlay = document.getElementById('grump-overlay');
@@ -895,19 +1155,25 @@
       p.className = 'pip' + (i < state.fuel ? (ready ? ' lit ready' : ' lit') : '');
     });
     fartBtn.classList.toggle('empty', !ready);
+    steakCount.textContent = state.steaksHeld;
+    steakBadge.textContent = state.steaksHeld;
+    steakBtn.classList.toggle('empty', state.steaksHeld <= 0);
   }
 
   document.getElementById('start-btn').addEventListener('click', () => { ensureAudio(); startLevel(1); });
   document.getElementById('next-btn').addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
   document.getElementById('retry-btn').addEventListener('click', () => { ensureAudio(); startLevel(state.level); });
   fartBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryFart(); });
+  steakBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryDropSteak(); });
   document.getElementById('mute-btn').addEventListener('click', (e) => {
     muted = !muted;
     e.currentTarget.textContent = muted ? '🔇' : '🔊';
   });
-  if (!isTouch) document.getElementById('fart-hint').textContent = 'SPACE';
-  else document.getElementById('fart-hint').textContent = 'TAP';
-  if (isTouch) document.getElementById('keys-note').textContent = 'Drag anywhere to scamper · tap FART! to fart';
+  if (isTouch) {
+    document.getElementById('fart-hint').textContent = 'TAP';
+    document.getElementById('steak-hint').textContent = 'TAP';
+    document.getElementById('keys-note').textContent = 'Drag anywhere to scamper · tap FART! to fart · tap 🥩 to drop a steak';
+  }
 
   // ---------- main loop ----------
   let last = performance.now();
@@ -921,7 +1187,7 @@
   requestAnimationFrame(frame);
 
   // debug/test handle
-  window.__sb = { state, startLevel };
+  window.__sb = { state, startLevel, tryFart, tryDropSteak };
 })();
 </script>
 </body>
