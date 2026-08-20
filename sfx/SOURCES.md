@@ -6,8 +6,8 @@ attribution, but the recordists are credited below anyway. The files embedded in
 `index.html` are Freesound's own MP3 preview renders of the original uploads.
 
 Clips marked ✅ are currently embedded (base64) in `index.html`; the rest are
-shortlisted candidates, all previewable in `sfx/soundboard.html`. Freesound #104365
-(the squeaking door) is wired to the gate's opening creak; the other gate clips
+shortlisted candidates, all previewable in `sfx/soundboard.html`. Freesound #104365 (the squeaking
+door) and #682775 (metal gate) are wired to the gate's opening creak; the other gate clips
 are the closing clunk.
 
 
@@ -46,7 +46,7 @@ are the closing clunk.
 | ✅ | [104365](https://freesound.org/people/RutgerMuller/sounds/104365/) | Squeaking Metal Closet Door in Basement 3.aif | RutgerMuller | 1.6s |
 | ✅ | [404069](https://freesound.org/people/swordofkings128/sounds/404069/) | Backyard gate close | swordofkings128 | 2.4s |
 |  | [106116](https://freesound.org/people/j1987/sounds/106116/) | metalgate.wav | j1987 | 1.2s |
-|  | [682775](https://freesound.org/people/thomasanthony321/sounds/682775/) | Metal gate closing.WAV | thomasanthony321 | 3.7s |
+| ✅ | [682775](https://freesound.org/people/thomasanthony321/sounds/682775/) | Metal gate closing.WAV | thomasanthony321 | 3.7s |
 |  | [232895](https://freesound.org/people/xavimuse/sounds/232895/) | Closing door with reverb | xavimuse | 2.1s |
 |  | [182324](https://freesound.org/people/simplen00b/sounds/182324/) | close1.wav | simplen00b | 2.4s |
 |  | [530061](https://freesound.org/people/magnuswaker/sounds/530061/) | Gates of Hell 2 (Gate Slam 2) | magnuswaker | 2.7s |
