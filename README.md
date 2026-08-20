@@ -23,8 +23,11 @@ or serve it (needed for some browsers' autoplay/audio policies):
 npx serve .
 ```
 
-**Controls:** WASD / arrow keys to move, SPACE to fart. On touch devices, drag
-anywhere to scamper and tap the FART! button.
+**Controls:** WASD / arrow keys to move, SPACE to fart, E to drop a steak. On
+touch devices, drag anywhere to scamper and tap the FART! / 🥩 buttons. Or
+pair a Bluetooth gamepad (Xbox, PlayStation, MFi — works in iPad Safari too):
+left stick or d-pad to move, A / R2 to fart, B / X to drop a steak, A or
+Start on menus.
 
 **Rules:** sparkles are worth 1 fuel each, a fart costs 3, and only grumpy dogs
 caught inside the rainbow cloud convert. You start each level with 3 fuel.
@@ -82,4 +85,4 @@ progression, settings, gamepad support) than a prototype has.
   that re-grumps others)
 - More power-ups: chili flake (mega fart radius), catnip (speed), golden
   sparkle
-- Gamepad support, timed/score modes, local co-op (two cats, one meadow)
+- Timed/score modes, local co-op (two cats, one meadow)
