@@ -47,10 +47,32 @@ sparkle deploy
 That's a `git fetch` + `git reset --hard origin/main` of the checkout —
 nothing else. No build, no restart, no reload.
 
+## Shared art review (optional)
+
+The sprite manager (`https://sparkle.lab980.com/tools/sprite-manager.html`)
+can run against a shared store so the artist's uploads and everyone's
+✓ / ✗ reviews are visible to the whole team — still no app process. nginx's
+WebDAV module handles writes (`PUT`/`DELETE`) and `autoindex_format json`
+handles listings; files live in `/var/lib/sparkle-art/` (outside the checkout,
+so `sparkle deploy` never touches them); access is one htpasswd behind basic
+auth — everyone in it can upload and review.
+
+```bash
+sparkle art-setup           # store dirs, nginx snippet, vhost include, reload
+sparkle art-user ivy        # prompts for a password; repeat per person
+sparkle art-user bob --delete
+```
+
+`art-setup` is idempotent and safe on the live vhost: the `/art/` location
+lives in `snippets/sparkle-art.conf` and gets `include`d into the existing
+server blocks (certbot owns that file after TLS, so it is edited in place,
+not regenerated). Without `art-setup`, the tool quietly falls back to
+local-only mode (uploads stay in that person's browser).
+
 ## Check it
 
 ```bash
-sparkle status        # HEAD commit, live HTTP probe, cert days remaining
+sparkle status        # HEAD commit, live probe, art-store state, cert days
 health-check --site sparkle   # the droplet-wide auditor also covers it
 ```
 

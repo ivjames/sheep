@@ -62,7 +62,10 @@ Corner scaredy dogs against them, or break an aggro dog's chase around one.
 - **Sprite manager:** open [tools/sprite-manager.html](tools/sprite-manager.html)
   in a browser to track and assemble the art — a grid of frame slots per sprite,
   drag-and-drop uploads, live animation previews, and one-click export of the
-  packed `sprites.png` + `sprites.json`. Uploads autosave in the browser.
+  packed `sprites.png` + `sprites.json`. On the live site it runs against a
+  shared store (nginx WebDAV, basic auth — see [DEPLOY.md](DEPLOY.md)) so the
+  team uploads and reviews the same art; opened locally it falls back to
+  browser-only autosave.
 
 ## Release paths
 

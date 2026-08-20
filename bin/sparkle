@@ -10,6 +10,10 @@
 #                      certbot, /usr/local/bin symlink. Idempotent.
 #   sparkle deploy     sync this checkout to origin/main (fetch + hard reset)
 #   sparkle status     HEAD, live-site probe, cert days remaining
+#   sparkle art-setup  enable the shared art store (/art/): WebDAV + JSON
+#                      autoindex under basic auth, files in /var/lib/sparkle-art
+#                      — still no app process. Idempotent.
+#   sparkle art-user   add/update (or --delete) a user in the art htpasswd
 #
 # Env overrides:
 #   SPARKLE_FQDN     default sparkle.lab980.com
@@ -40,10 +44,16 @@ Usage:
   sparkle setup [--no-dns] [--no-tls] [--ip IP]   provision DNS + vhost + TLS
   sparkle deploy                                  sync checkout to origin/main
   sparkle status                                  HEAD + live probe + cert
+  sparkle art-setup                               enable shared art store (/art/)
+  sparkle art-user NAME [--delete]                manage art-store credentials
 
 Env: SPARKLE_FQDN (default sparkle.lab980.com), SPARKLE_BRANCH (default main).
 USAGE
 }
+
+ART_DIR="/var/lib/sparkle-art"
+ART_HTPASSWD="/etc/nginx/sparkle-art.htpasswd"
+ART_SNIPPET="/etc/nginx/snippets/sparkle-art.conf"
 
 cmd_setup() {
   local DO_DNS=1 DO_TLS=1 IP=""
@@ -169,12 +179,111 @@ cmd_deploy() {
   log " index.html is sent with Cache-Control: no-cache, so it's live now.)"
 }
 
+# Shared art store: the sprite manager (tools/sprite-manager.html) talks to
+# /art/ with plain fetch — PUT/DELETE via nginx's WebDAV module, listings via
+# autoindex_format json. Files live outside the checkout so `sparkle deploy`
+# (hard reset) never touches them. Basic auth is the whole access model: one
+# htpasswd, everyone in it can upload and review.
+cmd_art_setup() {
+  [ "$(id -u)" -eq 0 ] || die "art-setup must run as root."
+  nginx -V 2>&1 | grep -q 'http_dav_module' \
+    || die "this nginx lacks http_dav_module (need PUT/DELETE for /art/). Install Ubuntu's nginx-full."
+
+  log "art store: $ART_DIR (frames/ + reviews/)"
+  mkdir -p "$ART_DIR/frames" "$ART_DIR/reviews"
+  chown -R www-data:www-data "$ART_DIR"
+  chmod 750 "$ART_DIR"
+
+  if [ ! -f "$ART_HTPASSWD" ]; then
+    install -m 640 -g www-data /dev/null "$ART_HTPASSWD"
+    log "created empty $ART_HTPASSWD — add people with: sparkle art-user NAME"
+  fi
+
+  # The location lives in a snippet so it can be injected into the live vhost
+  # (which certbot owns after TLS) without regenerating it from the template.
+  log "nginx: writing $ART_SNIPPET"
+  cat > "$ART_SNIPPET" <<EOF
+# Shared art store for tools/sprite-manager.html — managed by \`sparkle art-setup\`.
+# nginx-only backend: WebDAV writes + JSON directory listings, basic auth.
+# Uploads live outside the git checkout so deploys never touch them.
+location ^~ /art/ {
+    alias $ART_DIR/;
+    auth_basic "Sparkle Butt art review";
+    auth_basic_user_file $ART_HTPASSWD;
+    autoindex on;
+    autoindex_format json;
+    dav_methods PUT DELETE;
+    create_full_put_path on;
+    client_max_body_size 8m;
+    include snippets/lab980-security-headers.conf;
+    add_header Cache-Control "no-cache" always;
+}
+EOF
+
+  local conf="/etc/nginx/sites-available/$FQDN"
+  [ -f "$conf" ] || die "vhost $conf not found — run 'sparkle setup' first."
+  if grep -q 'snippets/sparkle-art.conf' "$conf"; then
+    log "nginx: $conf already includes the art snippet"
+  else
+    # After every server_name line, so both the :80 and certbot's :443 block
+    # get it. certbot only rewrites its own cert lines on renew, so this edit
+    # survives.
+    sed -i "s|^\([[:space:]]*\)server_name $FQDN;|&\n\1include snippets/sparkle-art.conf;|" "$conf"
+    grep -q 'snippets/sparkle-art.conf' "$conf" \
+      || die "couldn't inject the include into $conf — add 'include snippets/sparkle-art.conf;' to its server block(s) by hand."
+    log "nginx: injected art snippet include into $conf"
+  fi
+  nginx -t && systemctl reload nginx
+  log "Done. Store: https://$FQDN/art/  Tool: https://$FQDN/tools/sprite-manager.html"
+  [ -s "$ART_HTPASSWD" ] || warn "htpasswd is empty — nobody can sign in yet. Run: sparkle art-user NAME"
+}
+
+cmd_art_user() {
+  [ "$(id -u)" -eq 0 ] || die "art-user must run as root."
+  local NAME="" DELETE=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --delete) DELETE=1; shift;;
+      -*) die "unknown art-user option: $1";;
+      *) [ -z "$NAME" ] || die "one name at a time."; NAME="$1"; shift;;
+    esac
+  done
+  [ -n "$NAME" ] || die "usage: sparkle art-user NAME [--delete]"
+  printf '%s' "$NAME" | grep -Eq '^[A-Za-z0-9._-]+$' || die "name must be [A-Za-z0-9._-]+"
+  [ -f "$ART_HTPASSWD" ] || die "no $ART_HTPASSWD — run 'sparkle art-setup' first."
+
+  if [ "$DELETE" -eq 1 ]; then
+    sed -i "/^$NAME:/d" "$ART_HTPASSWD"
+    log "removed $NAME (if present). Current users:"
+    cut -d: -f1 "$ART_HTPASSWD" | sed 's/^/  /'
+    return
+  fi
+
+  local pass pass2
+  read -rsp "Password for $NAME: " pass; echo >&2
+  read -rsp "Again: " pass2; echo >&2
+  [ "$pass" = "$pass2" ] || die "passwords don't match."
+  [ -n "$pass" ] || die "empty password."
+  local hash
+  hash="$(openssl passwd -apr1 "$pass")"
+  sed -i "/^$NAME:/d" "$ART_HTPASSWD"
+  printf '%s:%s\n' "$NAME" "$hash" >> "$ART_HTPASSWD"
+  log "$NAME can now sign in at https://$FQDN/tools/sprite-manager.html"
+}
+
 cmd_status() {
   cd "$ROOT"
   printf 'checkout:  %s  %s\n' "$(git rev-parse --short HEAD)" "$(git log -1 --format=%s)"
   local code
   code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$FQDN/" || true)"
   printf 'live:      https://%s/  ->  HTTP %s\n' "$FQDN" "${code:-unreachable}"
+  local art
+  art="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "https://$FQDN/art/frames/" || true)"
+  case "$art" in
+    401) printf 'art store: enabled (auth required, %s user(s))\n' "$( [ -r "$ART_HTPASSWD" ] && grep -c . "$ART_HTPASSWD" || echo '?')";;
+    404) printf 'art store: not enabled (run: sparkle art-setup)\n';;
+    *)   printf 'art store: /art/frames/ -> HTTP %s\n' "${art:-unreachable}";;
+  esac
   local pem="/etc/letsencrypt/live/$FQDN/cert.pem"
   if [ -r "$pem" ]; then
     local end days
@@ -187,9 +296,11 @@ cmd_status() {
 }
 
 case "${1:-}" in
-  setup)  shift; cmd_setup "$@";;
-  deploy) shift; cmd_deploy "$@";;
-  status) shift; cmd_status "$@";;
+  setup)     shift; cmd_setup "$@";;
+  deploy)    shift; cmd_deploy "$@";;
+  status)    shift; cmd_status "$@";;
+  art-setup) shift; cmd_art_setup "$@";;
+  art-user)  shift; cmd_art_user "$@";;
   -h|--help|help|"") usage;;
   *) die "unknown command: $1 (see --help)";;
 esac
