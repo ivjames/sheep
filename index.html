@@ -63,13 +63,41 @@
     white-space: nowrap;
   }
   #hud-spacer { flex: 1; }
-  #mode-btn, #mute-btn {
+  #level-chip, #mode-btn, #mute-btn {
     pointer-events: auto;
     cursor: pointer;
     border: 0;
     font: inherit;
     color: inherit;
   }
+  /* dev level-skip picker, hangs under the level chip */
+  #level-picker {
+    position: fixed;
+    top: 52px;
+    left: 14px;
+    z-index: 45;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 10px;
+    background: var(--plum);
+    border-radius: 18px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+  }
+  #level-picker button {
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--cream);
+    background: rgba(255, 246, 232, 0.12);
+    border: 0;
+    border-radius: 999px;
+    padding: 7px 12px;
+    min-width: 46px;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  #level-picker button:hover { background: var(--gold); color: var(--plum); }
   /* ---------- Command buttons ---------- */
   /* a compact 3-column pad, bottom-center:
        COME BY  STEADY  AWAY
@@ -260,13 +288,16 @@
 <canvas id="game"></canvas>
 
 <div id="hud">
-  <div class="hud-chip" id="level-chip">Level 1</div>
+  <button class="hud-chip" id="level-chip" aria-label="Jump to level">Level 1</button>
   <div class="hud-chip">🐑 <span id="sheep-count" style="font-variant-numeric:tabular-nums">0/0</span> penned</div>
   <div class="hud-chip">⏱ <span id="time-chip" style="font-variant-numeric:tabular-nums">0:00</span></div>
   <div id="hud-spacer"></div>
   <button class="hud-chip" id="mode-btn" aria-label="Switch input mode">🕹️ drag</button>
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
 </div>
+
+<!-- dev shortcut: jump between levels for stress-testing -->
+<div id="level-picker" class="hidden"></div>
 
 <div id="cmd-ui">
   <button class="cmd-btn" data-cmd="cb">🌀 COME BY <span class="key-hint">1</span></button>
@@ -1902,6 +1933,27 @@
     toast(state.input === 'drag'
       ? '🎯 Guide mode — the dog chases your finger'
       : '🗣️ Command mode — whistle the dog around');
+  });
+
+  // dev shortcut: tap the level chip to jump between levels by tens
+  const levelPicker = document.getElementById('level-picker');
+  for (let n = 0; n <= 100; n += 10) {
+    const lv = n || 1;
+    const b = document.createElement('button');
+    b.textContent = lv;
+    b.addEventListener('click', () => {
+      levelPicker.classList.add('hidden');
+      ensureAudio();
+      startLevel(lv);
+    });
+    levelPicker.appendChild(b);
+  }
+  levelChip.addEventListener('click', () => {
+    levelPicker.classList.toggle('hidden');
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (levelPicker.contains(e.target) || levelChip.contains(e.target)) return;
+    levelPicker.classList.add('hidden');
   });
 
   const startDragBtn = document.getElementById('start-drag-btn');
