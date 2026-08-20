@@ -70,33 +70,6 @@
     font: inherit;
     color: inherit;
   }
-  /* ---------- Bark button ---------- */
-  #bark-btn {
-    position: fixed;
-    right: 22px;
-    bottom: 26px;
-    width: 96px;
-    height: 96px;
-    border-radius: 50%;
-    border: 0;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 0;
-    background: radial-gradient(circle at 35% 30%, #a8e4ff, var(--sky) 60%, #3d9fd6);
-    color: var(--plum);
-    font-family: var(--display);
-    font-weight: 700;
-    font-size: 19px;
-    letter-spacing: 0.04em;
-    box-shadow: 0 6px 0 #2a6f99, 0 10px 18px rgba(0,0,0,0.25);
-    cursor: pointer;
-    touch-action: none;
-    z-index: 20;
-  }
-  #bark-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #2a6f99; }
-  #bark-btn .key-hint { font-family: var(--body); font-weight: 800; font-size: 11px; opacity: 0.75; }
   /* ---------- Command buttons ---------- */
   /* a compact 3-column pad, bottom-center:
        COME BY  STEADY  AWAY
@@ -118,7 +91,6 @@
   @media (max-width: 700px) {
     #cmd-ui { gap: 7px; }
     #cmd-ui .cmd-btn { font-size: 12.5px; padding: 9px 8px; gap: 5px; white-space: nowrap; }
-    body.cmd-mode #bark-btn { bottom: 178px; width: 84px; height: 84px; font-size: 17px; }
   }
   /* no keyboard, no key hints */
   @media (pointer: coarse) {
@@ -284,10 +256,6 @@
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
 </div>
 
-<button id="bark-btn" aria-label="Bark">
-  BARK!<span class="key-hint" id="bark-hint">SPACE</span>
-</button>
-
 <div id="cmd-ui">
   <button class="cmd-btn" data-cmd="cb">🌀 COME BY <span class="key-hint">1</span></button>
   <button class="cmd-btn" data-cmd="lie">✋ STEADY <span class="key-hint">2</span></button>
@@ -306,14 +274,14 @@
       <div><span class="glyph">🐕</span><span>You're the sheepdog. Sheep drift away from you — use that pressure to steer the flock.</span></div>
       <div><span class="glyph">⛩️</span><span>Push every sheep through the <strong>gate</strong> into the pen to clear the level.</span></div>
       <div><span class="glyph">🐏</span><span><strong>Defiant sheep</strong> barely care about you. They plant their hooves and stray from the flock. They don't bite — they're just stubborn.</span></div>
-      <div><span class="glyph">📣</span><span><strong>BARK</strong> for a burst of pressure — it's the only thing that moves a planted sheep.</span></div>
+      <div><span class="glyph">📣</span><span><strong>Charge</strong> right at a sheep and the dog <strong>barks</strong> — a burst of pressure, and the only thing that moves a planted sheep.</span></div>
       <div><span class="glyph">🗣️</span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em>, <em>easy</em>, <em>steady</em>, <em>to me</em> (call off), <em>that'll do</em>.</span></div>
     </div>
     <div class="mode-row">
       <button class="big-btn" id="start-drag-btn">🕹️ Drag to herd<span class="sub">steer the dog yourself</span></button>
       <button class="big-btn alt" id="start-cmd-btn">🗣️ Command mode<span class="sub">whistle the dog around</span></button>
     </div>
-    <p class="keys-note" id="keys-note">WASD / arrows to run · SPACE barks · 1–7 call commands · swap modes any time</p>
+    <p class="keys-note" id="keys-note">WASD / arrows to run · charge a sheep to bark · 1–7 call commands · swap modes any time</p>
     <p class="build-tag" id="build-tag"></p>
   </div>
 </div>
@@ -352,7 +320,9 @@
   const SEP_RANGE = 34, COH_RANGE = 190;
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const MERGE_REACH = 520;        // stray sheep feel the mob's pull out to here
-  const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.55;
+  const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
+  const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
+  const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
   const GATE_W = 112;
   const GATE_PULL = 260;          // gate suction radius (training wheels, low levels)
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -694,7 +664,6 @@
     state.barksUsed = 0;
 
     hud.style.display = 'flex';
-    barkBtn.style.display = 'flex';
     titleOverlay.classList.add('hidden');
     clearOverlay.classList.add('hidden');
     applyInputMode();
@@ -702,7 +671,7 @@
     toast('🐑 Herd all ' + count + ' sheep through the gate!');
     if (defiantCount && !state.defiantSeen) {
       state.defiantSeen = true;
-      setTimeout(() => toast('🐏 A defiant sheep joined the flock — BARK to budge it!'), 3400);
+      setTimeout(() => toast('🐏 A defiant sheep joined the flock — charge it to bark it loose!'), 3400);
     }
   }
 
@@ -712,7 +681,6 @@
   addEventListener('keydown', (e) => {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     keys[e.key.toLowerCase()] = true;
-    if (e.key === ' ' && !e.repeat) tryBark();
     if (!e.repeat && CMD_KEYS[e.key] && state.input === 'cmd') issueCommand(CMD_KEYS[e.key]);
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
@@ -774,7 +742,7 @@
   addEventListener('gamepadconnected', (e) => {
     toast('🎮 ' + (e.gamepad.id.split('(')[0].trim() || 'Controller') + ' connected');
     document.getElementById('keys-note').textContent =
-      '🎮 Stick to run · Ⓐ barks · in command mode: R1 come by, L1 away, Ⓧ walk on, Ⓑ steady, Ⓨ that\'ll do';
+      '🎮 Stick to run · charge a sheep to bark · in command mode: R1 come by, L1 away, Ⓧ walk on, Ⓑ steady, Ⓨ that\'ll do';
   });
   addEventListener('gamepaddisconnected', () => { pad.x = 0; pad.y = 0; pad.prev = []; });
 
@@ -794,7 +762,6 @@
     if (down[13]) pad.y += 1;
     const hit = (i) => down[i] && !pad.prev[i];
     if (state.mode === 'playing') {
-      if (hit(0)) tryBark();                              // A
       if (state.input === 'cmd') {
         if (hit(5)) issueCommand('cb');                   // R1
         if (hit(4)) issueCommand('aw');                   // L1
@@ -867,9 +834,10 @@
   }
 
   // ---------- bark ----------
+  // No bark button: the dog barks on its own when it charges a sheep
+  // at speed and gets right up close (see updateDog).
   function tryBark() {
     if (state.mode !== 'playing') return;
-    ensureAudio();
     const d = state.dog;
     if (d.barkCd > 0) return;
     d.barkCd = BARK_COOLDOWN;
@@ -974,6 +942,19 @@
     const dspd = Math.hypot(d.vx, d.vy);
     if (dspd > 25) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), 11 * dt);
     d.bob += dt * (dspd > 40 ? 12 : 3);
+    // charging bark: rush straight at a sheep and the dog lets one off
+    if (d.barkCd <= 0 && dspd > BARK_CHARGE_SPEED) {
+      for (const s of state.sheep) {
+        if (s.penned) continue;
+        const dx = s.x - d.x, dy = s.y - d.y;
+        const dd = Math.hypot(dx, dy);
+        if (dd < BARK_CHARGE_RANGE && dd > 0.01 &&
+            (d.vx * dx + d.vy * dy) / (dspd * dd) > 0.55) {
+          tryBark();
+          break;
+        }
+      }
+    }
   }
 
   // ---------- flocking helpers ----------
@@ -1195,7 +1176,6 @@
       'The gate swings shut. The flock is home.',
       'Ewe did it. Every last one.'][state.level % 4];
     clearOverlay.classList.remove('hidden');
-    barkBtn.style.display = 'none';
     cmdUi.style.display = 'none';
   }
 
@@ -1713,7 +1693,6 @@
 
   // ---------- HUD & buttons ----------
   const hud = document.getElementById('hud');
-  const barkBtn = document.getElementById('bark-btn');
   const cmdUi = document.getElementById('cmd-ui');
   const titleOverlay = document.getElementById('title-overlay');
   const clearOverlay = document.getElementById('clear-overlay');
@@ -1774,15 +1753,13 @@
   startCmdBtn.addEventListener('click', () => { ensureAudio(); state.input = 'cmd'; startLevel(1); });
   nextBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
   document.getElementById('build-tag').textContent = 'build ' + BUILD;
-  barkBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryBark(); });
   document.getElementById('mute-btn').addEventListener('click', (e) => {
     muted = !muted;
     e.currentTarget.textContent = muted ? '🔇' : '🔊';
   });
   if (isTouch) {
-    document.getElementById('bark-hint').textContent = 'TAP';
     document.getElementById('keys-note').textContent =
-      'Drag anywhere to run · tap BARK! · tap the calls in command mode · swap modes any time';
+      'Drag anywhere to run · charge a sheep to bark · tap the calls in command mode · swap modes any time';
   }
 
   // ---------- title backdrop ----------
