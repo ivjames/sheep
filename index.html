@@ -218,6 +218,7 @@
       <div><span class="glyph">✨</span><span>Scamper around and gobble up sparkles — they fuel your butt.</span></div>
       <div><span class="glyph">💨</span><span>Chase down a grumpy dog and <strong>fart sparkles</strong> at it (costs 3 sparkles).</span></div>
       <div><span class="glyph">🐶</span><span>Sparkle-farted dogs become happy dogs. Cheer up every dog to win the level!</span></div>
+      <div><span class="glyph">😠</span><span><strong>Watch out</strong> — some dogs are so grumpy they chase YOU. Get bitten and sparkles fall right out of your butt. Get bitten with none left and the grump takes over…</span></div>
     </div>
     <button class="big-btn" id="start-btn">Let's go!</button>
     <p class="keys-note" id="keys-note">WASD / arrows to move &nbsp;·&nbsp; SPACE to fart</p>
@@ -237,6 +238,15 @@
   </div>
 </div>
 
+<div class="overlay hidden" id="grump-overlay">
+  <div class="panel">
+    <div style="font-size:64px;line-height:1">😾</div>
+    <h2>You got grumped!</h2>
+    <p class="tagline">Bitten with an empty butt — the grump spread to you.</p>
+    <button class="big-btn" id="retry-btn">Shake it off</button>
+  </div>
+</div>
+
 <script>
 (() => {
   'use strict';
@@ -247,6 +257,10 @@
   const FART_RADIUS = 150, FART_LIFE = 0.85;
   const CAT_SPEED = 340, CAT_ACCEL = 2200, CAT_DRAG = 6;
   const DOG_FLEE_RANGE = 280;
+  const AGGRO_RANGE = 400;
+  const BITE_RADIUS = 44;
+  const BITE_COST = 3;
+  const START_FUEL = 3;
   const SPARKLE_COUNT = 16;
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouch = matchMedia('(pointer: coarse)').matches;
@@ -319,6 +333,15 @@
     win() {
       [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.3, 'triangle', 0.12, i * 0.1));
     },
+    bite() {
+      noiseBurst(0.2, 0.2, 2500, 500);
+      tone(340, 0.25, 'sawtooth', 0.1, 0, 120);
+    },
+    growl() { tone(95, 0.3, 'sawtooth', 0.06, 0, 70); },
+    grump() {
+      [392, 330, 262, 196].forEach((f, i) => tone(f, 0.4, 'triangle', 0.12, i * 0.18));
+      noiseBurst(0.6, 0.1, 500, 80);
+    },
   };
 
   // ---------- helpers ----------
@@ -337,10 +360,10 @@
 
   // ---------- game state ----------
   const state = {
-    mode: 'title', // title | playing | clear
+    mode: 'title', // title | playing | clear | grumped
     level: 1,
     fuel: 0,
-    cat: { x: WORLD_W / 2, y: WORLD_H / 2, vx: 0, vy: 0, facing: -1 },
+    cat: { x: WORLD_W / 2, y: WORLD_H / 2, vx: 0, vy: 0, facing: -1, invuln: 0 },
     dogs: [],
     sparkles: [],
     particles: [],
@@ -368,7 +391,7 @@
   function startLevel(n) {
     state.level = n;
     state.mode = 'playing';
-    state.fuel = 0;
+    state.fuel = START_FUEL;
     state.dogs = [];
     state.sparkles = [];
     state.particles = [];
@@ -379,15 +402,24 @@
     state.fartsUsed = 0;
     state.cat.x = WORLD_W / 2; state.cat.y = WORLD_H / 2;
     state.cat.vx = 0; state.cat.vy = 0;
+    state.cat.invuln = 0;
     const dogCount = 2 + n;
     const fleeSpeed = Math.min(200 + n * 18, 315);
+    const chaseSpeed = Math.min(240 + n * 10, 330);
+    // temper mix: aggro dogs appear from level 2 and grow to ~half the pack
+    const aggroCount = n < 2 ? 0 : Math.min(Math.ceil((n - 1) / 2), Math.floor(dogCount / 2));
+    const chillCount = Math.max(1, Math.floor((dogCount - aggroCount) / 2));
+    const tempers = [];
+    for (let i = 0; i < aggroCount; i++) tempers.push('aggro');
+    for (let i = 0; i < chillCount; i++) tempers.push('chill');
+    while (tempers.length < dogCount) tempers.push('scaredy');
     for (let i = 0; i < dogCount; i++) {
       let x, y;
       do { x = rand(120, WORLD_W - 120); y = rand(120, WORLD_H - 120); }
       while (dist2(x, y, state.cat.x, state.cat.y) < 450 * 450);
       state.dogs.push({
-        x, y, vx: 0, vy: 0, happy: false, facing: -1,
-        fleeSpeed, wanderA: rand(0, Math.PI * 2), wanderT: 0, bob: rand(0, Math.PI * 2),
+        x, y, vx: 0, vy: 0, happy: false, facing: -1, temper: tempers[i],
+        fleeSpeed, chaseSpeed, wanderA: rand(0, Math.PI * 2), wanderT: 0, bob: rand(0, Math.PI * 2),
       });
     }
     for (let i = 0; i < SPARKLE_COUNT; i++) spawnSparkle();
@@ -395,6 +427,7 @@
     fartBtn.style.display = 'flex';
     titleOverlay.classList.add('hidden');
     clearOverlay.classList.add('hidden');
+    grumpOverlay.classList.add('hidden');
     updateHud();
   }
 
@@ -484,6 +517,41 @@
     if (state.dogs.every(d => d.happy)) levelClear();
   }
 
+  // ---------- getting bitten ----------
+  function biteCat(dog) {
+    const c = state.cat;
+    if (state.fuel <= 0) { gotGrumped(); return; }
+    const lost = Math.min(state.fuel, BITE_COST);
+    state.fuel -= lost;
+    // knocked-out sparkles scatter onto the grass, re-collectable
+    for (let i = 0; i < lost; i++) {
+      const a = rand(0, Math.PI * 2), r = rand(70, 150);
+      state.sparkles.push({
+        x: clamp(c.x + Math.cos(a) * r, 60, WORLD_W - 60),
+        y: clamp(c.y + Math.sin(a) * r, 60, WORLD_H - 60),
+        phase: rand(0, Math.PI * 2),
+      });
+    }
+    // knockback: cat away from dog, dog recoils
+    const dl = Math.hypot(c.x - dog.x, c.y - dog.y) || 1;
+    const kx = (c.x - dog.x) / dl, ky = (c.y - dog.y) / dl;
+    c.vx += kx * 520; c.vy += ky * 520;
+    dog.vx -= kx * 260; dog.vy -= ky * 260;
+    c.invuln = 1.3;
+    state.shake = reducedMotion ? 0 : 10;
+    sfx.bite();
+    state.floaties.push({ x: c.x, y: c.y - 40, vy: -70, t: 0, life: 0.9, g: '💥', s: 30 });
+    updateHud();
+  }
+
+  function gotGrumped() {
+    state.mode = 'grumped';
+    sfx.grump();
+    state.shake = reducedMotion ? 0 : 12;
+    grumpOverlay.classList.remove('hidden');
+    fartBtn.style.display = 'none';
+  }
+
   function levelClear() {
     state.mode = 'clear';
     sfx.win();
@@ -501,9 +569,11 @@
 
   // ---------- update ----------
   function update(dt) {
+    state.shake = Math.max(0, state.shake - dt * 22);
     if (state.mode !== 'playing') return;
     state.levelTime += dt;
     const c = state.cat;
+    c.invuln = Math.max(0, c.invuln - dt);
 
     // input vector
     let ix = 0, iy = 0;
@@ -553,7 +623,7 @@
             life: 0.5, t: 0, hue: 48, size: rand(2, 5),
           });
         }
-        spawnSparkle();
+        if (state.sparkles.length < SPARKLE_COUNT) spawnSparkle();
         updateHud();
       }
     }
@@ -572,16 +642,26 @@
         }
       } else {
         const dd = dist2(d.x, d.y, c.x, c.y);
-        if (dd < DOG_FLEE_RANGE * DOG_FLEE_RANGE) {
+        if (d.temper === 'aggro' && dd < AGGRO_RANGE * AGGRO_RANGE) {
+          // hunt the cat
+          const dl = Math.sqrt(dd) || 1;
+          const hx = (c.x - d.x) / dl, hy = (c.y - d.y) / dl;
+          d.vx += (hx * d.chaseSpeed - d.vx) * 4 * dt;
+          d.vy += (hy * d.chaseSpeed - d.vy) * 4 * dt;
+          if (Math.random() < dt * 0.7) sfx.growl();
+          if (dd < BITE_RADIUS * BITE_RADIUS && c.invuln <= 0) biteCat(d);
+        } else if (d.temper === 'scaredy' && dd < DOG_FLEE_RANGE * DOG_FLEE_RANGE) {
           const dl = Math.sqrt(dd) || 1;
           const fx = (d.x - c.x) / dl, fy = (d.y - c.y) / dl;
           d.vx += (fx * d.fleeSpeed - d.vx) * 4 * dt;
           d.vy += (fy * d.fleeSpeed - d.vy) * 4 * dt;
         } else {
+          // chill dogs (and anyone out of range) just mope around
+          const pace = d.temper === 'chill' ? 40 : 70;
           d.wanderT -= dt;
           if (d.wanderT <= 0) { d.wanderT = rand(1, 3); d.wanderA = rand(0, Math.PI * 2); }
-          d.vx += (Math.cos(d.wanderA) * 70 - d.vx) * 2 * dt;
-          d.vy += (Math.sin(d.wanderA) * 70 - d.vy) * 2 * dt;
+          d.vx += (Math.cos(d.wanderA) * pace - d.vx) * 2 * dt;
+          d.vy += (Math.sin(d.wanderA) * pace - d.vy) * 2 * dt;
         }
       }
       d.x += d.vx * dt; d.y += d.vy * dt;
@@ -611,8 +691,6 @@
       state.clouds[i].t += dt;
       if (state.clouds[i].t >= FART_LIFE) state.clouds.splice(i, 1);
     }
-
-    state.shake = Math.max(0, state.shake - dt * 22);
 
     // camera
     state.cam.x = clamp(c.x - vw / 2, 0, Math.max(0, WORLD_W - vw));
@@ -715,15 +793,22 @@
       ctx.ellipse(d.x, d.y + 24, 24, 8, 0, 0, Math.PI * 2);
       ctx.fill();
       if (!d.happy) {
-        // grumpy storm tint
-        ctx.fillStyle = 'rgba(90, 100, 114, 0.28)';
+        // temper tint: red menace for aggro, storm grey otherwise
+        ctx.fillStyle = d.temper === 'aggro'
+          ? `rgba(235, 60, 40, ${0.24 + 0.12 * Math.abs(Math.sin(t * 5 + d.bob))})`
+          : 'rgba(90, 100, 114, 0.28)';
         ctx.beginPath();
-        ctx.arc(d.x, d.y - hop, 32, 0, Math.PI * 2);
+        ctx.arc(d.x, d.y - hop, d.temper === 'aggro' ? 36 : 32, 0, Math.PI * 2);
         ctx.fill();
       }
-      drawEmoji('🐕', d.x, d.y - hop, 46, d.facing === 1);
+      drawEmoji('🐕', d.x, d.y - hop, d.temper === 'aggro' ? 50 : 46, d.facing === 1);
       if (d.happy) {
         drawEmoji('😊', d.x + 24, d.y - 38 - hop, 17);
+      } else if (d.temper === 'aggro') {
+        drawEmoji('💢', d.x + 26, d.y - 40 - hop + Math.sin(t * 8 + d.bob) * 3, 24);
+        drawEmoji('😤', d.x - 4, d.y - 54 - hop, 20);
+      } else if (d.temper === 'chill') {
+        drawEmoji('💤', d.x + 22, d.y - 44 - hop + Math.sin(t * 3 + d.bob) * 3, 18);
       } else {
         drawEmoji('💢', d.x + 24, d.y - 38 - hop + Math.sin(t * 6 + d.bob) * 2, 18);
         drawEmoji('☁️', d.x - 2, d.y - 52 - hop, 24);
@@ -749,7 +834,20 @@
       ctx.arc(c.x - c.facing * 22, c.y + 8, 26, 0, Math.PI * 2);
       ctx.fill();
     }
-    drawEmoji('🐈', c.x, c.y - bounce, 52, c.facing === 1, lean);
+    if (state.mode === 'grumped') {
+      // the grump has taken over
+      ctx.fillStyle = 'rgba(90, 100, 114, 0.3)';
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 36, 0, Math.PI * 2);
+      ctx.fill();
+      drawEmoji('😾', c.x, c.y, 48);
+      drawEmoji('☁️', c.x - 2, c.y - 46, 26);
+    } else {
+      // blink while invulnerable after a bite
+      if (c.invuln <= 0 || Math.sin(t * 30) > -0.3) {
+        drawEmoji('🐈', c.x, c.y - bounce, 52, c.facing === 1, lean);
+      }
+    }
 
     ctx.restore();
 
@@ -772,6 +870,7 @@
   const fartBtn = document.getElementById('fart-btn');
   const titleOverlay = document.getElementById('title-overlay');
   const clearOverlay = document.getElementById('clear-overlay');
+  const grumpOverlay = document.getElementById('grump-overlay');
   const levelChip = document.getElementById('level-chip');
   const dogsLeft = document.getElementById('dogs-left');
   const fuelPips = document.getElementById('fuel-pips');
@@ -800,6 +899,7 @@
 
   document.getElementById('start-btn').addEventListener('click', () => { ensureAudio(); startLevel(1); });
   document.getElementById('next-btn').addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
+  document.getElementById('retry-btn').addEventListener('click', () => { ensureAudio(); startLevel(state.level); });
   fartBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryFart(); });
   document.getElementById('mute-btn').addEventListener('click', (e) => {
     muted = !muted;
@@ -819,6 +919,9 @@
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+
+  // debug/test handle
+  window.__sb = { state, startLevel };
 })();
 </script>
 </body>

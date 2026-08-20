@@ -25,8 +25,18 @@ npx serve .
 anywhere to scamper and tap the FART! button.
 
 **Rules:** sparkles are worth 1 fuel each, a fart costs 3, and only grumpy dogs
-caught inside the rainbow cloud convert. Dogs flee when you get close — corner
-them against the hedge. Each level adds more, faster dogs.
+caught inside the rainbow cloud convert. You start each level with 3 fuel.
+Each level adds more, faster dogs.
+
+**Dog tempers** — every grumpy dog has one:
+
+- **Scaredy** (storm cloud ☁️): flees when you get close — corner it against
+  the hedge.
+- **Chill** (💤): too mopey to care. Wanders slowly. Easy pickings.
+- **Aggro** (red aura, 😤): hunts you down from level 2 onward. A bite knocks
+  up to 3 sparkles out of your butt — they scatter on the grass, so scramble
+  and re-collect them. Get bitten with an empty butt and the grump takes over:
+  you become a grumpy cat and retry the level.
 
 ## Tech
 
