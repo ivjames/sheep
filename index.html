@@ -593,19 +593,22 @@
     state.fuel -= FART_COST;
     state.fartsUsed++;
     const c = state.cat;
-    const bx = c.x - c.facing * 34, by = c.y + 10;
+    // cloud bursts in a radius around the cat
+    const bx = c.x, by = c.y;
     state.clouds.push({ x: bx, y: by, t: 0 });
-    // propulsion kick
-    c.vx += c.facing * 260;
-    c.vy -= 60;
-    // rainbow burst
+    // propulsion: boost along current movement; no kick when stationary
+    const mspd = Math.hypot(c.vx, c.vy);
+    const mx = mspd > 40 ? c.vx / mspd : 0, my = mspd > 40 ? c.vy / mspd : 0;
+    c.vx += mx * 320;
+    c.vy += my * 320;
+    // rainbow burst (exhaust trails opposite the boost when moving)
     const hues = [0, 35, 60, 140, 200, 280, 320];
     for (let i = 0; i < 46; i++) {
       const a = rand(0, Math.PI * 2), sp = rand(30, 240);
       state.particles.push({
         x: bx, y: by,
-        vx: Math.cos(a) * sp - c.facing * rand(40, 130),
-        vy: Math.sin(a) * sp,
+        vx: Math.cos(a) * sp - mx * rand(40, 160),
+        vy: Math.sin(a) * sp - my * rand(40, 160),
         life: rand(0.5, 1.0), t: 0,
         hue: hues[i % hues.length],
         size: rand(3, 8),
