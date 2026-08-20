@@ -58,10 +58,11 @@ pressure in a ring, and the only thing that shifts a planted sheep.
 ## Rules
 
 - Levels are zoomed out — the whole field fits on screen. Each level has a
-  **random-sized flock** (growing fast — the big mobs arrive within a few
-  levels) and a fenced pen against one edge with a flagged gate. Pen every
-  sheep and the gate swings shut to clear the level. No fail state, just
-  you, the flock, and the clock.
+  **random-sized flock** (growing fast, with **no cap** — the flock keeps
+  swelling as long as you keep clearing) and a fenced pen against one edge
+  with a flagged gate that **narrows level by level** down to a two-sheep
+  squeeze. Pen every sheep and the gate swings shut to clear the level. No
+  fail state, just you, the flock, and the clock.
 - Sheep are boids: they bunch when scared, panic spreads between
   neighbours, strays and split groups drift back and merge with the mob,
   and they graze and wander when calm. Pressure from directly behind moves

@@ -324,7 +324,8 @@
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
-  const GATE_W = 112;
+  const GATE_W = 112;             // gate width at level 1...
+  const GATE_MIN = 68;            // ...narrowing 4px a level down to this
   const GATE_PULL = 260;          // sheep this near the gate mouth drift on in
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouch = matchMedia('(pointer: coarse)').matches;
@@ -540,9 +541,11 @@
     const horiz = side === 0 || side === 2;
     const along = horiz ? w : h;
     const W = clamp(210 + count * 9, 250, along - 360);
-    const D = clamp(150 + count * 5, 170, 260);
+    const D = clamp(150 + count * 5, 170, 340);
     const c = rand(HEDGE + 110 + W / 2, along - HEDGE - 110 - W / 2);
-    const ga = c - GATE_W / 2, gb = c + GATE_W / 2;
+    // the gate narrows level by level — late-game pens take real precision
+    const gw = clamp(GATE_W - (state.level - 1) * 4, GATE_MIN, GATE_W);
+    const ga = c - gw / 2, gb = c + gw / 2;
     const seg = (x1, y1, x2, y2) => ({ x1, y1, x2, y2 });
     let rect, segs, gate, out; // out = unit normal from gate into the field
     if (side === 0) {
@@ -572,7 +575,7 @@
     }
     const inset = 16;
     state.pen = {
-      side, rect, segs, gate, out,
+      side, rect, segs, gate, out, gw,
       cx: (rect.x0 + rect.x1) / 2, cy: (rect.y0 + rect.y1) / 2,
       gx: (gate.x1 + gate.x2) / 2, gy: (gate.y1 + gate.y2) / 2,
       inner: { x0: rect.x0 + inset, y0: rect.y0 + inset, x1: rect.x1 - inset, y1: rect.y1 - inset },
@@ -609,8 +612,9 @@
     makeDecor();
 
     // a random-sized flock, growing fast with the levels — the big mobs
-    // are the fun part, so get there quickly
-    const count = Math.min(randInt(4 + n * 3, 6 + n * 4), 40);
+    // are the fun part, so get there quickly, and there's no cap: the
+    // flock keeps growing as long as you keep clearing
+    const count = randInt(4 + n * 3, 6 + n * 4);
     const defiantCount = n < 2 ? 0 : Math.min(1 + Math.floor((n - 2) / 2), Math.floor(count / 3));
     makePen(count);
     const { w, h } = state.world;
@@ -632,12 +636,15 @@
       }
     }
 
-    // the flock spawns bunched, far from the pen
-    let fcx, fcy;
-    do {
+    // the flock spawns bunched, far from the pen. Huge late-game pens can
+    // leave no spot at the full standoff, so relax it until one exists.
+    let fcx, fcy, standoff = Math.hypot(w, h) * 0.45;
+    for (let tries = 0; ; tries++) {
       fcx = rand(HEDGE + 190, w - HEDGE - 190);
       fcy = rand(HEDGE + 190, h - HEDGE - 190);
-    } while (dist2(fcx, fcy, P.cx, P.cy) < (Math.hypot(w, h) * 0.45) ** 2 || !penClear(fcx, fcy, 220));
+      if (dist2(fcx, fcy, P.cx, P.cy) >= standoff * standoff && penClear(fcx, fcy, 220)) break;
+      if (tries % 40 === 39) standoff *= 0.9;
+    }
     state.sheep = [];
     const tempers = [];
     for (let i = 0; i < defiantCount; i++) tempers.push(true);
@@ -664,8 +671,8 @@
 
     // handler stands off to one side of the gate; the dog starts at heel
     const tx = -P.out.y, ty = P.out.x;
-    state.handler.x = clamp(P.gx + P.out.x * 150 + tx * (GATE_W / 2 + 90), HEDGE + 40, w - HEDGE - 40);
-    state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (GATE_W / 2 + 90), HEDGE + 40, h - HEDGE - 40);
+    state.handler.x = clamp(P.gx + P.out.x * 150 + tx * (P.gw / 2 + 90), HEDGE + 40, w - HEDGE - 40);
+    state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (P.gw / 2 + 90), HEDGE + 40, h - HEDGE - 40);
     state.dog.x = state.handler.x + 24; state.dog.y = state.handler.y + 20;
     state.dog.vx = 0; state.dog.vy = 0;
     state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
