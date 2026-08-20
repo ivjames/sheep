@@ -1209,7 +1209,6 @@
   }
   const EMOJI = {};
   for (const [name, cands] of Object.entries({
-    handler: ['🧑‍🌾', '👩‍🌾', '👨‍🌾', '🧍'],
     tree: ['🌳', '🌲'], rock: ['🪨', '🌰'],
   })) {
     EMOJI[name] = forceVector ? null : (cands.find(glyphRenders) || null);
@@ -1256,8 +1255,7 @@
     ctx.translate(x, y);
     if (rot) ctx.rotate(rot);
     if (flip) ctx.scale(-1, 1);
-    if (name === 'handler') drawVectorHandler(size);
-    else if (name === 'tree') drawVectorTree(size);
+    if (name === 'tree') drawVectorTree(size);
     else if (name === 'rock') drawVectorRock(size);
     ctx.restore();
   }
@@ -1380,32 +1378,6 @@
     ctx.arc(20 * u, 0, 1.8 * u, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
-  }
-
-  function drawVectorHandler(s) {
-    const u = s / 44;
-    ctx.lineJoin = ctx.lineCap = 'round';
-    ctx.fillStyle = '#4a6741'; // coat
-    ctx.beginPath();
-    ctx.moveTo(-8 * u, -4 * u); ctx.lineTo(8 * u, -4 * u); ctx.lineTo(6 * u, 16 * u); ctx.lineTo(-6 * u, 16 * u);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = '#e8b88a'; // head
-    ctx.beginPath();
-    ctx.arc(0, -12 * u, 6.5 * u, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#7a5b3a'; // hat
-    ctx.beginPath();
-    ctx.ellipse(0, -16 * u, 10 * u, 3 * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillRect(-5 * u, -24 * u, 10 * u, 8 * u);
-    ctx.strokeStyle = '#8a5f3c'; // crook
-    ctx.lineWidth = 2.5 * u;
-    ctx.beginPath();
-    ctx.moveTo(12 * u, 16 * u);
-    ctx.lineTo(12 * u, -14 * u);
-    ctx.arc(9 * u, -14 * u, 3 * u, 0, Math.PI, true);
-    ctx.stroke();
   }
 
   function drawVectorTree(s) {
@@ -1581,22 +1553,10 @@
       }
     };
 
-    const drawHandler = () => {
-      const hd = state.handler;
-      ctx.fillStyle = 'rgba(0,0,0,0.16)';
-      ctx.beginPath();
-      ctx.ellipse(hd.x, hd.y + 18, 13, 4.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      drawActor('handler', hd.x, hd.y, 38);
-    };
-
     const ents = [];
     for (const o of state.obstacles) ents.push({ y: o.y, draw: () => drawObstacle(o) });
     for (const s of state.sheep) ents.push({ y: s.y, draw: () => drawSheep(s) });
-    if (inGame) {
-      ents.push({ y: state.dog.y, draw: drawDog });
-      ents.push({ y: state.handler.y, draw: drawHandler });
-    }
+    if (inGame) ents.push({ y: state.dog.y, draw: drawDog });
     ents.sort((a, b) => a.y - b.y);
     for (const e of ents) e.draw();
 
