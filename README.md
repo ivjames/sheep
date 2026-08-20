@@ -46,8 +46,10 @@ Pick one on the title screen, swap any time mid-game with the HUD toggle:
   | **That'll do** | done | returns to the post and lies down |
 
   Speed is a gradient: WALK ON taps push it up, EASY taps ease it down,
-  STEADY halts. Each command has its own synth whistle, like a real
-  handler's.
+  STEADY halts. A flank keeps whatever pace you've set (from a halt the
+  dog just creeps off) — calling the **same flank again** is the hurry-up
+  that brings it back to working pace. Each command has its own synth
+  whistle, like a real handler's.
 
 **Barking** works in both modes and has no button: charge straight at a
 sheep and the dog barks on its own as it closes in — a burst of extra
@@ -67,8 +69,8 @@ pressure in a ring, and the only thing that shifts a planted sheep.
   training wheels that fade out entirely by level 5.
 - **Defiant sheep** (dark wool, curled horns, from level 2): they don't
   attack — they're just hard to wrangle. They barely feel the dog, stray
-  from the flock, and **plant their hooves** (😤) and refuse to move. A
-  bark — the dog charging right up to them — startles them loose.
+  from the flock, and **plant their hooves** (huffing steam) and refuse to
+  move. A bark — the dog charging right up to them — startles them loose.
 - Trees and rocks block movement. The hedge keeps everyone on the field.
 
 ## Tech
@@ -78,12 +80,13 @@ pressure in a ring, and the only thing that shifts a planted sheep.
 - Works on desktop and mobile browsers; DPR-aware, fit-to-screen world sized
   to the device aspect, tap-to-guide steering, gamepad support,
   `prefers-reduced-motion` respected.
-- Sheep and dog are canvas-drawn vector shapes — oblong bodies that rotate
-  to a smoothed heading, with trotting feet and a wagging tail. Scenery and
-  floaties are still emoji sprites with per-glyph render probing and vector
-  fallbacks (add `?noemoji` to preview them) — same pipeline lessons as
-  Sparkle Butt: glyphs are rasterized to cached offscreen canvases because
-  iPad Safari silently drops mirrored emoji `fillText`.
+- Everything on the field is canvas-drawn vector art. Sheep and dog are
+  oblong bodies that rotate to a smoothed heading, with trotting feet and
+  a wagging tail; trees, rocks, flowers, and the little status marks
+  (steam huffs, sweat drops, music notes) are hand-drawn shapes too. The
+  emoji sprite pipeline from Sparkle Butt — glyph probing, vector
+  fallbacks, cached rasterization — is gone entirely, along with its
+  per-platform missing-glyph pitfalls.
 - Build stamp + self-update: deploys stamp the commit into `BUILD`, and open
   tabs poll their own URL and offer/auto-apply a refresh.
 
