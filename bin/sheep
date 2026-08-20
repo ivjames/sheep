@@ -1,29 +1,29 @@
 #!/usr/bin/env bash
-# comeby — operate CLI for comeby.lab980.com (Come By!).
+# sheep — operate CLI for sheep.lab980.com (Come By!).
 #
 # The site is a single static index.html served straight by nginx: no app
 # process, no local port, no pm2, no build step. This script is the whole
 # lifecycle:
 #
-#   comeby setup      one-time on the droplet: DNS A record (doctl), static
+#   sheep setup      one-time on the droplet: DNS A record (doctl), static
 #                     nginx vhost from deploy/nginx.conf.template, TLS via
 #                     certbot, /usr/local/bin symlink. Idempotent.
-#   comeby deploy     sync this checkout to origin/main (fetch + hard reset)
-#   comeby status     HEAD, live-site probe, cert days remaining
+#   sheep deploy     sync this checkout to origin/main (fetch + hard reset)
+#   sheep status     HEAD, live-site probe, cert days remaining
 #
 # Env overrides:
-#   COMEBY_FQDN     default comeby.lab980.com
-#   COMEBY_BRANCH   default main
+#   SHEEP_FQDN     default sheep.lab980.com
+#   SHEEP_BRANCH   default main
 #
 # The web root is wherever this script's repo checkout lives (normally
-# /var/www/comeby) — derived from the script's own path, so the
+# /var/www/sheep) — derived from the script's own path, so the
 # /usr/local/bin symlink resolves back here.
 set -euo pipefail
 
 SELF="$(readlink -f "$0")"
 ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
-FQDN="${COMEBY_FQDN:-comeby.lab980.com}"
-BRANCH="${COMEBY_BRANCH:-main}"
+FQDN="${SHEEP_FQDN:-sheep.lab980.com}"
+BRANCH="${SHEEP_BRANCH:-main}"
 DOMAIN="${FQDN#*.}"
 STUB="${FQDN%%.*}"
 
@@ -34,14 +34,14 @@ die()  { printf '%serror:%s %s\n' "$c_red" "$c_off" "$*" >&2; exit 1; }
 
 usage() {
   cat <<'USAGE'
-comeby — operate comeby.lab980.com (static single-file game, nginx-only).
+sheep — operate sheep.lab980.com (static single-file game, nginx-only).
 
 Usage:
-  comeby setup [--no-dns] [--no-tls] [--ip IP]   provision DNS + vhost + TLS
-  comeby deploy                                  sync checkout to origin/main
-  comeby status                                  HEAD + live probe + cert
+  sheep setup [--no-dns] [--no-tls] [--ip IP]   provision DNS + vhost + TLS
+  sheep deploy                                  sync checkout to origin/main
+  sheep status                                  HEAD + live probe + cert
 
-Env: COMEBY_FQDN (default comeby.lab980.com), COMEBY_BRANCH (default main).
+Env: SHEEP_FQDN (default sheep.lab980.com), SHEEP_BRANCH (default main).
 USAGE
 }
 
@@ -140,9 +140,9 @@ EOF
   fi
 
   # ---- operate-CLI symlink (per lab980 convention) ----
-  if [ "$SELF" != "/usr/local/bin/comeby" ]; then
-    ln -sf "$ROOT/bin/comeby" /usr/local/bin/comeby
-    log "symlinked /usr/local/bin/comeby -> $ROOT/bin/comeby"
+  if [ "$SELF" != "/usr/local/bin/sheep" ]; then
+    ln -sf "$ROOT/bin/sheep" /usr/local/bin/sheep
+    log "symlinked /usr/local/bin/sheep -> $ROOT/bin/sheep"
   fi
 
   log "Done. Site: https://$FQDN/"

@@ -1,5 +1,5 @@
 # nginx vhost for Come By! — plain static site, no app process.
-# Installed by `comeby setup` as /etc/nginx/sites-available/__FQDN__
+# Installed by `sheep setup` as /etc/nginx/sites-available/__FQDN__
 # (placeholders __FQDN__ and __ROOT__ substituted via sed).
 #
 # certbot --nginx adds the :443 block + redirect afterwards, copying this

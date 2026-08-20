@@ -11,7 +11,7 @@ pressure and positioning — a sheepdog trial in miniature.
 
 ## Play it
 
-Live at **comeby.lab980.com** once provisioned (deployment notes in
+Live at **sheep.lab980.com** once provisioned (deployment notes in
 [DEPLOY.md](DEPLOY.md)). Or locally — the whole game is one file with zero
 dependencies:
 
