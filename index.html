@@ -316,8 +316,8 @@
   const PACE_STEP = 0.2;          // WALK ON taps add this, EASY taps shed it
   const PACE_START = 0.6, PACE_MIN = 0.2;
   const SHEEP_R = 12, DOG_R = 13;
-  const FLEE_RANGE = 235;         // how far a normal sheep feels the dog
-  const FLEE_RANGE_DEFIANT = 150; // defiant sheep make you get close
+  const FLEE_RANGE = 235;         // how far the most timid sheep feels the dog
+  const FLEE_RANGE_DEFIANT = 150; // ...and the boldest make you get close
   const SEP_RANGE = 34, COH_RANGE = 190;
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const MERGE_REACH = 520;        // stray sheep feel the mob's pull out to here
@@ -325,7 +325,7 @@
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
   const GATE_W = 112;
-  const GATE_PULL = 260;          // gate suction radius (training wheels, low levels)
+  const GATE_PULL = 260;          // sheep this near the gate mouth drift on in
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
@@ -588,6 +588,16 @@
     return x < r.x0 - pad || x > r.x1 + pad || y < r.y0 - pad || y > r.y1 + pad;
   }
 
+  // Every sheep rolls its own temperament: `bold` is how little the dog
+  // worries it (0 timid → 1 stubborn/complacent) and `flocky` is how
+  // keenly it follows the flock's flow. Defiant sheep sit pinned at the
+  // stubborn, unflockable extreme.
+  function rollTemper(defiant) {
+    return defiant
+      ? { bold: rand(0.8, 1), flocky: rand(0, 0.3) }
+      : { bold: rand(0.05, 0.65), flocky: rand(0.35, 1) };
+  }
+
   function startLevel(n) {
     state.level = n;
     state.mode = 'playing';
@@ -598,8 +608,9 @@
     state.world.h = Math.round(state.world.w / ar);
     makeDecor();
 
-    // a random-sized flock, growing with the levels
-    const count = Math.min(randInt(5 + n, 7 + n * 2), 40);
+    // a random-sized flock, growing fast with the levels — the big mobs
+    // are the fun part, so get there quickly
+    const count = Math.min(randInt(4 + n * 3, 6 + n * 4), 40);
     const defiantCount = n < 2 ? 0 : Math.min(1 + Math.floor((n - 2) / 2), Math.floor(count / 3));
     makePen(count);
     const { w, h } = state.world;
@@ -645,7 +656,8 @@
       }
       state.sheep.push({
         x, y, vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false,
-        defiant: tempers[i], panic: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
+        defiant: tempers[i], ...rollTemper(tempers[i]),
+        panic: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
     }
@@ -991,9 +1003,10 @@
   }
 
   // ---------- flocking helpers ----------
-  // scared sheep bunch much tighter; defiant ones barely flock at all
+  // scared sheep bunch much tighter; how keenly each one follows is its
+  // own flocky trait — the stubborn end barely flocks at all
   function cohesionWeight(s) {
-    return (s.defiant ? 5 : 20) + s.panic * (s.defiant ? 12 : 64);
+    return (6 + 22 * s.flocky) + s.panic * (14 + 70 * s.flocky);
   }
   // a sheep off on its own feels the mob's pull, so strays and split
   // groups drift back together and merge instead of scattering for good
@@ -1005,14 +1018,17 @@
     const ml = Math.hypot(mx, my);
     if (ml < COH_RANGE) return null; // close enough — cohesion handles it
     const k = Math.min(1, (ml - COH_RANGE) / (MERGE_REACH - COH_RANGE));
-    const pull = (s.defiant ? 9 : 34) * (0.4 + 0.6 * k) * (1 + s.panic * 1.5);
+    const pull = (8 + 36 * s.flocky) * (0.4 + 0.6 * k) * (1 + s.panic * 1.5);
     return { x: (mx / ml) * pull, y: (my / ml) * pull };
   }
-  // training wheels: at early levels the gate gently inhales sheep that
-  // wander near its mouth, fading out entirely by level 5
+  // sheep near the mouth of an open gate know what it's for and drift on
+  // in. Strongest at early levels (training wheels) but never gone
+  // entirely — except at the stubborn end of the flock, which couldn't
+  // care less about your pen
   function gateSuction(s) {
-    const ease = clamp(1 - (state.level - 1) / 4, 0, 1);
-    if (!ease || s.planted) return null;
+    const ease = 0.4 + 0.6 * clamp(1 - (state.level - 1) / 4, 0, 1);
+    const willing = ease * (1 - s.bold * 0.85);
+    if (willing < 0.05 || s.planted) return null;
     const P = state.pen;
     // in front of the mouth only — never through the back fence
     if ((s.x - P.gx) * P.out.x + (s.y - P.gy) * P.out.y < -4) return null;
@@ -1021,12 +1037,12 @@
     const tl = Math.hypot(tx, ty);
     if (tl < 0.01 || tl > GATE_PULL) return null;
     const k = 1 - tl / GATE_PULL;
-    const f = ease * (s.defiant ? 0.5 : 1) * (40 + 320 * k * k);
-    return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * ease };
+    const f = willing * (40 + 320 * k * k);
+    return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * willing };
   }
   // fear spreads: one spooked sheep puts its neighbours on edge too
   function catchPanic(s, nearPanic, dt) {
-    const target = nearPanic * (s.defiant ? 0.5 : 0.85);
+    const target = nearPanic * (0.9 - 0.4 * s.bold);
     if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 3);
   }
 
@@ -1054,8 +1070,8 @@
       s.plantCd = Math.max(0, s.plantCd - dt);
 
       let fx = 0, fy = 0;
-      // gate suction (early levels): the pen mouth draws nearby sheep in,
-      // and a sheep caught in the funnel stops answering the mob's pull
+      // gate willingness: sheep near the pen mouth drift on in, and a
+      // sheep caught in the funnel stops answering the mob's pull
       const gs = grazing ? null : gateSuction(s);
       // --- flocking: separation, cohesion, alignment ---
       let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0;
@@ -1080,7 +1096,7 @@
         const tl = Math.hypot(tx, ty);
         if (tl > 18) { fx += (tx / tl) * cw; fy += (ty / tl) * cw; }
         // match the mob's heading — sheep steer off each other constantly
-        const aw = s.defiant ? 0.6 : 1.5;
+        const aw = 0.5 + 1.4 * s.flocky;
         fx += (avx / cn - s.vx) * aw;
         fy += (avy / cn - s.vy) * aw;
         catchPanic(s, nearPanic, dt);
@@ -1088,15 +1104,17 @@
       const mp = gs ? null : mergePull(s, flock);
       if (mp) { fx += mp.x; fy += mp.y; }
       // --- dog pressure ---
+      // fear of the dog is a gradient: the timid end feels it from far
+      // out and bolts; the bold end makes you get close and barely budges
       if (!grazing) {
-        const range = s.defiant ? FLEE_RANGE_DEFIANT : FLEE_RANGE;
+        const range = FLEE_RANGE - (FLEE_RANGE - FLEE_RANGE_DEFIANT) * s.bold;
         // sheep read the dog's line of travel, not just where it stands
-        const lead = s.defiant ? 0 : 0.3;
+        const lead = 0.3 * (1 - s.bold);
         const ddx = s.x - (d.x + d.vx * lead), ddy = s.y - (d.y + d.vy * lead);
         const dd = Math.hypot(ddx, ddy);
         if (dd < range && dd > 0.01) {
           const k = 1 - dd / range;
-          const mult = s.defiant ? 0.55 : 1;
+          const mult = 1 - 0.45 * s.bold;
           if (s.defiant && !s.planted && s.plantCd <= 0 && k > 0.3 && Math.random() < dt * 0.55) {
             // digs in: full stop until barked at (or nearly trodden on)
             s.planted = true;
@@ -1108,10 +1126,11 @@
             fx += (ddx / dd) * k * 520 * mult;
             fy += (ddy / dd) * k * 520 * mult;
           }
-          s.panic = Math.max(s.panic, Math.min(1, k * (s.defiant ? 0.8 : 1.15)));
-        } else if (!s.defiant && !s.planted && dd < DOG_AWARE && dd > 0.01) {
-          // noticed but not pressed yet: lift the head, edge away, bunch up
-          const k = 1 - (dd - range) / (DOG_AWARE - range);
+          s.panic = Math.max(s.panic, Math.min(1, k * (1.15 - 0.35 * s.bold)));
+        } else if (!s.planted && dd < DOG_AWARE && dd > 0.01) {
+          // noticed but not pressed yet: lift the head, edge away, bunch
+          // up — the bolder the sheep, the less it bothers
+          const k = (1 - (dd - range) / (DOG_AWARE - range)) * (1 - s.bold);
           fx += (ddx / dd) * k * 70;
           fy += (ddy / dd) * k * 70;
           s.panic = Math.max(s.panic, k * 0.4);
@@ -1148,7 +1167,7 @@
       s.vy += fy * dt;
       s.vx -= s.vx * 2.4 * dt;
       s.vy -= s.vy * 2.4 * dt;
-      let cap = s.planted ? 10 : 26 + s.panic * (s.defiant ? 180 : 150);
+      let cap = s.planted ? 10 : 26 + s.panic * (150 + 30 * s.bold);
       if (gs) cap = Math.max(cap, 30 + 70 * gs.k); // the funnel pulls at a trot
       const spd = Math.hypot(s.vx, s.vy);
       if (spd > cap) { s.vx *= cap / spd; s.vy *= cap / spd; }
@@ -1865,7 +1884,7 @@
       state.sheep.push({
         x: rand(HEDGE + 120, w - HEDGE - 120), y: rand(HEDGE + 120, h - HEDGE - 120),
         vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false, defiant: i === 0,
-        panic: 0, planted: false, plantT: 0, plantCd: 99,
+        ...rollTemper(i === 0), panic: 0, planted: false, plantT: 0, plantCd: 99,
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
     }

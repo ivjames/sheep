@@ -58,19 +58,25 @@ pressure in a ring, and the only thing that shifts a planted sheep.
 ## Rules
 
 - Levels are zoomed out — the whole field fits on screen. Each level has a
-  **random-sized flock** (bigger as you go) and a fenced pen against one
-  edge with a flagged gate. Pen every sheep and the gate swings shut to
-  clear the level. No fail state, just you, the flock, and the clock.
+  **random-sized flock** (growing fast — the big mobs arrive within a few
+  levels) and a fenced pen against one edge with a flagged gate. Pen every
+  sheep and the gate swings shut to clear the level. No fail state, just
+  you, the flock, and the clock.
 - Sheep are boids: they bunch when scared, panic spreads between
   neighbours, strays and split groups drift back and merge with the mob,
   and they graze and wander when calm. Pressure from directly behind moves
   them where you want; pressure from the side scatters them.
-- At early levels the gate mouth gently **funnels** nearby sheep in —
-  training wheels that fade out entirely by level 5.
-- **Defiant sheep** (dark wool, curled horns, from level 2): they don't
-  attack — they're just hard to wrangle. They barely feel the dog, stray
-  from the flock, and **plant their hooves** (huffing steam) and refuse to
-  move. A bark — the dog charging right up to them — startles them loose.
+- Every sheep rolls its own **temperament**: a gradient from timid (feels
+  the dog from far out and bolts) to bold (makes you get close and barely
+  budges), and another for how keenly it follows the flock's flow versus
+  drifting its own way.
+- Sheep near the gate mouth **know what it's for** and drift on in —
+  strongest at early levels (training wheels) but never gone entirely.
+  The stubborn end of the flock couldn't care less about your pen.
+- **Defiant sheep** (dark wool, curled horns, from level 2) sit pinned at
+  the bold, unflockable extreme: they barely feel the dog, stray from the
+  flock, and **plant their hooves** (huffing steam) and refuse to move. A
+  bark — the dog charging right up to them — startles them loose.
 - Trees and rocks block movement. The hedge keeps everyone on the field.
 
 ## Tech
