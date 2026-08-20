@@ -3,7 +3,9 @@
 All clips are **CC0 (public domain)** recordings from [freesound.org](https://freesound.org),
 found by searching with the `license:"Creative Commons 0"` filter. CC0 requires no
 attribution, but the recordists are credited below anyway. The files embedded in
-`index.html` are Freesound's own MP3 preview renders of the original uploads.
+`index.html` start from Freesound's own MP3 preview renders, then have head/tail
+silence trimmed (RMS-gated), get peak-normalized to −0.7dBFS with 8ms edge fades,
+and are re-encoded mono 64kbps.
 
 Clips marked ✅ are currently embedded (base64) in `index.html`; the rest are
 shortlisted candidates, all previewable in `sfx/soundboard.html`. Freesound #104365 (the squeaking
