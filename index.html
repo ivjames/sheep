@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="description" content="You are a cat. Eat sparkles. Fart them at grumpy dogs to make them happy.">
+<title>Sparkle Butt</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;800&display=swap">
+<style>
+  :root {
+    --plum: #31204a;
+    --plum-soft: rgba(49, 32, 74, 0.88);
+    --cream: #fff6e8;
+    --gold: #ffd84d;
+    --pink: #ff8ae0;
+    --coral: #ff7b54;
+    --storm: #5a6472;
+    --display: 'Fredoka', 'Comic Sans MS', system-ui, sans-serif;
+    --body: 'Nunito', 'Trebuchet MS', system-ui, sans-serif;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    overflow: hidden;
+    background: #6fb746;
+    font-family: var(--body);
+    color: var(--cream);
+    -webkit-user-select: none;
+    user-select: none;
+    touch-action: none;
+  }
+  #game {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  /* ---------- HUD ---------- */
+  #hud {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    display: none;
+    align-items: center;
+    gap: 14px;
+    padding: 10px 14px;
+    pointer-events: none;
+    font-family: var(--display);
+  }
+  .hud-chip {
+    background: var(--plum-soft);
+    border-radius: 999px;
+    padding: 7px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    box-shadow: 0 3px 0 rgba(0,0,0,0.18);
+    white-space: nowrap;
+  }
+  #fuel-pips { display: flex; gap: 4px; }
+  .pip {
+    width: 13px;
+    height: 13px;
+    border-radius: 3px;
+    transform: rotate(45deg);
+    background: rgba(255, 246, 232, 0.18);
+    transition: background 0.15s, box-shadow 0.15s;
+  }
+  .pip.lit {
+    background: var(--gold);
+    box-shadow: 0 0 8px rgba(255, 216, 77, 0.9);
+  }
+  .pip.ready { background: var(--pink); box-shadow: 0 0 8px rgba(255, 138, 224, 0.9); }
+  #hud-spacer { flex: 1; }
+  #mute-btn {
+    pointer-events: auto;
+    cursor: pointer;
+    border: 0;
+    font: inherit;
+    color: inherit;
+  }
+  /* ---------- Fart button ---------- */
+  #fart-btn {
+    position: fixed;
+    right: 22px;
+    bottom: 26px;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    border: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 0;
+    background: radial-gradient(circle at 35% 30%, #ffa9ec, var(--pink) 60%, #d95cba);
+    color: var(--plum);
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: 0.04em;
+    box-shadow: 0 6px 0 #a03d88, 0 10px 18px rgba(0,0,0,0.25);
+    cursor: pointer;
+    touch-action: none;
+  }
+  #fart-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #a03d88; }
+  #fart-btn.empty { filter: grayscale(0.8) brightness(0.8); }
+  #fart-btn .key-hint { font-family: var(--body); font-weight: 800; font-size: 11px; opacity: 0.75; }
+  /* ---------- Overlays ---------- */
+  .overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(38, 24, 58, 0.55);
+    backdrop-filter: blur(3px);
+  }
+  .panel {
+    background: var(--plum);
+    border-radius: 28px;
+    padding: 34px 38px 30px;
+    max-width: min(430px, calc(100vw - 48px));
+    text-align: center;
+    box-shadow: 0 10px 0 rgba(0,0,0,0.25), 0 24px 60px rgba(0,0,0,0.35);
+  }
+  .panel h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(38px, 9vw, 56px);
+    line-height: 1;
+    margin: 0 0 6px;
+    color: var(--gold);
+    text-shadow: 0 3px 0 #b3387f, 0 6px 0 rgba(0,0,0,0.2);
+    letter-spacing: 0.01em;
+  }
+  .panel h2 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(30px, 7vw, 42px);
+    margin: 0 0 10px;
+    color: var(--gold);
+    text-shadow: 0 3px 0 #b3387f;
+  }
+  .panel .tagline {
+    font-size: 15px;
+    font-weight: 800;
+    color: var(--pink);
+    margin: 0 0 20px;
+    letter-spacing: 0.03em;
+  }
+  .howto {
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 0 0 24px;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.45;
+  }
+  .howto div { display: flex; gap: 10px; align-items: baseline; }
+  .howto .glyph { font-size: 20px; flex: 0 0 26px; text-align: center; }
+  .stats {
+    display: flex;
+    justify-content: center;
+    gap: 26px;
+    margin: 0 0 22px;
+    font-family: var(--display);
+  }
+  .stats .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stats .num { font-size: 30px; font-weight: 700; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .stats .lbl { font-family: var(--body); font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; }
+  .big-btn {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 0.03em;
+    color: var(--plum);
+    background: linear-gradient(180deg, #ffe58a, var(--gold));
+    border: 0;
+    border-radius: 999px;
+    padding: 14px 42px;
+    cursor: pointer;
+    box-shadow: 0 5px 0 #c99b13, 0 10px 18px rgba(0,0,0,0.25);
+  }
+  .big-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 #c99b13; }
+  .keys-note { margin: 18px 0 0; font-size: 12.5px; font-weight: 700; opacity: 0.65; }
+  #hidden { display: none !important; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="hud-chip" id="level-chip">Level 1</div>
+  <div class="hud-chip">✨ <span id="fuel-pips"></span></div>
+  <div class="hud-chip">😾 <span id="dogs-left" style="font-variant-numeric:tabular-nums">0</span> grumpy</div>
+  <div id="hud-spacer"></div>
+  <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
+</div>
+
+<button id="fart-btn" aria-label="Fart sparkles">
+  FART!<span class="key-hint" id="fart-hint">SPACE</span>
+</button>
+
+<div class="overlay" id="title-overlay">
+  <div class="panel">
+    <h1>Sparkle Butt</h1>
+    <p class="tagline">A cat. A meadow. Some very grumpy dogs.</p>
+    <div class="howto">
+      <div><span class="glyph">✨</span><span>Scamper around and gobble up sparkles — they fuel your butt.</span></div>
+      <div><span class="glyph">💨</span><span>Chase down a grumpy dog and <strong>fart sparkles</strong> at it (costs 3 sparkles).</span></div>
+      <div><span class="glyph">🐶</span><span>Sparkle-farted dogs become happy dogs. Cheer up every dog to win the level!</span></div>
+    </div>
+    <button class="big-btn" id="start-btn">Let's go!</button>
+    <p class="keys-note" id="keys-note">WASD / arrows to move &nbsp;·&nbsp; SPACE to fart</p>
+  </div>
+</div>
+
+<div class="overlay hidden" id="clear-overlay">
+  <div class="panel">
+    <h2 id="clear-title">Level clear!</h2>
+    <p class="tagline" id="clear-tag">Every dog in the meadow is wagging.</p>
+    <div class="stats">
+      <div class="stat"><span class="num" id="stat-sparkles">0</span><span class="lbl">sparkles</span></div>
+      <div class="stat"><span class="num" id="stat-farts">0</span><span class="lbl">farts</span></div>
+      <div class="stat"><span class="num" id="stat-time">0s</span><span class="lbl">time</span></div>
+    </div>
+    <button class="big-btn" id="next-btn">Next level</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ---------- constants ----------
+  const WORLD_W = 2200, WORLD_H = 1600;
+  const FUEL_MAX = 9, FART_COST = 3;
+  const FART_RADIUS = 150, FART_LIFE = 0.85;
+  const CAT_SPEED = 340, CAT_ACCEL = 2200, CAT_DRAG = 6;
+  const DOG_FLEE_RANGE = 280;
+  const SPARKLE_COUNT = 16;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const isTouch = matchMedia('(pointer: coarse)').matches;
+
+  // ---------- canvas ----------
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+  let vw = 0, vh = 0, dpr = 1;
+  function resize() {
+    dpr = Math.min(devicePixelRatio || 1, 2);
+    vw = innerWidth; vh = innerHeight;
+    canvas.width = vw * dpr;
+    canvas.height = vh * dpr;
+  }
+  addEventListener('resize', resize);
+  resize();
+
+  // ---------- audio ----------
+  let audio = null, muted = false;
+  function ensureAudio() {
+    if (!audio) {
+      try { audio = new (window.AudioContext || window.webkitAudioContext)(); } catch { return; }
+    }
+    if (audio.state === 'suspended') audio.resume();
+  }
+  function tone(freq, dur, type, vol, delay = 0, glideTo = null) {
+    if (!audio || muted) return;
+    const t0 = audio.currentTime + delay;
+    const osc = audio.createOscillator();
+    const g = audio.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, t0);
+    if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, t0 + dur);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    osc.connect(g).connect(audio.destination);
+    osc.start(t0);
+    osc.stop(t0 + dur + 0.05);
+  }
+  function noiseBurst(dur, vol, fStart, fEnd) {
+    if (!audio || muted) return;
+    const t0 = audio.currentTime;
+    const len = Math.floor(audio.sampleRate * dur);
+    const buf = audio.createBuffer(1, len, audio.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    const src = audio.createBufferSource();
+    src.buffer = buf;
+    const filt = audio.createBiquadFilter();
+    filt.type = 'lowpass';
+    filt.frequency.setValueAtTime(fStart, t0);
+    filt.frequency.exponentialRampToValueAtTime(fEnd, t0 + dur);
+    const g = audio.createGain();
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(filt).connect(g).connect(audio.destination);
+    src.start(t0);
+  }
+  const sfx = {
+    pickup() { tone(880, 0.1, 'sine', 0.12); tone(1320, 0.14, 'sine', 0.1, 0.05); },
+    fart() {
+      noiseBurst(0.45, 0.22, 900, 120);
+      tone(170, 0.4, 'square', 0.08, 0, 62);
+      tone(1760, 0.3, 'sine', 0.05, 0.08, 2640);
+    },
+    dud() { tone(160, 0.18, 'square', 0.08, 0, 110); },
+    happy() {
+      [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.22, 'triangle', 0.11, i * 0.07));
+    },
+    win() {
+      [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.3, 'triangle', 0.12, i * 0.1));
+    },
+  };
+
+  // ---------- helpers ----------
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+  // ---------- world decor (fixed per session) ----------
+  const flowers = [], tufts = [];
+  for (let i = 0; i < 46; i++) {
+    flowers.push({ x: rand(60, WORLD_W - 60), y: rand(60, WORLD_H - 60), g: ['🌼','🌸','🌷','🍄'][Math.floor(rand(0, 4))], s: rand(18, 28) });
+  }
+  for (let i = 0; i < 70; i++) {
+    tufts.push({ x: rand(30, WORLD_W - 30), y: rand(30, WORLD_H - 30), s: rand(0.6, 1.3) });
+  }
+
+  // ---------- game state ----------
+  const state = {
+    mode: 'title', // title | playing | clear
+    level: 1,
+    fuel: 0,
+    cat: { x: WORLD_W / 2, y: WORLD_H / 2, vx: 0, vy: 0, facing: -1 },
+    dogs: [],
+    sparkles: [],
+    particles: [],
+    floaties: [], // rising emoji (hearts, notes)
+    clouds: [],   // active fart clouds
+    cam: { x: 0, y: 0 },
+    shake: 0,
+    time: 0,
+    levelTime: 0,
+    sparklesEaten: 0,
+    fartsUsed: 0,
+    trailTimer: 0,
+  };
+
+  function spawnSparkle() {
+    for (let tries = 0; tries < 20; tries++) {
+      const x = rand(80, WORLD_W - 80), y = rand(80, WORLD_H - 80);
+      if (dist2(x, y, state.cat.x, state.cat.y) > 300 * 300 || tries === 19) {
+        state.sparkles.push({ x, y, phase: rand(0, Math.PI * 2) });
+        return;
+      }
+    }
+  }
+
+  function startLevel(n) {
+    state.level = n;
+    state.mode = 'playing';
+    state.fuel = 0;
+    state.dogs = [];
+    state.sparkles = [];
+    state.particles = [];
+    state.floaties = [];
+    state.clouds = [];
+    state.levelTime = 0;
+    state.sparklesEaten = 0;
+    state.fartsUsed = 0;
+    state.cat.x = WORLD_W / 2; state.cat.y = WORLD_H / 2;
+    state.cat.vx = 0; state.cat.vy = 0;
+    const dogCount = 2 + n;
+    const fleeSpeed = Math.min(200 + n * 18, 315);
+    for (let i = 0; i < dogCount; i++) {
+      let x, y;
+      do { x = rand(120, WORLD_W - 120); y = rand(120, WORLD_H - 120); }
+      while (dist2(x, y, state.cat.x, state.cat.y) < 450 * 450);
+      state.dogs.push({
+        x, y, vx: 0, vy: 0, happy: false, facing: -1,
+        fleeSpeed, wanderA: rand(0, Math.PI * 2), wanderT: 0, bob: rand(0, Math.PI * 2),
+      });
+    }
+    for (let i = 0; i < SPARKLE_COUNT; i++) spawnSparkle();
+    hud.style.display = 'flex';
+    fartBtn.style.display = 'flex';
+    titleOverlay.classList.add('hidden');
+    clearOverlay.classList.add('hidden');
+    updateHud();
+  }
+
+  // ---------- input ----------
+  const keys = {};
+  addEventListener('keydown', (e) => {
+    if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
+    keys[e.key.toLowerCase()] = true;
+    if (e.key === ' ' && !e.repeat) tryFart();
+  });
+  addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+  // virtual joystick: drag anywhere on canvas
+  const joy = { active: false, id: null, sx: 0, sy: 0, dx: 0, dy: 0 };
+  canvas.addEventListener('pointerdown', (e) => {
+    ensureAudio();
+    if (joy.active) return;
+    joy.active = true; joy.id = e.pointerId;
+    joy.sx = e.clientX; joy.sy = e.clientY;
+    joy.dx = 0; joy.dy = 0;
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!joy.active || e.pointerId !== joy.id) return;
+    joy.dx = e.clientX - joy.sx;
+    joy.dy = e.clientY - joy.sy;
+    const len = Math.hypot(joy.dx, joy.dy);
+    const max = 70;
+    if (len > max) { // drag the anchor along so direction stays responsive
+      joy.sx = e.clientX - (joy.dx / len) * max;
+      joy.sy = e.clientY - (joy.dy / len) * max;
+      joy.dx = (joy.dx / len) * max;
+      joy.dy = (joy.dy / len) * max;
+    }
+  });
+  function joyEnd(e) {
+    if (e.pointerId === joy.id) { joy.active = false; joy.id = null; }
+  }
+  canvas.addEventListener('pointerup', joyEnd);
+  canvas.addEventListener('pointercancel', joyEnd);
+
+  // ---------- fart ----------
+  function tryFart() {
+    if (state.mode !== 'playing') return;
+    ensureAudio();
+    if (state.fuel < FART_COST) { sfx.dud(); state.shake = reducedMotion ? 0 : 3; return; }
+    state.fuel -= FART_COST;
+    state.fartsUsed++;
+    const c = state.cat;
+    const bx = c.x - c.facing * 34, by = c.y + 10;
+    state.clouds.push({ x: bx, y: by, t: 0 });
+    // propulsion kick
+    c.vx += c.facing * 260;
+    c.vy -= 60;
+    // rainbow burst
+    const hues = [0, 35, 60, 140, 200, 280, 320];
+    for (let i = 0; i < 46; i++) {
+      const a = rand(0, Math.PI * 2), sp = rand(30, 240);
+      state.particles.push({
+        x: bx, y: by,
+        vx: Math.cos(a) * sp - c.facing * rand(40, 130),
+        vy: Math.sin(a) * sp,
+        life: rand(0.5, 1.0), t: 0,
+        hue: hues[i % hues.length],
+        size: rand(3, 8),
+      });
+    }
+    sfx.fart();
+    state.shake = reducedMotion ? 0 : 8;
+    // convert dogs in radius
+    let converted = 0;
+    for (const d of state.dogs) {
+      if (!d.happy && dist2(d.x, d.y, bx, by) < FART_RADIUS * FART_RADIUS) {
+        d.happy = true;
+        converted++;
+        for (let i = 0; i < 10; i++) {
+          state.floaties.push({
+            x: d.x + rand(-20, 20), y: d.y + rand(-30, 0),
+            vy: rand(-90, -50), t: 0, life: rand(0.8, 1.4),
+            g: ['❤️','💛','🎵','⭐'][Math.floor(rand(0, 4))], s: rand(16, 26),
+          });
+        }
+      }
+    }
+    if (converted) sfx.happy();
+    updateHud();
+    if (state.dogs.every(d => d.happy)) levelClear();
+  }
+
+  function levelClear() {
+    state.mode = 'clear';
+    sfx.win();
+    statSparkles.textContent = state.sparklesEaten;
+    statFarts.textContent = state.fartsUsed;
+    statTime.textContent = Math.round(state.levelTime) + 's';
+    clearTitle.textContent = 'Level ' + state.level + ' clear!';
+    clearTag.textContent = ['Every dog in the meadow is wagging.',
+      'Not a single grump left standing.',
+      'The meadow smells like victory. And glitter.',
+      'Tails: wagging. Mission: accomplished.'][state.level % 4];
+    clearOverlay.classList.remove('hidden');
+    fartBtn.style.display = 'none';
+  }
+
+  // ---------- update ----------
+  function update(dt) {
+    if (state.mode !== 'playing') return;
+    state.levelTime += dt;
+    const c = state.cat;
+
+    // input vector
+    let ix = 0, iy = 0;
+    if (keys['a'] || keys['arrowleft']) ix -= 1;
+    if (keys['d'] || keys['arrowright']) ix += 1;
+    if (keys['w'] || keys['arrowup']) iy -= 1;
+    if (keys['s'] || keys['arrowdown']) iy += 1;
+    if (joy.active) {
+      const len = Math.hypot(joy.dx, joy.dy);
+      if (len > 8) { ix = joy.dx / 70; iy = joy.dy / 70; }
+    }
+    const ilen = Math.hypot(ix, iy);
+    if (ilen > 1) { ix /= ilen; iy /= ilen; }
+
+    c.vx += ix * CAT_ACCEL * dt;
+    c.vy += iy * CAT_ACCEL * dt;
+    c.vx -= c.vx * CAT_DRAG * dt;
+    c.vy -= c.vy * CAT_DRAG * dt;
+    const spd = Math.hypot(c.vx, c.vy);
+    if (spd > CAT_SPEED * 1.4) { c.vx *= CAT_SPEED * 1.4 / spd; c.vy *= CAT_SPEED * 1.4 / spd; }
+    c.x = clamp(c.x + c.vx * dt, 40, WORLD_W - 40);
+    c.y = clamp(c.y + c.vy * dt, 40, WORLD_H - 40);
+    if (Math.abs(c.vx) > 30) c.facing = c.vx > 0 ? 1 : -1;
+
+    // sparkle trail while zooming
+    state.trailTimer -= dt;
+    if (spd > 180 && state.trailTimer <= 0 && !reducedMotion) {
+      state.trailTimer = 0.06;
+      state.particles.push({
+        x: c.x - c.facing * 24, y: c.y + 16,
+        vx: rand(-15, 15), vy: rand(-30, -10),
+        life: 0.45, t: 0, hue: state.fuel >= FART_COST ? 315 : 48, size: rand(2, 4),
+      });
+    }
+
+    // pickups
+    for (let i = state.sparkles.length - 1; i >= 0; i--) {
+      const s = state.sparkles[i];
+      if (dist2(s.x, s.y, c.x, c.y) < 42 * 42) {
+        state.sparkles.splice(i, 1);
+        state.sparklesEaten++;
+        if (state.fuel < FUEL_MAX) state.fuel++;
+        sfx.pickup();
+        for (let j = 0; j < 5; j++) {
+          state.particles.push({
+            x: s.x, y: s.y, vx: rand(-70, 70), vy: rand(-90, -20),
+            life: 0.5, t: 0, hue: 48, size: rand(2, 5),
+          });
+        }
+        spawnSparkle();
+        updateHud();
+      }
+    }
+
+    // dogs
+    for (const d of state.dogs) {
+      d.bob += dt * (d.happy ? 9 : 5);
+      if (d.happy) {
+        // gentle frolic
+        d.wanderT -= dt;
+        if (d.wanderT <= 0) { d.wanderT = rand(0.8, 2.2); d.wanderA = rand(0, Math.PI * 2); }
+        d.vx += (Math.cos(d.wanderA) * 60 - d.vx) * 2 * dt;
+        d.vy += (Math.sin(d.wanderA) * 60 - d.vy) * 2 * dt;
+        if (Math.random() < dt * 0.4) {
+          state.floaties.push({ x: d.x, y: d.y - 30, vy: -50, t: 0, life: 1.1, g: Math.random() < 0.5 ? '❤️' : '🎵', s: 16 });
+        }
+      } else {
+        const dd = dist2(d.x, d.y, c.x, c.y);
+        if (dd < DOG_FLEE_RANGE * DOG_FLEE_RANGE) {
+          const dl = Math.sqrt(dd) || 1;
+          const fx = (d.x - c.x) / dl, fy = (d.y - c.y) / dl;
+          d.vx += (fx * d.fleeSpeed - d.vx) * 4 * dt;
+          d.vy += (fy * d.fleeSpeed - d.vy) * 4 * dt;
+        } else {
+          d.wanderT -= dt;
+          if (d.wanderT <= 0) { d.wanderT = rand(1, 3); d.wanderA = rand(0, Math.PI * 2); }
+          d.vx += (Math.cos(d.wanderA) * 70 - d.vx) * 2 * dt;
+          d.vy += (Math.sin(d.wanderA) * 70 - d.vy) * 2 * dt;
+        }
+      }
+      d.x += d.vx * dt; d.y += d.vy * dt;
+      // bounce off world edges
+      if (d.x < 60) { d.x = 60; d.vx = Math.abs(d.vx); d.wanderA = 0; }
+      if (d.x > WORLD_W - 60) { d.x = WORLD_W - 60; d.vx = -Math.abs(d.vx); d.wanderA = Math.PI; }
+      if (d.y < 60) { d.y = 60; d.vy = Math.abs(d.vy); d.wanderA = Math.PI / 2; }
+      if (d.y > WORLD_H - 60) { d.y = WORLD_H - 60; d.vy = -Math.abs(d.vy); d.wanderA = -Math.PI / 2; }
+      if (Math.abs(d.vx) > 20) d.facing = d.vx > 0 ? 1 : -1;
+    }
+
+    // particles / floaties / clouds
+    for (let i = state.particles.length - 1; i >= 0; i--) {
+      const p = state.particles[i];
+      p.t += dt;
+      if (p.t >= p.life) { state.particles.splice(i, 1); continue; }
+      p.x += p.vx * dt; p.y += p.vy * dt;
+      p.vy += 40 * dt; p.vx *= (1 - 1.5 * dt);
+    }
+    for (let i = state.floaties.length - 1; i >= 0; i--) {
+      const f = state.floaties[i];
+      f.t += dt;
+      if (f.t >= f.life) { state.floaties.splice(i, 1); continue; }
+      f.y += f.vy * dt;
+    }
+    for (let i = state.clouds.length - 1; i >= 0; i--) {
+      state.clouds[i].t += dt;
+      if (state.clouds[i].t >= FART_LIFE) state.clouds.splice(i, 1);
+    }
+
+    state.shake = Math.max(0, state.shake - dt * 22);
+
+    // camera
+    state.cam.x = clamp(c.x - vw / 2, 0, Math.max(0, WORLD_W - vw));
+    state.cam.y = clamp(c.y - vh / 2, 0, Math.max(0, WORLD_H - vh));
+  }
+
+  // ---------- render ----------
+  function drawEmoji(g, x, y, size, flip = false, rot = 0) {
+    ctx.save();
+    ctx.translate(x, y);
+    if (rot) ctx.rotate(rot);
+    if (flip) ctx.scale(-1, 1);
+    ctx.font = size + 'px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(g, 0, 0);
+    ctx.restore();
+  }
+
+  function render(now) {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    // ground
+    ctx.fillStyle = '#7ec850';
+    ctx.fillRect(0, 0, vw, vh);
+
+    ctx.save();
+    let shx = 0, shy = 0;
+    if (state.shake > 0.5) { shx = rand(-state.shake, state.shake); shy = rand(-state.shake, state.shake); }
+    ctx.translate(-state.cam.x + shx, -state.cam.y + shy);
+
+    // mowed stripes
+    ctx.fillStyle = '#6fb746';
+    const stripe = 140;
+    for (let sx = 0; sx < WORLD_W; sx += stripe * 2) {
+      ctx.fillRect(sx, 0, stripe, WORLD_H);
+    }
+    // world border hedge
+    ctx.strokeStyle = '#3e7a2a';
+    ctx.lineWidth = 26;
+    ctx.strokeRect(13, 13, WORLD_W - 26, WORLD_H - 26);
+
+    // grass tufts
+    ctx.strokeStyle = 'rgba(62, 122, 42, 0.5)';
+    ctx.lineWidth = 2;
+    for (const t of tufts) {
+      ctx.beginPath();
+      ctx.moveTo(t.x - 5 * t.s, t.y);
+      ctx.quadraticCurveTo(t.x - 4 * t.s, t.y - 9 * t.s, t.x - 6 * t.s, t.y - 12 * t.s);
+      ctx.moveTo(t.x, t.y);
+      ctx.quadraticCurveTo(t.x, t.y - 10 * t.s, t.x - 1 * t.s, t.y - 14 * t.s);
+      ctx.moveTo(t.x + 5 * t.s, t.y);
+      ctx.quadraticCurveTo(t.x + 4 * t.s, t.y - 9 * t.s, t.x + 6 * t.s, t.y - 12 * t.s);
+      ctx.stroke();
+    }
+    for (const f of flowers) drawEmoji(f.g, f.x, f.y, f.s);
+
+    const t = now / 1000;
+
+    // sparkles
+    for (const s of state.sparkles) {
+      const pulse = 1 + 0.18 * Math.sin(t * 4 + s.phase);
+      ctx.save();
+      ctx.shadowColor = 'rgba(255, 216, 77, 0.9)';
+      ctx.shadowBlur = 14;
+      drawEmoji('✨', s.x, s.y + Math.sin(t * 2.5 + s.phase) * 4, 26 * pulse);
+      ctx.restore();
+    }
+
+    // fart clouds
+    for (const cl of state.clouds) {
+      const k = cl.t / FART_LIFE;
+      const r = FART_RADIUS * (0.35 + 0.65 * k);
+      const grad = ctx.createRadialGradient(cl.x, cl.y, r * 0.1, cl.x, cl.y, r);
+      grad.addColorStop(0, `hsla(${(t * 400) % 360}, 90%, 80%, ${0.55 * (1 - k)})`);
+      grad.addColorStop(0.6, `hsla(${(t * 400 + 90) % 360}, 90%, 75%, ${0.35 * (1 - k)})`);
+      grad.addColorStop(1, 'hsla(300, 90%, 75%, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cl.x, cl.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // particles
+    for (const p of state.particles) {
+      const a = 1 - p.t / p.life;
+      ctx.fillStyle = `hsla(${p.hue}, 95%, 68%, ${a})`;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.t * 5);
+      ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size);
+      ctx.restore();
+    }
+
+    // dogs
+    for (const d of state.dogs) {
+      const hop = d.happy ? Math.abs(Math.sin(d.bob)) * 10 : Math.sin(d.bob) * 2;
+      // shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.16)';
+      ctx.beginPath();
+      ctx.ellipse(d.x, d.y + 24, 24, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (!d.happy) {
+        // grumpy storm tint
+        ctx.fillStyle = 'rgba(90, 100, 114, 0.28)';
+        ctx.beginPath();
+        ctx.arc(d.x, d.y - hop, 32, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      drawEmoji('🐕', d.x, d.y - hop, 46, d.facing === 1);
+      if (d.happy) {
+        drawEmoji('😊', d.x + 24, d.y - 38 - hop, 17);
+      } else {
+        drawEmoji('💢', d.x + 24, d.y - 38 - hop + Math.sin(t * 6 + d.bob) * 2, 18);
+        drawEmoji('☁️', d.x - 2, d.y - 52 - hop, 24);
+      }
+    }
+
+    // cat
+    const c = state.cat;
+    const cSpd = Math.hypot(c.vx, c.vy);
+    const lean = clamp(c.vx / 900, -0.18, 0.18);
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
+    ctx.beginPath();
+    ctx.ellipse(c.x, c.y + 26, 26, 8, 0, 0, Math.PI * 2);
+    ctx.fill();
+    const bounce = cSpd > 40 ? Math.abs(Math.sin(t * 14)) * 5 : Math.sin(t * 2) * 1.5;
+    // butt glow when fart is ready
+    if (state.fuel >= FART_COST) {
+      const gl = ctx.createRadialGradient(c.x - c.facing * 22, c.y + 8, 2, c.x - c.facing * 22, c.y + 8, 26);
+      gl.addColorStop(0, `hsla(${(t * 240) % 360}, 95%, 72%, 0.75)`);
+      gl.addColorStop(1, 'hsla(315, 95%, 72%, 0)');
+      ctx.fillStyle = gl;
+      ctx.beginPath();
+      ctx.arc(c.x - c.facing * 22, c.y + 8, 26, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawEmoji('🐈', c.x, c.y - bounce, 52, c.facing === 1, lean);
+
+    ctx.restore();
+
+    // joystick indicator
+    if (joy.active && state.mode === 'playing') {
+      ctx.strokeStyle = 'rgba(255, 246, 232, 0.5)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(joy.sx, joy.sy, 46, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 246, 232, 0.7)';
+      ctx.beginPath();
+      ctx.arc(joy.sx + joy.dx * 0.65, joy.sy + joy.dy * 0.65, 18, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // ---------- HUD ----------
+  const hud = document.getElementById('hud');
+  const fartBtn = document.getElementById('fart-btn');
+  const titleOverlay = document.getElementById('title-overlay');
+  const clearOverlay = document.getElementById('clear-overlay');
+  const levelChip = document.getElementById('level-chip');
+  const dogsLeft = document.getElementById('dogs-left');
+  const fuelPips = document.getElementById('fuel-pips');
+  const statSparkles = document.getElementById('stat-sparkles');
+  const statFarts = document.getElementById('stat-farts');
+  const statTime = document.getElementById('stat-time');
+  const clearTitle = document.getElementById('clear-title');
+  const clearTag = document.getElementById('clear-tag');
+
+  for (let i = 0; i < FUEL_MAX; i++) {
+    const pip = document.createElement('span');
+    pip.className = 'pip';
+    fuelPips.appendChild(pip);
+  }
+  const pips = [...fuelPips.children];
+
+  function updateHud() {
+    levelChip.textContent = 'Level ' + state.level;
+    dogsLeft.textContent = state.dogs.filter(d => !d.happy).length;
+    const ready = state.fuel >= FART_COST;
+    pips.forEach((p, i) => {
+      p.className = 'pip' + (i < state.fuel ? (ready ? ' lit ready' : ' lit') : '');
+    });
+    fartBtn.classList.toggle('empty', !ready);
+  }
+
+  document.getElementById('start-btn').addEventListener('click', () => { ensureAudio(); startLevel(1); });
+  document.getElementById('next-btn').addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
+  fartBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); tryFart(); });
+  document.getElementById('mute-btn').addEventListener('click', (e) => {
+    muted = !muted;
+    e.currentTarget.textContent = muted ? '🔇' : '🔊';
+  });
+  if (!isTouch) document.getElementById('fart-hint').textContent = 'SPACE';
+  else document.getElementById('fart-hint').textContent = 'TAP';
+  if (isTouch) document.getElementById('keys-note').textContent = 'Drag anywhere to scamper · tap FART! to fart';
+
+  // ---------- main loop ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    update(dt);
+    render(now);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
