@@ -9,7 +9,9 @@ An idea by a dad and his daughter, roughly fifteen years in the making.
 
 ## Play it
 
-The whole game is one file with zero dependencies:
+Live at **[sparkle.lab980.com](https://sparkle.lab980.com)** (deployment notes
+in [DEPLOY.md](DEPLOY.md)). Or locally — the whole game is one file with zero
+dependencies:
 
 ```
 open index.html

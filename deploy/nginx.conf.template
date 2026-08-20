@@ -1,0 +1,45 @@
+# nginx vhost for Sparkle Butt — plain static site, no app process.
+# Installed by `sparkle setup` as /etc/nginx/sites-available/__FQDN__
+# (placeholders __FQDN__ and __ROOT__ substituted via sed).
+#
+# certbot --nginx adds the :443 block + redirect afterwards, copying this
+# server block — so everything here rides along into the TLS vhost.
+#
+# Note on add_header inheritance: a location{} that sets its own add_header
+# stops inheriting the server-level ones, so the shared security snippet is
+# re-included in every location that adds Cache-Control.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name __FQDN__;
+
+    root __ROOT__;
+    index index.html;
+
+    include snippets/lab980-security-headers.conf;
+
+    # The whole game is one HTML file — always revalidate it, so a deploy
+    # (git reset to origin/main) is live on the next visit. "/" internally
+    # redirects here via the index directive and picks up these headers.
+    location = /index.html {
+        include snippets/lab980-security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+    }
+
+    # Optional sprite atlas (assets/sprites.png + sprites.json). Cache a
+    # week; art updates can rename or cache-bust if it ever matters.
+    location /assets/ {
+        include snippets/lab980-security-headers.conf;
+        add_header Cache-Control "public, max-age=604800" always;
+        try_files $uri =404;
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    # The web root is the git checkout — keep repo plumbing and docs private.
+    location ~ /\. { deny all; }
+    location ~* \.md$ { deny all; }
+}
