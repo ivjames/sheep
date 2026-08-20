@@ -141,6 +141,18 @@
     backdrop-filter: blur(3px);
     z-index: 30;
   }
+  /* the Ready pause is for scouting the field, so keep it visible:
+     no dim, no blur, and the compact panel sits low out of the way */
+  .overlay.peek {
+    background: none;
+    backdrop-filter: none;
+    pointer-events: none;
+    align-items: flex-end;
+    padding-bottom: 12vh;
+  }
+  .overlay.peek .panel { pointer-events: auto; padding: 22px 34px; }
+  .overlay.peek h2 { margin: 0 0 2px; }
+  .overlay.peek.top { align-items: flex-start; padding-top: 13vh; padding-bottom: 0; }
   .panel {
     background: var(--plum);
     border-radius: 28px;
@@ -296,6 +308,14 @@
       <div class="stat"><span class="num" id="stat-time">0s</span><span class="lbl">time</span></div>
     </div>
     <button class="big-btn" id="next-btn">Next level</button>
+  </div>
+</div>
+
+<div class="overlay peek hidden" id="ready-overlay">
+  <div class="panel">
+    <h2 id="ready-title">Level 1</h2>
+    <p class="tagline" id="ready-tag">Take in the field. The clock waits for you.</p>
+    <button class="big-btn" id="ready-btn">🐑 Ready!</button>
   </div>
 </div>
 
@@ -603,7 +623,7 @@
 
   function startLevel(n) {
     state.level = n;
-    state.mode = 'playing';
+    state.mode = 'ready'; // field is laid out but the clock waits for the Ready click
     // Zoomed-out pasture: the whole field fits on screen, sized to this
     // device's aspect so it fills the viewport.
     const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
@@ -690,11 +710,26 @@
     hud.style.display = 'flex';
     titleOverlay.classList.add('hidden');
     clearOverlay.classList.add('hidden');
+    readyTitle.textContent = 'Level ' + n;
+    readyTag.textContent = count + ' sheep to pen — the clock starts when you do.';
+    // sit the panel away from a bottom-edge pen so the gate stays scoutable
+    readyOverlay.classList.toggle('top', P.side === 2);
+    readyOverlay.classList.remove('hidden');
+    state.introDefiant = defiantCount > 0 && !state.defiantSeen;
+    if (defiantCount) state.defiantSeen = true;
     applyInputMode();
     updateHud();
-    toast('🐑 Herd all ' + count + ' sheep through the gate!');
-    if (defiantCount && !state.defiantSeen) {
-      state.defiantSeen = true;
+  }
+
+  function beginLevel() {
+    if (state.mode !== 'ready') return;
+    ensureAudio();
+    state.mode = 'playing';
+    readyOverlay.classList.add('hidden');
+    applyInputMode();
+    toast('🐑 Herd all ' + state.sheep.length + ' sheep through the gate!');
+    if (state.introDefiant) {
+      state.introDefiant = false;
       setTimeout(() => toast('🐏 A defiant sheep joined the flock — charge it to bark it loose!'), 3400);
     }
   }
@@ -793,7 +828,8 @@
         if (hit(7) || hit(6)) issueCommand('easy');       // R2 / L2
       }
     } else if (hit(0) || hit(9)) {                        // A / Start on a menu
-      (state.mode === 'title' ? startDragBtn : nextBtn).click();
+      (state.mode === 'title' ? startDragBtn
+        : state.mode === 'ready' ? readyBtn : nextBtn).click();
     }
     pad.prev = down;
   }
@@ -972,8 +1008,22 @@
         let rx = d.x - flock.cx, ry = d.y - flock.cy;
         let rr = Math.hypot(rx, ry);
         if (rr < 1) { rx = 1; ry = 0; rr = 1; }
-        const R = clamp(flock.r, 70, 320) + 85;
         const a = Math.atan2(ry, rx);
+        // orbit radius: wide enough to clear every sheep in the sector the
+        // dog is sweeping into, so a flank swings out and around a strayed
+        // outlier instead of slicing inside it toward the flock's middle
+        let need = 70;
+        for (const s of state.sheep) {
+          if (s.penned) continue;
+          let da = (Math.atan2(s.y - flock.cy, s.x - flock.cx) - a) * dir;
+          da = ((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+          // ahead of the sweep (~72°), plus a little behind so the dog
+          // doesn't cut in right on top of a sheep it just passed
+          if (da < 1.25 || da > Math.PI * 2 - 0.45) {
+            need = Math.max(need, Math.hypot(s.x - flock.cx, s.y - flock.cy));
+          }
+        }
+        const R = need + 85;
         // canvas y grows downward, so increasing angle sweeps clockwise on screen
         const tx = -Math.sin(a) * dir, ty = Math.cos(a) * dir;
         const corr = (R - rr) * 2.2;
@@ -1057,7 +1107,7 @@
     const { w, h } = state.world;
     const d = state.dog;
     const iz = state.pen.inner;
-    const grazing = state.mode === 'title';
+    const grazing = state.mode === 'title' || state.mode === 'ready';
     const flock = flockInfo();
     for (const s of state.sheep) {
       s.bob += dt * (2 + s.panic * 9);
@@ -1239,8 +1289,9 @@
   }
 
   function update(dt) {
-    if (state.mode === 'title') {
-      // the title screen keeps a quiet flock grazing behind the panel
+    if (state.mode === 'title' || state.mode === 'ready') {
+      // title screen and the pre-level Ready pause both keep a quiet
+      // flock grazing; the dog waits at heel and the clock hasn't started
       updateSheep(dt);
       return;
     }
@@ -1589,7 +1640,7 @@
     for (const f of flowers) drawFlower(f.x, f.y, f.s, f.c);
 
     const t = now / 1000;
-    const inGame = state.mode === 'playing' || state.mode === 'clear';
+    const inGame = state.mode === 'playing' || state.mode === 'clear' || state.mode === 'ready';
 
     // pen: trodden dirt + gate glow (fence rails draw above the actors)
     if (inGame) {
@@ -1859,6 +1910,11 @@
   startDragBtn.addEventListener('click', () => { ensureAudio(); state.input = 'drag'; startLevel(1); });
   startCmdBtn.addEventListener('click', () => { ensureAudio(); state.input = 'cmd'; startLevel(1); });
   nextBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
+  const readyOverlay = document.getElementById('ready-overlay');
+  const readyTitle = document.getElementById('ready-title');
+  const readyTag = document.getElementById('ready-tag');
+  const readyBtn = document.getElementById('ready-btn');
+  readyBtn.addEventListener('click', beginLevel);
   document.getElementById('build-tag').textContent = 'build ' + BUILD;
   document.getElementById('mute-btn').addEventListener('click', (e) => {
     muted = !muted;

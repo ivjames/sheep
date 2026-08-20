@@ -37,7 +37,7 @@ Pick one on the title screen, swap any time mid-game with the HUD toggle:
 
   | Command | Means | The dog… |
   |---|---|---|
-  | **Come by** | flank clockwise | circles the flock clockwise |
+  | **Come by** | flank clockwise | circles the flock clockwise, swinging wide around strays |
   | **Steady** | halt | stops — pace drops to zero |
   | **Away** (to me) | flank counter-clockwise | circles the other way |
   | **Walk on** | drive | pushes at the flock, each tap adds pace |
@@ -62,7 +62,8 @@ pressure in a ring, and the only thing that shifts a planted sheep.
   swelling as long as you keep clearing) and a fenced pen against one edge
   with a flagged gate that **narrows level by level** down to a two-sheep
   squeeze. Pen every sheep and the gate swings shut to clear the level. No
-  fail state, just you, the flock, and the clock.
+  fail state, just you, the flock, and the clock — which waits for your
+  **Ready** click at the top of each level while the flock grazes.
 - Sheep are boids: they bunch when scared, panic spreads between
   neighbours, strays and split groups drift back and merge with the mob,
   and they graze and wander when calm. Pressure from directly behind moves
