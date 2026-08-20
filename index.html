@@ -278,10 +278,10 @@
       <div><span class="glyph">🗣️</span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em>, <em>easy</em>, <em>steady</em>, <em>to me</em> (call off), <em>that'll do</em>.</span></div>
     </div>
     <div class="mode-row">
-      <button class="big-btn" id="start-drag-btn">🕹️ Drag to herd<span class="sub">steer the dog yourself</span></button>
+      <button class="big-btn" id="start-drag-btn">🎯 Lure the dog<span class="sub">it chases your finger</span></button>
       <button class="big-btn alt" id="start-cmd-btn">🗣️ Command mode<span class="sub">whistle the dog around</span></button>
     </div>
-    <p class="keys-note" id="keys-note">WASD / arrows to run · charge a sheep to bark · 1–7 call commands · swap modes any time</p>
+    <p class="keys-note" id="keys-note">Click to send the dog (or WASD / arrows) · charge a sheep to bark · 1–7 call commands · swap modes any time</p>
     <p class="build-tag" id="build-tag"></p>
   </div>
 </div>
@@ -685,34 +685,32 @@
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
-  // virtual joystick (drag mode): drag anywhere on canvas
-  const joy = { active: false, id: null, sx: 0, sy: 0, dx: 0, dy: 0 };
+  // rabbit-style lure (drag mode): your finger is the dog's target — it
+  // chases the spot, and if you lift, finishes the run and stops there
+  const lure = { id: null, has: false, x: 0, y: 0 };
+  function lureFrom(e) {
+    const { w, h } = state.world;
+    const scale = Math.min(vw / w, vh / h);
+    const ox = (vw - w * scale) / 2, oy = (vh - h * scale) / 2;
+    lure.x = clamp((e.clientX - ox) / scale, HEDGE + 16, w - HEDGE - 16);
+    lure.y = clamp((e.clientY - oy) / scale, HEDGE + 16, h - HEDGE - 16);
+    lure.has = true;
+  }
   canvas.addEventListener('pointerdown', (e) => {
     ensureAudio();
-    if (joy.active || state.input !== 'drag') return;
-    joy.active = true; joy.id = e.pointerId;
-    joy.sx = e.clientX; joy.sy = e.clientY;
-    joy.dx = 0; joy.dy = 0;
+    if (lure.id !== null || state.input !== 'drag') return;
+    lure.id = e.pointerId;
+    lureFrom(e);
     canvas.setPointerCapture(e.pointerId);
   });
   canvas.addEventListener('pointermove', (e) => {
-    if (!joy.active || e.pointerId !== joy.id) return;
-    joy.dx = e.clientX - joy.sx;
-    joy.dy = e.clientY - joy.sy;
-    const len = Math.hypot(joy.dx, joy.dy);
-    const max = 70;
-    if (len > max) { // drag the anchor along so direction stays responsive
-      joy.sx = e.clientX - (joy.dx / len) * max;
-      joy.sy = e.clientY - (joy.dy / len) * max;
-      joy.dx = (joy.dx / len) * max;
-      joy.dy = (joy.dy / len) * max;
-    }
+    if (e.pointerId === lure.id) lureFrom(e);
   });
-  function joyEnd(e) {
-    if (e.pointerId === joy.id) { joy.active = false; joy.id = null; }
+  function lureEnd(e) {
+    if (e.pointerId === lure.id) lure.id = null;
   }
-  canvas.addEventListener('pointerup', joyEnd);
-  canvas.addEventListener('pointercancel', joyEnd);
+  canvas.addEventListener('pointerup', lureEnd);
+  canvas.addEventListener('pointercancel', lureEnd);
 
   // ---------- toast ----------
   const toastEl = document.getElementById('toast');
@@ -874,17 +872,29 @@
       if (keys['d'] || keys['arrowright']) ix += 1;
       if (keys['w'] || keys['arrowup']) iy -= 1;
       if (keys['s'] || keys['arrowdown']) iy += 1;
-      if (joy.active) {
-        const len = Math.hypot(joy.dx, joy.dy);
-        if (len > 8) { ix = joy.dx / 70; iy = joy.dy / 70; }
-      }
       ix += pad.x; iy += pad.y;
       const ilen = Math.hypot(ix, iy);
-      if (ilen > 1) { ix /= ilen; iy /= ilen; }
-      d.vx += ix * DOG_ACCEL * dt;
-      d.vy += iy * DOG_ACCEL * dt;
-      d.vx -= d.vx * DOG_DRAG * dt;
-      d.vy -= d.vy * DOG_DRAG * dt;
+      if (ilen > 0.05) {
+        // keys / stick direct-drive, and take over from the lure
+        lure.has = false;
+        if (ilen > 1) { ix /= ilen; iy /= ilen; }
+        d.vx += ix * DOG_ACCEL * dt;
+        d.vy += iy * DOG_ACCEL * dt;
+        d.vx -= d.vx * DOG_DRAG * dt;
+        d.vy -= d.vy * DOG_DRAG * dt;
+      } else if (lure.has) {
+        // rubber band to the lure: harder pull the farther it sits,
+        // easing in to a stop on arrival
+        const tx = lure.x - d.x, ty = lure.y - d.y;
+        const td = Math.hypot(tx, ty);
+        if (td < 8 && lure.id === null) lure.has = false; // got there
+        const sp = Math.min(DOG_SPEED, td * 3.4);
+        d.vx += ((td > 0.01 ? tx / td * sp : 0) - d.vx) * 9 * dt;
+        d.vy += ((td > 0.01 ? ty / td * sp : 0) - d.vy) * 9 * dt;
+      } else {
+        d.vx -= d.vx * DOG_DRAG * dt;
+        d.vy -= d.vy * DOG_DRAG * dt;
+      }
       const spd = Math.hypot(d.vx, d.vy);
       if (spd > DOG_SPEED) { d.vx *= DOG_SPEED / spd; d.vy *= DOG_SPEED / spd; }
     } else {
@@ -1677,16 +1687,18 @@
 
     ctx.restore();
 
-    // joystick indicator (screen space)
-    if (joy.active && state.mode === 'playing' && state.input === 'drag') {
-      ctx.strokeStyle = 'rgba(255, 246, 232, 0.5)';
-      ctx.lineWidth = 3;
+    // lure marker (screen space): where the dog is running to
+    if (lure.has && state.mode === 'playing' && state.input === 'drag') {
+      const sx = ox + lure.x * scale, sy = oy + lure.y * scale;
+      const pulse = reducedMotion ? 1 : 1 + Math.sin(now / 140) * 0.15;
+      ctx.strokeStyle = 'rgba(255, 246, 232, 0.85)';
+      ctx.lineWidth = 2.5;
       ctx.beginPath();
-      ctx.arc(joy.sx, joy.sy, 46, 0, Math.PI * 2);
+      ctx.arc(sx, sy, 13 * pulse, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = 'rgba(255, 246, 232, 0.7)';
+      ctx.fillStyle = 'rgba(255, 216, 77, 0.9)';
       ctx.beginPath();
-      ctx.arc(joy.sx + joy.dx * 0.65, joy.sy + joy.dy * 0.65, 18, 0, Math.PI * 2);
+      ctx.arc(sx, sy, 4, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -1711,7 +1723,7 @@
     levelChip.textContent = 'Level ' + state.level;
     const penned = state.sheep.filter(s => s.penned).length;
     sheepCount.textContent = penned + '/' + state.sheep.length;
-    modeBtn.textContent = state.input === 'drag' ? '🕹️ drag' : '🗣️ commands';
+    modeBtn.textContent = state.input === 'drag' ? '🎯 lure' : '🗣️ commands';
   }
 
   const cmdBtns = [...cmdUi.querySelectorAll('.cmd-btn')];
@@ -1733,16 +1745,16 @@
     if (state.input === 'cmd') {
       state.dog.cmd = 'lie';
       updateCmdButtons();
-    } else if (joy.active) {
-      joy.active = false; joy.id = null;
     }
+    lure.has = false;
+    lure.id = null;
     updateHud();
   }
   modeBtn.addEventListener('click', () => {
     state.input = state.input === 'drag' ? 'cmd' : 'drag';
     applyInputMode();
     toast(state.input === 'drag'
-      ? '🕹️ Drag mode — steer the dog yourself'
+      ? '🎯 Lure mode — the dog chases your finger'
       : '🗣️ Command mode — whistle the dog around');
   });
 
@@ -1759,7 +1771,7 @@
   });
   if (isTouch) {
     document.getElementById('keys-note').textContent =
-      'Drag anywhere to run · charge a sheep to bark · tap the calls in command mode · swap modes any time';
+      'Touch the field — the dog chases your finger · charge a sheep to bark · tap the calls in command mode';
   }
 
   // ---------- title backdrop ----------
