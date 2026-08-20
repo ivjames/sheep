@@ -97,15 +97,31 @@
   }
   #bark-btn:active { transform: translateY(4px); box-shadow: 0 2px 0 #2a6f99; }
   #bark-btn .key-hint { font-family: var(--body); font-weight: 800; font-size: 11px; opacity: 0.75; }
-  /* ---------- Command stack ---------- */
-  #cmd-stack {
+  /* ---------- Command buttons ---------- */
+  /* zoned for thumbs: flanks mid-screen left/right, pace cluster
+     bottom-left, recalls stacked above BARK on the right */
+  #cmd-ui { display: none; }
+  .cmd-cluster {
     position: fixed;
-    left: 14px;
-    bottom: 20px;
-    display: none;
+    display: flex;
     flex-direction: column;
     gap: 8px;
     z-index: 20;
+  }
+  #cmd-stack { left: 14px; bottom: 20px; }
+  #cmd-recall { right: 14px; bottom: 142px; align-items: flex-end; }
+  .cmd-flank {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 20;
+  }
+  #cmd-left { left: 14px; }
+  #cmd-right { right: 14px; }
+  .cmd-flank .cmd-btn {
+    padding: 16px 18px;
+    font-size: 17px;
+    border-radius: 24px;
   }
   .cmd-btn {
     border: 0;
@@ -236,8 +252,8 @@
   #toast {
     position: fixed;
     left: 50%;
-    bottom: 22px;
-    transform: translateX(-50%) translateY(90px);
+    top: 62px; /* under the HUD, clear of the thumb clusters below */
+    transform: translateX(-50%) translateY(-130px);
     background: #31204a;
     color: #fff6e8;
     font-weight: 800;
@@ -271,14 +287,22 @@
   BARK!<span class="key-hint" id="bark-hint">SPACE</span>
 </button>
 
-<div id="cmd-stack">
-  <button class="cmd-btn" data-cmd="cb">🌀 COME BY <span class="key-hint">1</span></button>
-  <button class="cmd-btn" data-cmd="aw">🔄 AWAY <span class="key-hint">2</span></button>
-  <button class="cmd-btn" data-cmd="walk">➡️ WALK ON <span class="key-hint">3</span></button>
-  <button class="cmd-btn" data-cmd="easy">🐢 EASY <span class="key-hint">4</span></button>
-  <button class="cmd-btn" data-cmd="lie">✋ STEADY <span class="key-hint">5</span></button>
-  <button class="cmd-btn" data-cmd="tome">🤙 TO ME <span class="key-hint">6</span></button>
-  <button class="cmd-btn" data-cmd="home">🏡 THAT'LL DO <span class="key-hint">7</span></button>
+<div id="cmd-ui">
+  <div id="cmd-left" class="cmd-flank">
+    <button class="cmd-btn" data-cmd="cb">🌀 COME BY <span class="key-hint">1</span></button>
+  </div>
+  <div id="cmd-right" class="cmd-flank">
+    <button class="cmd-btn" data-cmd="aw">🔄 AWAY <span class="key-hint">2</span></button>
+  </div>
+  <div id="cmd-stack" class="cmd-cluster">
+    <button class="cmd-btn" data-cmd="walk">➡️ WALK ON <span class="key-hint">3</span></button>
+    <button class="cmd-btn" data-cmd="easy">🐢 EASY <span class="key-hint">4</span></button>
+    <button class="cmd-btn" data-cmd="lie">✋ STEADY <span class="key-hint">5</span></button>
+  </div>
+  <div id="cmd-recall" class="cmd-cluster">
+    <button class="cmd-btn" data-cmd="tome">🤙 TO ME <span class="key-hint">6</span></button>
+    <button class="cmd-btn" data-cmd="home">🏡 THAT'LL DO <span class="key-hint">7</span></button>
+  </div>
 </div>
 
 <div class="overlay" id="title-overlay">
@@ -1179,7 +1203,7 @@
       'Ewe did it. Every last one.'][state.level % 4];
     clearOverlay.classList.remove('hidden');
     barkBtn.style.display = 'none';
-    cmdStack.style.display = 'none';
+    cmdUi.style.display = 'none';
   }
 
   function update(dt) {
@@ -1697,7 +1721,7 @@
   // ---------- HUD & buttons ----------
   const hud = document.getElementById('hud');
   const barkBtn = document.getElementById('bark-btn');
-  const cmdStack = document.getElementById('cmd-stack');
+  const cmdUi = document.getElementById('cmd-ui');
   const titleOverlay = document.getElementById('title-overlay');
   const clearOverlay = document.getElementById('clear-overlay');
   const levelChip = document.getElementById('level-chip');
@@ -1718,7 +1742,7 @@
     modeBtn.textContent = state.input === 'drag' ? '🕹️ drag' : '🗣️ commands';
   }
 
-  const cmdBtns = [...cmdStack.querySelectorAll('.cmd-btn')];
+  const cmdBtns = [...cmdUi.querySelectorAll('.cmd-btn')];
   function updateCmdButtons() {
     for (const b of cmdBtns) {
       const c = b.dataset.cmd;
@@ -1731,7 +1755,7 @@
 
   function applyInputMode() {
     if (state.mode === 'playing') {
-      cmdStack.style.display = state.input === 'cmd' ? 'flex' : 'none';
+      cmdUi.style.display = state.input === 'cmd' ? 'block' : 'none';
     }
     if (state.input === 'cmd') {
       state.dog.cmd = 'lie';
