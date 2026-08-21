@@ -1289,7 +1289,15 @@
         const aDog = Math.atan2(ry, rx);
         let dAng = ((Math.atan2(uy, ux) - aDog + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
         if (Math.abs(dAng) < 0.55) {
-          const press = clamp((rr - (hold + 70)) / 90, -0.4, 1);
+          // press keyed to the nearest sheep, not the flock's bounding
+          // radius — an elongated mob otherwise reads as "close enough"
+          // while every actual sheep stands outside flee range, and the
+          // drive deadlocks with the dog parked and the flock ignoring it.
+          let near = Infinity;
+          for (const s of state.sheep) {
+            if (!s.penned) near = Math.min(near, Math.hypot(s.x - d.x, s.y - d.y));
+          }
+          const press = clamp((near - 110) / 70, -0.4, 1);
           desx = -(rx / rr) * press * pace;
           desy = -(ry / rr) * press * pace;
         } else {
