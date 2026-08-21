@@ -1196,6 +1196,7 @@
     state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
+    state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
     state.pace = PACE_START;
     state.barks = [];
     state.floaties = [];
@@ -1467,20 +1468,69 @@
   }
 
   // ---------- update ----------
+  // the flock as the dog reads it. One mob is just centroid+radius —
+  // but a SPLIT flock has several knots, and a centroid over all of
+  // them lands in the empty middle, so the drive balanced and orbited
+  // a point with no sheep on it (the dog cut the corner between
+  // groups). Instead: single-link the loose sheep into clusters, then
+  // work ONE group. First pick is the group farthest from the gate, so
+  // the sweep works the back of the field pen-ward and merges groups
+  // as it drives; the choice is tracked frame to frame (nearest
+  // centroid to the last one) so the dog doesn't flip targets
+  // mid-drive, and re-picks only when its group dissolves — merged
+  // into another or penned.
   function flockInfo() {
-    let n = 0, cx = 0, cy = 0;
-    for (const s of state.sheep) {
-      if (s.penned) continue;
-      n++; cx += s.x; cy += s.y;
+    const loose = state.sheep.filter(s => !s.penned);
+    if (!loose.length) return null;
+    const LINK = 170; // sheep this close hang together as one group
+    const seen = new Array(loose.length).fill(false);
+    const clusters = [];
+    for (let i = 0; i < loose.length; i++) {
+      if (seen[i]) continue;
+      const q = [i];
+      seen[i] = true;
+      const members = [];
+      while (q.length) {
+        const a = q.pop();
+        members.push(loose[a]);
+        for (let j = 0; j < loose.length; j++) {
+          if (!seen[j] && dist2(loose[a].x, loose[a].y, loose[j].x, loose[j].y) < LINK * LINK) {
+            seen[j] = true;
+            q.push(j);
+          }
+        }
+      }
+      let cx = 0, cy = 0;
+      for (const s of members) { cx += s.x; cy += s.y; }
+      cx /= members.length; cy /= members.length;
+      let r = 0;
+      for (const s of members) r = Math.max(r, Math.hypot(s.x - cx, s.y - cy));
+      clusters.push({ n: members.length, cx, cy, r });
     }
-    if (!n) return null;
-    cx /= n; cy /= n;
-    let r = 0;
-    for (const s of state.sheep) {
-      if (s.penned) continue;
-      r = Math.max(r, Math.hypot(s.x - cx, s.y - cy));
+    const d = state.dog;
+    let pick = null;
+    if (clusters.length > 1) {
+      // stay on the group we were working if it still exists nearby...
+      if (d.workX !== undefined) {
+        let best = Infinity;
+        for (const c of clusters) {
+          const dd = dist2(c.cx, c.cy, d.workX, d.workY);
+          if (dd < best) { best = dd; if (dd < 220 * 220) pick = c; }
+        }
+      }
+      // ...otherwise commit to the group farthest from the gate
+      if (!pick) {
+        const P = state.pen;
+        for (const c of clusters) {
+          if (!pick || dist2(c.cx, c.cy, P.gx, P.gy) > dist2(pick.cx, pick.cy, P.gx, P.gy)) pick = c;
+        }
+      }
+    } else {
+      pick = clusters[0];
     }
-    return { n, cx, cy, r };
+    d.workX = pick.cx;
+    d.workY = pick.cy;
+    return pick;
   }
 
   function updateDog(dt) {
