@@ -1907,7 +1907,7 @@
         s.x = clamp(s.x + s.vx * dt, bx0, bx1);
         s.y = clamp(s.y + s.vy * dt, by0, by1);
         if (Math.abs(s.vx) > 4) s.facing = s.vx > 0 ? 1 : -1;
-        if (Math.hypot(s.vx, s.vy) > 4) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), 2.5 * dt);
+        if (Math.hypot(s.vx, s.vy) > 4) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), 5 * dt);
         continue;
       }
       s.plantCd = Math.max(0, s.plantCd - dt);
@@ -2095,9 +2095,11 @@
       collideObstacles(s, SHEEP_R);
       if (Math.abs(s.vx) > 6) s.facing = s.vx > 0 ? 1 : -1;
       // swing the body round to the way it's actually running —
-      // spooked sheep whip about faster than grazing ones
+      // spooked sheep whip about faster than grazing ones. Sheep are
+      // quick on their feet: even a calm one snaps round smartly, and
+      // a panicked one turns as fast as the dog does
       const run = Math.hypot(s.vx, s.vy);
-      if (run > 6) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), (3.5 + s.panic * 8) * dt);
+      if (run > 6) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), (7 + s.panic * 9) * dt);
 
       if (s.planted) {
         s.plantT -= dt;
