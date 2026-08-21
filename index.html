@@ -438,6 +438,12 @@
   // of it, and each sweep runs this far off the drive line before it turns.
   const WEAR_SPREAD = 45, WEAR_TIGHT = 0.82, WEAR_ARC = 0.6;
   const WEAR_BOUT = 3.6, WEAR_REST = 1.8; // seconds of wearing, then of driving
+  // casting (walk on): a stalled drive means the flock has spread away from
+  // the dog, not that the job is done, so the dog arcs across their back
+  // rather than standing. Below CAST_IDLE of its pace the drive counts as
+  // stalled, the cast comes in at CAST_GAIN of pace, and it turns CAST_ARC
+  // either side of the drive line.
+  const CAST_IDLE = 0.5, CAST_GAIN = 0.7, CAST_ARC = 0.4;
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const FEAR_HOLD = 0.5;          // seconds a startle pins panic at FULL — flat, not pressure-scaled
@@ -758,7 +764,7 @@
     auto: false,   // in-game autopilot: the dog works the flock itself
     level: 1,
     world: { w: 1600, h: 1000 },
-    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, barkCd: 0 },
+    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, castSide: 0, barkCd: 0 },
     pace: PACE_START, // command-mode speed gradient, 0 (halt) → 1 (flat out)
     handler: { x: 800, y: 560 },
     sheep: [],
@@ -1203,7 +1209,7 @@
     state.handler.x = clamp(P.gx + P.out.x * 150 + tx * (P.gw / 2 + 90), HEDGE + 40, w - HEDGE - 40);
     state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (P.gw / 2 + 90), HEDGE + 40, h - HEDGE - 40);
     state.dog.x = state.handler.x + 24; state.dog.y = state.handler.y + 20;
-    state.dog.vx = 0; state.dog.vy = 0; state.dog.gait = 0;
+    state.dog.vx = 0; state.dog.vy = 0; state.dog.gait = 0; state.dog.castSide = 0;
     state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
@@ -1554,7 +1560,6 @@
   function updateDog(dt) {
     const d = state.dog;
     d.barkCd = Math.max(0, d.barkCd - dt);
-    d.eyeOn = 0; // set only by the drive mode that works the contact ring
     let desx = 0, desy = 0, sweep = 0;
     if (state.input === 'drag' && !state.demo && !state.auto) {
       let ix = 0, iy = 0;
@@ -1667,10 +1672,29 @@
           const vlen = Math.hypot(vx, vy);
           const floor = pace * 0.12; // nudge gate-ward, never fully freeze
           if (vlen < floor) { vx -= ux * (floor - vlen); vy -= uy * (floor - vlen); }
+          // A dog on walk on never just stands there. If the drive has
+          // nothing left to press, it isn't done — the flock has drifted
+          // wide of it, and the answer is to cast across their back: an arc
+          // round the mob that folds the edges in, come by one way then away
+          // the other, the same wear a handler would call. So the emptier
+          // the drive, the harder the cast, fading out as soon as there's
+          // real ground to make. It also keeps the dog's line of travel
+          // turning through a curve instead of reversing end for end on the
+          // spot, which is what made the sprite flick left-right as it
+          // homed: the two are the same fault, a drive that steers on one
+          // signed number and stalls at nothing.
+          const idle = clamp(1 - Math.hypot(vx, vy) / (pace * CAST_IDLE), 0, 1);
+          if (idle > 0.02) {
+            if (!d.castSide) d.castSide = dAng >= 0 ? 1 : -1;
+            // turn at the edge of the cast so it sweeps back and forth
+            else if (dAng * d.castSide < -CAST_ARC) d.castSide = -d.castSide;
+            // tangent to the mob: +castSide runs clockwise, come-by's way
+            vx += -ry / rr * d.castSide * pace * CAST_GAIN * idle;
+            vy += rx / rr * d.castSide * pace * CAST_GAIN * idle;
+          }
           const cl = Math.hypot(vx, vy) || 1;
           if (cl > pace) { vx *= pace / cl; vy *= pace / cl; }
           desx = vx; desy = vy;
-          d.eyeOn = 1; // working the ring: face the sheep, give ground backwards
         } else {
           const step = clamp(dAng, -0.7, 0.7);
           // the swing round the mob must clear every sheep in the
@@ -1775,20 +1799,12 @@
     // takes the pop out; a creep settles into a slow prowl instead.
     const want = clamp((dspd - 18) / 46, 0, 1);
     d.gait += (want - d.gait) * Math.min(1, 6 * dt);
-    // A collie giving ground keeps its eye on the sheep and backs off; it
-    // does not spin end for end to walk away from them. The drive works a
-    // contact ring — press in, ease back — and it steers by a single signed
-    // term along the drive line, so the desired velocity reverses every time
-    // the dog settles onto that ring. A body that followed velocity blindly
-    // flicked round to point the other way on each crossing, which is the
-    // sprite flipping left-right-left as it homes. So aim along the line of
-    // travel, unless that line runs away from the sheep being worked — then
-    // hold the eye on them and let the dog give ground backwards.
-    let aimx = d.vx, aimy = d.vy;
-    if (d.eyeOn && d.workX !== undefined) { aimx = d.workX - d.x; aimy = d.workY - d.y; }
-    // and the turn itself is slower the slower the dog goes: at a creep the
-    // direction of the velocity is the noisiest thing about it
-    if (dspd > 8) d.dir = turnToward(d.dir, Math.atan2(aimy, aimx), (4 + 7 * d.gait) * dt);
+    // the turn is slower the slower the dog goes: at a creep the direction
+    // of the velocity is the noisiest thing about it. The body follows its
+    // line of travel — the drive keeps that line curving (see the cast in
+    // the walk-on branch) rather than reversing it on the spot, so this
+    // reads as a dog turning rather than flicking end for end
+    if (dspd > 8) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), (4 + 7 * d.gait) * dt);
     d.bob += dt * (3 + 9 * d.gait);
     // charging bark: rush straight at a sheep and the dog lets one off
     if (d.barkCd <= 0 && dspd > BARK_CHARGE_SPEED) {
