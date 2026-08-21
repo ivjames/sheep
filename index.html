@@ -1808,8 +1808,19 @@
         }
         s.vx += px * 150 * dt;
         s.vy += py * 150 * dt;
-        s.x = clamp(s.x + s.vx * dt, iz.x0 + 4, iz.x1 - 4);
-        s.y = clamp(s.y + s.vy * dt, iz.y0 + 4, iz.y1 - 4);
+        // a fresh crosser sits between the pen line and the inner zone;
+        // clamping straight to the inner zone would blink it deeper than
+        // where its center actually crossed. On the gate side the bound
+        // ratchets from the sheep's own spot: it can walk deeper in but
+        // not back out, and once past the inner edge the normal clamp holds
+        let bx0 = iz.x0 + 4, bx1 = iz.x1 - 4, by0 = iz.y0 + 4, by1 = iz.y1 - 4;
+        const pr = P.rect;
+        if (P.side === 0) by1 = Math.max(by1, Math.min(s.y, pr.y1 - 4));
+        else if (P.side === 2) by0 = Math.min(by0, Math.max(s.y, pr.y0 + 4));
+        else if (P.side === 3) bx1 = Math.max(bx1, Math.min(s.x, pr.x1 - 4));
+        else bx0 = Math.min(bx0, Math.max(s.x, pr.x0 + 4));
+        s.x = clamp(s.x + s.vx * dt, bx0, bx1);
+        s.y = clamp(s.y + s.vy * dt, by0, by1);
         if (Math.abs(s.vx) > 4) s.facing = s.vx > 0 ? 1 : -1;
         if (Math.hypot(s.vx, s.vy) > 4) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), 2.5 * dt);
         continue;
