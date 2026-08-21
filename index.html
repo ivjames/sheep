@@ -154,8 +154,6 @@
     z-index: 20;
   }
   #cmd-ui .cmd-btn { justify-content: center; text-align: center; }
-  /* when the pen owns the bottom of the screen, the pad moves up top */
-  #cmd-ui.top { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px)); }
   #cmd-ui .cmd-btn[data-cmd="home"] { grid-column: 1 / -1; }
   /* on narrow screens the pad owns the bottom edge: lift BARK clear of it */
   @media (max-width: 700px) {
@@ -1007,10 +1005,26 @@
   // rabbit-style guide (drag mode): your finger is the dog's target — it
   // chases the spot, and if you lift, finishes the run and stops there
   const guide = { id: null, has: false, x: 0, y: 0 };
+  // world → screen fit. The command pad owns the bottom strip of the
+  // screen while it's up, so the field is fitted to the space above it —
+  // nothing (pen included) renders underneath the controls, and the
+  // controls never move. The reserve eases in so the toggle doesn't snap.
+  let padCur = 0, padPrevT = 0;
+  function viewFit() {
+    const { w, h } = state.world;
+    const want = cmdUi.offsetHeight ? cmdUi.offsetHeight + 30 : 0;
+    const now = performance.now();
+    const pdt = Math.min(0.1, (now - padPrevT) / 1000);
+    padPrevT = now;
+    padCur += (want - padCur) * Math.min(1, 10 * pdt);
+    if (Math.abs(want - padCur) < 0.5) padCur = want;
+    const ah = Math.max(120, vh - padCur);
+    const scale = Math.min(vw / w, ah / h);
+    return { scale, ox: (vw - w * scale) / 2, oy: (ah - h * scale) / 2 };
+  }
   function guideFrom(e) {
     const { w, h } = state.world;
-    const scale = Math.min(vw / w, vh / h);
-    const ox = (vw - w * scale) / 2, oy = (vh - h * scale) / 2;
+    const { scale, ox, oy } = viewFit();
     guide.x = clamp((e.clientX - ox) / scale, HEDGE + 16, w - HEDGE - 16);
     guide.y = clamp((e.clientY - oy) / scale, HEDGE + 16, h - HEDGE - 16);
     guide.has = true;
@@ -2067,8 +2081,7 @@
   // ---------- render ----------
   function render(now) {
     const { w, h } = state.world;
-    const scale = Math.min(vw / w, vh / h);
-    const ox = (vw - w * scale) / 2, oy = (vh - h * scale) / 2;
+    const { scale, ox, oy } = viewFit();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // surround (letterbox) — darker turf so the field pops
     ctx.fillStyle = '#4a7c33';
@@ -2346,27 +2359,10 @@
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); issueCommand(b.dataset.cmd); });
   }
 
-  // keep the command pad off the pen: if the pen's patch of screen
-  // reaches the pad's home at bottom center, the pad moves up top
-  function placeCmdUi() {
-    const P = state.pen;
-    if (!P.rect) return;
-    const { w, h } = state.world;
-    const scale = Math.min(vw / w, vh / h);
-    const ox = (vw - w * scale) / 2, oy = (vh - h * scale) / 2;
-    const px0 = P.rect.x0 * scale + ox, px1 = P.rect.x1 * scale + ox;
-    const py1 = P.rect.y1 * scale + oy;
-    const padW = Math.min(500, vw - 20), padH = 175;
-    const clash = px1 > (vw - padW) / 2 && px0 < (vw + padW) / 2 && py1 > vh - padH;
-    cmdUi.classList.toggle('top', clash);
-  }
-  addEventListener('resize', placeCmdUi);
-
   function applyInputMode() {
     if (state.mode === 'playing') {
       cmdUi.style.display = state.input === 'cmd' ? 'grid' : 'none';
     }
-    placeCmdUi();
     document.body.classList.toggle('cmd-mode', state.input === 'cmd');
     if (state.input === 'cmd') {
       state.dog.cmd = 'lie';
