@@ -438,21 +438,10 @@
   // of it, and each sweep runs this far off the drive line before it turns.
   const WEAR_SPREAD = 45, WEAR_TIGHT = 0.82, WEAR_ARC = 0.6;
   const WEAR_BOUT = 3.6, WEAR_REST = 1.8; // seconds of wearing, then of driving
-  // casting (walk on): a dog that has stopped with sheep still out in front
-  // of it hasn't finished — the flock has spread wide of it — so it arcs
-  // across their back rather than standing. The test is BOTH halves of that:
-  // the dog is barely moving (under CAST_STILL of its pace) AND the flock
-  // isn't drifting gate-ward, held for CAST_WAIT seconds so an ordinary slow
-  // press isn't mistaken for a stall. Judging it on the dog alone made the
-  // dog arc round a beautifully gathered flock it never delivered. The cast
-  // then fades in over CAST_RAMP at CAST_GAIN of pace, turning CAST_ARC
-  // either side of the drive line.
-  // The arc must stay well inside the half-radian the handler's own logic
-  // reads as the dog having drifted off the balance line: swing wider than
-  // that and every cast is answered by a corrective flank, which is how a
-  // first cut at this gathered the flock beautifully and never delivered it.
-  const CAST_STILL = 0.45, CAST_WAIT = 0.25, CAST_RAMP = 0.35;
-  const CAST_GAIN = 0.45, CAST_ARC = 0.18;
+  // a drive counts as stalled once the dog has been under STALL_SLOW of its
+  // own pace for STALL_HOLD seconds — long enough that an ordinary slow
+  // press isn't mistaken for having stopped
+  const STALL_SLOW = 0.45, STALL_HOLD = 0.9;
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const FEAR_HOLD = 0.5;          // seconds a startle pins panic at FULL — flat, not pressure-scaled
@@ -773,7 +762,7 @@
     auto: false,   // in-game autopilot: the dog works the flock itself
     level: 1,
     world: { w: 1600, h: 1000 },
-    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, castSide: 0, stallT: 0, barkCd: 0 },
+    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, barkCd: 0 },
     pace: PACE_START, // command-mode speed gradient, 0 (halt) → 1 (flat out)
     handler: { x: 800, y: 560 },
     sheep: [],
@@ -793,6 +782,7 @@
     demoStallT: 0, // how long the funnel has been left to drain
     wearSide: 0,   // autopilot wear sweep: +1 away-side, -1 come-by side, 0 not wearing
     wearT: 0,      // seconds into a wear bout; negative = driving before the next one
+    stallT: 0,     // seconds the drive has been stopped with sheep still out
   };
 
   // ---------- hillside ----------
@@ -1218,12 +1208,12 @@
     state.handler.x = clamp(P.gx + P.out.x * 150 + tx * (P.gw / 2 + 90), HEDGE + 40, w - HEDGE - 40);
     state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (P.gw / 2 + 90), HEDGE + 40, h - HEDGE - 40);
     state.dog.x = state.handler.x + 24; state.dog.y = state.handler.y + 20;
-    state.dog.vx = 0; state.dog.vy = 0; state.dog.gait = 0; state.dog.castSide = 0; state.dog.stallT = 0;
+    state.dog.vx = 0; state.dog.vy = 0; state.dog.gait = 0;
     state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
     state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
-    state.wearSide = 0; state.wearT = 0;
+    state.wearSide = 0; state.wearT = 0; state.stallT = 0;
     state.pace = PACE_START;
     state.barks = [];
     state.floaties = [];
@@ -1681,30 +1671,6 @@
           const vlen = Math.hypot(vx, vy);
           const floor = pace * 0.12; // nudge gate-ward, never fully freeze
           if (vlen < floor) { vx -= ux * (floor - vlen); vy -= uy * (floor - vlen); }
-          // A dog on walk on never just stands there. If the drive has
-          // nothing left to press, it isn't done — the flock has drifted
-          // wide of it, and the answer is to cast across their back: an arc
-          // round the mob that folds the edges in, come by one way then away
-          // the other, the same wear a handler would call. So the emptier
-          // the drive, the harder the cast, fading out as soon as there's
-          // real ground to make. It also keeps the dog's line of travel
-          // turning through a curve instead of reversing end for end on the
-          // spot, which is what made the sprite flick left-right as it
-          // homed: the two are the same fault, a drive that steers on one
-          // signed number and stalls at nothing.
-          // stalled = the dog has stopped AND the sheep aren't going
-          // anywhere; either alone is just a dog working slowly
-          const still = Math.hypot(d.vx, d.vy) < pace * CAST_STILL;
-          d.stallT = (still && along > -8) ? d.stallT + dt : 0;
-          const idle = clamp((d.stallT - CAST_WAIT) / CAST_RAMP, 0, 1);
-          if (idle > 0) {
-            if (!d.castSide) d.castSide = dAng >= 0 ? 1 : -1;
-            // turn at the edge of the cast so it sweeps back and forth
-            else if (dAng * d.castSide < -CAST_ARC) d.castSide = -d.castSide;
-            // tangent to the mob: +castSide runs clockwise, come-by's way
-            vx += -ry / rr * d.castSide * pace * CAST_GAIN * idle;
-            vy += rx / rr * d.castSide * pace * CAST_GAIN * idle;
-          }
           const cl = Math.hypot(vx, vy) || 1;
           if (cl > pace) { vx *= pace / cl; vy *= pace / cl; }
           desx = vx; desy = vy;
@@ -1814,9 +1780,8 @@
     d.gait += (want - d.gait) * Math.min(1, 6 * dt);
     // the turn is slower the slower the dog goes: at a creep the direction
     // of the velocity is the noisiest thing about it. The body follows its
-    // line of travel — the drive keeps that line curving (see the cast in
-    // the walk-on branch) rather than reversing it on the spot, so this
-    // reads as a dog turning rather than flicking end for end
+    // line of travel, and the handler keeps that line curving by flanking
+    // a stalled drive rather than leaving the dog to reverse on the spot
     if (dspd > 8) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), (4 + 7 * d.gait) * dt);
     d.bob += dt * (3 + 9 * d.gait);
     // charging bark: rush straight at a sheep and the dog lets one off
@@ -2414,6 +2379,18 @@
       // trade off. A hot flock is exempt: that spread is sheep scattering,
       // and swinging round them at pace fans the panic instead of settling
       // it — the drive below eases off for those instead.
+      // A dog that has stopped with sheep still loose in front of it hasn't
+      // finished — it has run out of flock to press, which means the mob has
+      // spread wide of it — and the answer is the one a handler calls: come
+      // by or away, round them back up. That is the wear below, so a stall
+      // triggers it just as a wide flock does. It belongs here at the
+      // handler's level rather than inside the drive: a dog casting on its
+      // own initiative leans on the flock sideways, pushes it off the gate
+      // line, and then has to be flanked back onto balance — measured at
+      // half the deliveries for a tighter, undelivered flock.
+      state.stallT = Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
+        ? state.stallT + 0.45 : 0;
+      const stalled = state.stallT >= STALL_HOLD;
       state.wearT += 0.45;
       if (state.wearSide && state.wearT > WEAR_BOUT) {
         state.wearSide = 0;
@@ -2421,7 +2398,7 @@
       }
       const gathered = WEAR_SPREAD * Math.sqrt(flock.n) *
         (state.wearSide ? WEAR_TIGHT : 1);
-      if (state.wearT >= 0 && flock.n > 1 && flock.r > gathered && panic < 0.7) {
+      if (state.wearT >= 0 && flock.n > 1 && (flock.r > gathered || stalled) && panic < 0.7) {
         // come by carries the dog clockwise round the mob and away runs it
         // back the other way. Open the bout toward the side the dog already
         // sits on rather than hauling it across the line.
@@ -2437,7 +2414,7 @@
         // than dithering on the line.
         const step = paceSpeed(state.pace) / (flock.r + 85) * 0.45;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
-        if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; }
+        if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; state.stallT = 0; }
         else if (dAng * state.wearSide > turn) state.wearSide = -state.wearSide;
         d.cmd = state.wearSide > 0 ? 'aw' : 'cb';
         state.pace = Math.max(state.pace, PACE_START);
