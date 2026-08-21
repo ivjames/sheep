@@ -429,6 +429,7 @@
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const FEAR_HOLD = 0.5;          // seconds a startle pins panic at FULL — flat, not pressure-scaled
+  const STARTLE_K = 0.4;          // how deep into flee range the dog must press to startle (0 = edge, 1 = on top)
   const MERGE_REACH = 520;        // a stray feels the pull of the NEAREST sheep out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
@@ -1991,25 +1992,28 @@
           }
           if (s.planted && dd < 55) unplant(s, ddx / dd, ddy / dd); // dog right on top of it
           if (!s.planted) {
-            // crossing the flee line is a BOLT, not a lean-away: the
-            // moment the dog's range touches a settled sheep it jumps
-            // straight into a run away from the dog. Gated on low
-            // panic so a sheep already running isn't re-kicked every
-            // frame — one bolt per fright
-            if (s.panic < 0.6) {
-              s.vx += (ddx / dd) * 230 * mult;
-              s.vy += (ddy / dd) * 230 * mult;
+            // the flee range is two bands. The outer band is WORKING
+            // pressure: the sheep yields ground at a wary trot — panic
+            // held under the flight threshold, no timer, no bolt — so
+            // a dog holding its distance moves the flock without
+            // lighting it up. Only pressing into the inner band (past
+            // STARTLE_K) is a STARTLE: bolt kick, full panic, and the
+            // fear clock armed — and rearmed every frame it's held
+            // there. The bolt is gated on low panic so a sheep already
+            // running isn't re-kicked every frame — one per fright
+            if (k > STARTLE_K) {
+              if (s.panic < 0.6) {
+                s.vx += (ddx / dd) * 230 * mult;
+                s.vy += (ddy / dd) * 230 * mult;
+              }
+              s.panic = 1;
+              s.fearT = FEAR_HOLD;
+            } else {
+              s.panic = Math.max(s.panic, 0.45 * (k / STARTLE_K));
             }
             fx += (ddx / dd) * k * 520 * mult;
             fy += (ddy / dd) * k * 520 * mult;
           }
-          // held pressure rearms the fear timer in full: any frame the
-          // dog is inside flee range — even sitting at its very edge —
-          // the whole FEAR_HOLD clock snaps back, so working the flock
-          // holds it at peak fright and the countdown only starts once
-          // you ease off
-          s.panic = 1;
-          s.fearT = FEAR_HOLD;
         } else if (!s.planted && dd < DOG_AWARE && dd > 0.01) {
           // noticed but not pressed yet: lift the head, edge away, bunch
           // up — the bolder the sheep, the less it bothers
