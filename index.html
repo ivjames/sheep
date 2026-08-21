@@ -44,8 +44,13 @@
     right: 0;
     display: none;
     align-items: center;
+    flex-wrap: wrap; /* overflow wraps to a second row, never off-screen */
     gap: 12px;
-    padding: 10px 14px;
+    /* viewport-fit=cover lets notches/rounded corners cover the edges */
+    padding: calc(10px + env(safe-area-inset-top, 0px))
+             calc(14px + env(safe-area-inset-right, 0px))
+             10px
+             calc(14px + env(safe-area-inset-left, 0px));
     pointer-events: none;
     font-family: var(--display);
   }
@@ -63,6 +68,13 @@
     white-space: nowrap;
   }
   #hud-spacer { flex: 1; }
+  /* phones: the full chip row runs wider than the screen — shrink the
+     chips and drop the label word so it fits (wrapping catches the rest) */
+  @media (max-width: 700px) {
+    #hud { gap: 6px; }
+    .hud-chip { font-size: 12.5px; padding: 6px 10px; gap: 5px; }
+    .hud-chip .wide-only { display: none; }
+  }
   /* dev FPS meter: dot takes the tier color, chip pulses when the
      frame rate crosses a threshold in either direction */
   #fps-chip.fps-good #fps-dot { color: #7ede6f; }
@@ -307,7 +319,7 @@
 
 <div id="hud">
   <button class="hud-chip" id="level-chip" aria-label="Jump to level">Level 1</button>
-  <div class="hud-chip">🐑 <span id="sheep-count" style="font-variant-numeric:tabular-nums">0/0</span> penned</div>
+  <div class="hud-chip">🐑 <span id="sheep-count" style="font-variant-numeric:tabular-nums">0/0</span> <span class="wide-only">penned</span></div>
   <div class="hud-chip">⏱ <span id="time-chip" style="font-variant-numeric:tabular-nums">0:00</span></div>
   <!-- dev: frame-rate meter, color-coded by budget -->
   <div class="hud-chip" id="fps-chip"><span id="fps-dot">●</span> <span id="fps-val" style="font-variant-numeric:tabular-nums">--</span> fps</div>
