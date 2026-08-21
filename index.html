@@ -154,6 +154,8 @@
     z-index: 20;
   }
   #cmd-ui .cmd-btn { justify-content: center; text-align: center; }
+  /* when the pen owns the bottom of the screen, the pad moves up top */
+  #cmd-ui.top { bottom: auto; top: calc(56px + env(safe-area-inset-top, 0px)); }
   #cmd-ui .cmd-btn[data-cmd="home"] { grid-column: 1 / -1; }
   /* on narrow screens the pad owns the bottom edge: lift BARK clear of it */
   @media (max-width: 700px) {
@@ -413,9 +415,13 @@
   const FIELD_AREA = 1650000;     // world w*h — sized to viewport aspect per level
   const DOG_SPEED = 345;          // direct-drive top speed
   const DOG_ACCEL = 2400, DOG_DRAG = 6;
-  const CMD_SPEED = 300;          // command-mode speed at full pace
-  const PACE_STEP = 0.2;          // WALK ON taps add this, EASY taps shed it
-  const PACE_START = 0.6, PACE_MIN = 0.2;
+  const CMD_SPEED = 340;          // command-mode speed at full pace
+  const PACE_STEP = 0.1;          // WALK ON taps add this, EASY taps shed it — 10 notches
+  const PACE_START = 0.6, PACE_MIN = 0.1;
+  // pace→speed is curved: a collie is properly fast at the top of the
+  // range and barely moves at the bottom — the creep is the point
+  const PACE_CURVE = 1.35;
+  const paceSpeed = (p) => CMD_SPEED * Math.pow(p, PACE_CURVE);
   const SHEEP_R = 12, DOG_R = 13;
   const FLEE_RANGE = 235;         // how far the most timid sheep feels the dog
   const FLEE_RANGE_DEFIANT = 150; // ...and the boldest make you get close
@@ -616,6 +622,13 @@
     musicStarted = true;
     if (!muted) musicEl.play().catch(() => { musicStarted = false; });
   }
+  // backgrounded app: the band takes a break (the game itself already
+  // pauses with requestAnimationFrame)
+  document.addEventListener('visibilitychange', () => {
+    if (!musicEl) return;
+    if (document.hidden) musicEl.pause();
+    else if (musicStarted && !muted) musicEl.play().catch(() => {});
+  });
 
   // ---------- helpers ----------
   const rand = (a, b) => a + Math.random() * (b - a);
@@ -1223,8 +1236,8 @@
       if (spd > DOG_SPEED) { d.vx *= DOG_SPEED / spd; d.vy *= DOG_SPEED / spd; }
     } else {
       // command mode: the dog works the flock on its own
-      const pace = CMD_SPEED * state.pace;
-      const goPace = Math.max(pace, CMD_SPEED * PACE_START); // recalls never dawdle
+      const pace = paceSpeed(state.pace);
+      const goPace = Math.max(pace, paceSpeed(PACE_START)); // recalls never dawdle
       const flock = flockInfo();
       let cmd = d.cmd;
       if (!flock && (cmd === 'cb' || cmd === 'aw' || cmd === 'walk')) cmd = 'lie';
@@ -1245,9 +1258,36 @@
         if (hd < 30 || near > (FLEE_RANGE + 50) ** 2) { d.cmd = 'lie'; updateCmdButtons(); }
         else { desx = hx / hd * goPace; desy = hy / hd * goPace; }
       } else if (cmd === 'walk') {
-        const hx = flock.cx - d.x, hy = flock.cy - d.y;
-        const hd = Math.hypot(hx, hy) || 1;
-        desx = hx / hd * pace; desy = hy / hd * pace;
+        // WALK ON drives: the dog wants the balance point — straight
+        // across the flock from the gate — and presses from there, so
+        // the push always sends sheep pen-ward. It creeps to a pressed-
+        // but-comfortable distance and holds (backing off a step if it
+        // overruns); off balance it swings round the mob the shorter
+        // way instead of shoving through the middle.
+        const P = state.pen;
+        let ux = flock.cx - P.gx, uy = flock.cy - P.gy;
+        const ul = Math.hypot(ux, uy) || 1;
+        ux /= ul; uy /= ul;
+        const hold = clamp(flock.r, 60, 240);
+        const rx = d.x - flock.cx, ry = d.y - flock.cy;
+        const rr = Math.hypot(rx, ry) || 1;
+        const aDog = Math.atan2(ry, rx);
+        let dAng = ((Math.atan2(uy, ux) - aDog + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        if (Math.abs(dAng) < 0.55) {
+          const press = clamp((rr - (hold + 70)) / 90, -0.4, 1);
+          desx = -(rx / rr) * press * pace;
+          desy = -(ry / rr) * press * pace;
+        } else {
+          const step = clamp(dAng, -0.7, 0.7);
+          const Rw = hold + 120;
+          const m = HEDGE + 20;
+          const ax = clamp(flock.cx + Math.cos(aDog + step) * Rw, m, state.world.w - m);
+          const ay = clamp(flock.cy + Math.sin(aDog + step) * Rw, m, state.world.h - m);
+          const tx = ax - d.x, ty = ay - d.y;
+          const tl = Math.hypot(tx, ty) || 1;
+          desx = tx / tl * pace; desy = ty / tl * pace;
+          sweep = dAng > 0 ? 1 : -1; // wall detours follow the swing
+        }
       } else if (cmd === 'cb' || cmd === 'aw') {
         // flanking run: orbit the flock just outside its edge.
         // "come by" = clockwise (as seen from above), "away to me" = counter.
@@ -1661,8 +1701,10 @@
         if (s.plantT <= 0) unplant(s, rand(-1, 1), rand(-1, 1));
       }
 
-      // through the gate and settled in
-      if (!grazing && s.x > iz.x0 && s.x < iz.x1 && s.y > iz.y0 && s.y < iz.y1) {
+      // through the gate: a sheep counts the moment its center crosses
+      // the pen line — not once its whole body is a fence-width inside
+      const pr = state.pen.rect;
+      if (!grazing && pr && s.x > pr.x0 + 4 && s.x < pr.x1 - 4 && s.y > pr.y0 + 4 && s.y < pr.y1 - 4) {
         s.penned = true;
         s.panic = 0;
         s.planted = false;
@@ -2304,10 +2346,27 @@
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); issueCommand(b.dataset.cmd); });
   }
 
+  // keep the command pad off the pen: if the pen's patch of screen
+  // reaches the pad's home at bottom center, the pad moves up top
+  function placeCmdUi() {
+    const P = state.pen;
+    if (!P.rect) return;
+    const { w, h } = state.world;
+    const scale = Math.min(vw / w, vh / h);
+    const ox = (vw - w * scale) / 2, oy = (vh - h * scale) / 2;
+    const px0 = P.rect.x0 * scale + ox, px1 = P.rect.x1 * scale + ox;
+    const py1 = P.rect.y1 * scale + oy;
+    const padW = Math.min(500, vw - 20), padH = 175;
+    const clash = px1 > (vw - padW) / 2 && px0 < (vw + padW) / 2 && py1 > vh - padH;
+    cmdUi.classList.toggle('top', clash);
+  }
+  addEventListener('resize', placeCmdUi);
+
   function applyInputMode() {
     if (state.mode === 'playing') {
       cmdUi.style.display = state.input === 'cmd' ? 'grid' : 'none';
     }
+    placeCmdUi();
     document.body.classList.toggle('cmd-mode', state.input === 'cmd');
     if (state.input === 'cmd') {
       state.dog.cmd = 'lie';
