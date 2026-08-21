@@ -1256,7 +1256,9 @@
     if (ml < COH_RANGE) return null; // close enough — cohesion handles it
     if (ml > MERGE_REACH) return null; // too far to see — truly lost
     const k = Math.min(1, (ml - COH_RANGE) / (MERGE_REACH - COH_RANGE));
-    const pull = (8 + 36 * s.flocky) * (0.4 + 0.6 * k);
+    // a calm stray ambles back; a frightened one has one destination —
+    // the safety of the mob — and runs for it
+    const pull = (8 + 36 * s.flocky) * (0.4 + 0.6 * k) * (1 + 1.5 * s.panic);
     return { x: ((bx - s.x) / ml) * pull, y: ((by - s.y) / ml) * pull };
   }
   // sheep near the mouth of an open gate know what it's for and drift on
@@ -1273,9 +1275,13 @@
     // aim a little inside the gate so the pull carries sheep over the line
     const tx = P.gx - P.out.x * 34 - s.x, ty = P.gy - P.out.y * 34 - s.y;
     const tl = Math.hypot(tx, ty);
-    if (tl < 0.01 || tl > GATE_PULL) return null;
-    const k = 1 - tl / GATE_PULL;
-    const f = willing * (40 + 320 * k * k);
+    // a spooked sheep is hunting for an exit, so it spots the gate from
+    // farther out — and once it knows where it's going, panic stops
+    // meaning "away from the dog" and starts meaning "through the gap"
+    const reach = GATE_PULL * (1 + 0.4 * s.panic);
+    if (tl < 0.01 || tl > reach) return null;
+    const k = 1 - tl / reach;
+    const f = willing * (40 + 320 * k * k) * (1 + 1.1 * s.panic);
     return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * willing };
   }
   // a settling spot deep in the pen, spread across the back, so each
@@ -1288,10 +1294,12 @@
     }
     return { x: clamp(P.cx, iz.x0 + 8, iz.x1 - 8), y: clamp(P.cy, iz.y0 + 8, iz.y1 - 8) };
   }
-  // fear spreads: one spooked sheep puts its neighbours on edge too
+  // fear spreads: one spooked sheep puts its neighbours on edge too.
+  // The timid end catches a neighbour's fright in full, so panic runs
+  // through a bunched mob undimmed; only the bold shrug some of it off
   function catchPanic(s, nearPanic, dt) {
-    const target = nearPanic * (0.9 - 0.4 * s.bold);
-    if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 3);
+    const target = nearPanic * (1 - 0.35 * s.bold);
+    if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 4);
   }
   // neighbour lookup: loose sheep bucketed into COH_RANGE-sized cells so
   // flocking only tests the 3x3 cells that can hold a sheep in range,
@@ -1381,7 +1389,6 @@
         if (Math.hypot(s.vx, s.vy) > 4) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), 2.5 * dt);
         continue;
       }
-      s.panic = Math.max(0, s.panic - dt * 0.35);
       s.plantCd = Math.max(0, s.plantCd - dt);
 
       let fx = 0, fy = 0;
@@ -1439,6 +1446,10 @@
         fy += (avy / cn - s.vy) * aw;
         catchPanic(s, nearPanic, dt);
       }
+      // fear fades slowly, and hardly at all in a frightened mob: every
+      // sheep keeps its neighbours' nerves up, so a spooked flock stays
+      // spooked long after the dog has eased off
+      s.panic = Math.max(0, s.panic - dt * 0.2 * (1 - 0.8 * nearPanic));
       // any neighbor within COH_RANGE means mergePull would decline
       // anyway (that's cohesion's range) — skip the search entirely
       // for sheep that are already flocked
@@ -1515,8 +1526,9 @@
       s.vx -= s.vx * 2.4 * dt;
       s.vy -= s.vy * 2.4 * dt;
       let cap = s.planted ? 10 : 26 + s.panic * (150 + 30 * s.bold);
-      // the funnel pulls at a run, quicker still with a crowd behind
-      if (gs) cap = Math.max(cap, 45 + 130 * gs.k + 60 * Math.min(cn, 6) / 6);
+      // the funnel pulls at a run, quicker still with a crowd behind —
+      // and a frightened sheep that's found the gate flat-out bolts in
+      if (gs) cap = Math.max(cap, (45 + 130 * gs.k + 60 * Math.min(cn, 6) / 6) * (1 + 0.45 * s.panic));
       const spd = Math.hypot(s.vx, s.vy);
       if (spd > cap) { s.vx *= cap / spd; s.vy *= cap / spd; }
       s.x = clamp(s.x + s.vx * dt, HEDGE + 14, w - HEDGE - 14);
