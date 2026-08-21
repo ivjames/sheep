@@ -428,6 +428,7 @@
   const COMFORT = 70;             // a neighbor this close means you're IN the flock — no cohesion pull
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
+  const FEAR_HOLD = 6;            // seconds a startle pins panic at FULL — flat, not pressure-scaled
   const MERGE_REACH = 520;        // a stray feels the pull of the NEAREST sheep out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
@@ -1180,7 +1181,7 @@
       state.sheep.push({
         x, y, vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false, settle: null,
         defiant: tempers[i], ...rollTemper(tempers[i]),
-        panic: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
+        panic: 0, fearT: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
     }
@@ -1759,24 +1760,25 @@
     }
     return { x: clamp(P.cx, iz.x0 + 8, iz.x1 - 8), y: clamp(P.cy, iz.y0 + 8, iz.y1 - 8) };
   }
-  // fear spreads: one spooked sheep puts its neighbours on edge too.
-  // The timid end catches a neighbour's fright in full, so panic runs
-  // through a bunched mob undimmed; only the bold shrug some of it off.
-  // And fright is directional: a sheep catching a neighbour's panic
-  // catches its heading with it — it bolts the way the startled sheep
-  // is already running, and its own run hands that same heading to the
-  // next ring out, so one startle rolls through the mob as a stampede
-  // all going the same way instead of a shapeless scatter
-  function catchPanic(s, nearPanic, npvx, npvy, dt) {
-    const target = nearPanic * (1 - 0.35 * s.bold);
-    if (target <= s.panic) return;
-    const caught = Math.min(target, s.panic + dt * 4) - s.panic;
-    s.panic += caught;
+  // fear spreads as STARTLES, not a mood: a neighbour in full flight
+  // startles this sheep outright — panic snaps to FULL, the fear timer
+  // arms, and the sheep bolts the way that neighbour is already
+  // running, handing the same heading to the next ring out. One
+  // startle rolls through the mob as a stampede all going one way.
+  // The under-0.5 gate is the refractory: a sheep already frightened
+  // isn't re-kicked every frame, and once a wave's timers run down
+  // together nobody recovers fast enough to re-light a neighbour whose
+  // own fright is fading — a stampede with the pressure gone burns out
+  // instead of ping-ponging forever
+  function catchPanic(s, nearPanic, npvx, npvy) {
+    if (nearPanic < 0.95 || s.panic >= 0.5) return;
+    const caught = 1 - s.panic;
+    s.panic = 1;
+    s.fearT = FEAR_HOLD;
     // the bolt is keyed to how hard the neighbour is actually running:
-    // a frightened sheep standing its ground puts the mob on edge
-    // without launching anyone. Scaling by the panic just caught makes
-    // the kick spend itself as this sheep's fear catches up — one burst
-    // per startle, not a standing shove
+    // a frightened sheep standing its ground startles the mob without
+    // launching it anywhere in particular — the flight thrust picks up
+    // the direction from there
     const nspd = Math.hypot(npvx, npvy);
     const nk = clamp((nspd - 30) / 90, 0, 1);
     if (nk > 0) {
@@ -1938,14 +1940,15 @@
         const aw = (0.5 + 1.4 * s.flocky) * (1 + 1.6 * s.panic);
         fx += (avx / cn - s.vx) * aw;
         fy += (avy / cn - s.vy) * aw;
-        catchPanic(s, nearPanic, npvx, npvy, dt);
+        catchPanic(s, nearPanic, npvx, npvy);
       }
-      // fear fades slowly, and hardly at all in a frightened mob: every
-      // sheep keeps its neighbours' nerves up, so a spooked flock stays
-      // spooked long after the dog has eased off. A full fright takes
-      // a sheep the better part of half a minute to walk off even
-      // alone — panic is a lasting state, not a flinch
-      s.panic = Math.max(0, s.panic - dt * 0.04 * (1 - 0.8 * nearPanic));
+      // fear is a TIMER, not a gradient: any startle pins panic at
+      // full for FEAR_HOLD seconds flat — never scaled by how hard the
+      // pressure was — and every frame of continued pressure rearms
+      // the whole clock. Only once it runs dry does the fright taper,
+      // and briskly: the guaranteed flat-out run IS the mechanic
+      if (s.fearT > 0) { s.fearT -= dt; s.panic = 1; }
+      else s.panic = Math.max(0, s.panic - dt * 0.35);
       // any neighbor within COH_RANGE means mergePull would decline
       // anyway (that's cohesion's range) — skip the search entirely
       // for sheep that are already flocked
@@ -1983,11 +1986,13 @@
             fx += (ddx / dd) * k * 520 * mult;
             fy += (ddy / dd) * k * 520 * mult;
           }
-          // held pressure refills the fear in full: any time the dog is
-          // inside flee range — even sitting at its very edge — the
-          // timer snaps back to the top, so working the flock keeps it
-          // at peak fright and the long fade only starts once you ease off
-          s.panic = Math.max(s.panic, 1 - 0.3 * s.bold);
+          // held pressure rearms the fear timer in full: any frame the
+          // dog is inside flee range — even sitting at its very edge —
+          // the whole FEAR_HOLD clock snaps back, so working the flock
+          // holds it at peak fright and the countdown only starts once
+          // you ease off
+          s.panic = 1;
+          s.fearT = FEAR_HOLD;
         } else if (!s.planted && dd < DOG_AWARE && dd > 0.01) {
           // noticed but not pressed yet: lift the head, edge away, bunch
           // up — the bolder the sheep, the less it bothers
@@ -2007,7 +2012,22 @@
           fx += (bdx / bd) * k * 1500;
           fy += (bdy / bd) * k * 1500;
           s.panic = 1;
+          s.fearT = FEAR_HOLD;
         }
+      }
+      // --- flight ---
+      // panic is SELF-PROPELLED: a frightened sheep runs — it doesn't
+      // wait around to be pushed. Thrust along its own line of travel
+      // keeps the stampede rolling flat-out for the whole fear hold,
+      // long after the dog has eased off; alignment above keeps those
+      // lines converging, so the mob runs as one body. Thresholded
+      // above the DOG_AWARE edginess cap so merely noticing the dog
+      // unsettles a sheep without sending it anywhere
+      if (s.panic > 0.45 && !s.planted) {
+        const rs = Math.hypot(s.vx, s.vy);
+        const ra = rs > 20 ? Math.atan2(s.vy, s.vx) : s.dir;
+        fx += Math.cos(ra) * 380 * s.panic;
+        fy += Math.sin(ra) * 380 * s.panic;
       }
       if (gs) {
         // a queue pressing from behind hurries the front on through —
@@ -2061,6 +2081,7 @@
       if (!grazing && pr && s.x > pr.x0 + 4 && s.x < pr.x1 - 4 && s.y > pr.y0 + 4 && s.y < pr.y1 - 4) {
         s.penned = true;
         s.panic = 0;
+        s.fearT = 0;
         s.planted = false;
         sfx.penned();
         state.floaties.push({ x: s.x, y: s.y - 24, vy: -55, t: 0, life: 1, d: 'check', s: 20 });
@@ -2084,6 +2105,7 @@
     s.vx += Math.cos(a) * 220;
     s.vy += Math.sin(a) * 220;
     s.panic = 1;
+    s.fearT = FEAR_HOLD;
     state.floaties.push({ x: s.x, y: s.y - 26, vy: -55, t: 0, life: 0.8, d: 'bang', s: 18 });
   }
 
