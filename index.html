@@ -1554,6 +1554,7 @@
   function updateDog(dt) {
     const d = state.dog;
     d.barkCd = Math.max(0, d.barkCd - dt);
+    d.eyeOn = 0; // set only by the drive mode that works the contact ring
     let desx = 0, desy = 0, sweep = 0;
     if (state.input === 'drag' && !state.demo && !state.auto) {
       let ix = 0, iy = 0;
@@ -1669,6 +1670,7 @@
           const cl = Math.hypot(vx, vy) || 1;
           if (cl > pace) { vx *= pace / cl; vy *= pace / cl; }
           desx = vx; desy = vy;
+          d.eyeOn = 1; // working the ring: face the sheep, give ground backwards
         } else {
           const step = clamp(dAng, -0.7, 0.7);
           // the swing round the mob must clear every sheep in the
@@ -1773,10 +1775,20 @@
     // takes the pop out; a creep settles into a slow prowl instead.
     const want = clamp((dspd - 18) / 46, 0, 1);
     d.gait += (want - d.gait) * Math.min(1, 6 * dt);
-    // heading follows the line of travel more slowly the slower the dog
-    // goes: at a creep the velocity's direction is the noisiest thing
-    // about it, and chasing it at full rate swung the body about
-    if (dspd > 8) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), (4 + 7 * d.gait) * dt);
+    // A collie giving ground keeps its eye on the sheep and backs off; it
+    // does not spin end for end to walk away from them. The drive works a
+    // contact ring — press in, ease back — and it steers by a single signed
+    // term along the drive line, so the desired velocity reverses every time
+    // the dog settles onto that ring. A body that followed velocity blindly
+    // flicked round to point the other way on each crossing, which is the
+    // sprite flipping left-right-left as it homes. So aim along the line of
+    // travel, unless that line runs away from the sheep being worked — then
+    // hold the eye on them and let the dog give ground backwards.
+    let aimx = d.vx, aimy = d.vy;
+    if (d.eyeOn && d.workX !== undefined) { aimx = d.workX - d.x; aimy = d.workY - d.y; }
+    // and the turn itself is slower the slower the dog goes: at a creep the
+    // direction of the velocity is the noisiest thing about it
+    if (dspd > 8) d.dir = turnToward(d.dir, Math.atan2(aimy, aimx), (4 + 7 * d.gait) * dt);
     d.bob += dt * (3 + 9 * d.gait);
     // charging bark: rush straight at a sheep and the dog lets one off
     if (d.barkCd <= 0 && dspd > BARK_CHARGE_SPEED) {
