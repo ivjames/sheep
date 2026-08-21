@@ -434,6 +434,8 @@
   const GATE_W = 112;             // gate width at level 1...
   const GATE_MIN = 68;            // ...narrowing 4px a level down to this
   const GATE_PULL = 260;          // sheep this near the gate mouth drift on in
+  const HILL_AMP = 0.115;         // ridge height as a fraction of the world's short side
+  const HILL_FLAT = 0.85;         // share of the lift that fades out by the near edge
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
@@ -757,11 +759,84 @@
     defiantSeen: false,
   };
 
+  // ---------- hillside ----------
+  // The pasture is simulated flat but DRAWN draped over a rolling hillside.
+  // A per-level ridge profile R(x) lifts the far edge of the field and the
+  // lift fades linearly toward the near edge: H(x,y) = R(x)·(1 − FLAT·y/h).
+  // H is affine in y for a fixed x, so every vertical strip of the flat
+  // field maps onto the hill with one translate + stretch (an exact warp,
+  // baked once per level) and the pointer math inverts in closed form.
+  const hill = { amp: 0, ridge: () => 0 };
+  function hillLift(x, y) {
+    return hill.ridge(x) * (1 - HILL_FLAT * y / state.world.h);
+  }
+  const hillY = (x, y) => y - hillLift(x, y);
+  function makeHill() {
+    const { w, h } = state.world;
+    hill.amp = Math.min(w, h) * HILL_AMP;
+    // two sine rolls — one broad, one smaller riding on it — with random
+    // phase and frequency, so every level gets its own skyline
+    const a1 = rand(0, Math.PI * 2), a2 = rand(0, Math.PI * 2);
+    const f1 = rand(2.8, 4.2), f2 = rand(6.5, 9.5);
+    hill.ridge = (x) => {
+      const u = clamp(x / w, 0, 1);
+      const s = 0.62 * Math.sin(u * f1 + a1) + 0.38 * Math.sin(u * f2 + a2);
+      return hill.amp * (0.5 + 0.5 * s);
+    };
+  }
+  // trace world-space points through the warp, subdividing runs in x so
+  // horizontal edges bow with the ridge (vertical runs stay straight: the
+  // warp never moves x, and for fixed x it is affine in y)
+  function hillTrace(c, pts, close) {
+    c.moveTo(pts[0][0], hillY(pts[0][0], pts[0][1]));
+    const last = close ? pts.length : pts.length - 1;
+    for (let i = 0; i < last; i++) {
+      const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length];
+      const n = Math.max(1, Math.ceil(Math.abs(bx - ax) / 24));
+      for (let k = 1; k <= n; k++) {
+        const x = ax + (bx - ax) * k / n, y = ay + (by - ay) * k / n;
+        c.lineTo(x, hillY(x, y));
+      }
+    }
+    if (close) c.closePath();
+  }
+  // pasture + slope shading + hedge, pre-warped onto one canvas per level
+  const hillCanvas = document.createElement('canvas');
+  function bakeHill(fieldCanvas) {
+    const { w, h } = state.world;
+    const A = Math.ceil(hill.amp);
+    hillCanvas.width = w; hillCanvas.height = h + A;
+    const hc = hillCanvas.getContext('2d');
+    hc.translate(0, A); // world y=0 sits amp below the canvas top
+    const STRIP = 8;
+    for (let x = 0; x < w; x += STRIP) {
+      const sw = Math.min(STRIP, w - x);
+      const r = hill.ridge(x + sw / 2);
+      // column [0,h] → [−R, h − R(1−FLAT)]: shift up by R, stretch by 1+R·FLAT/h
+      hc.drawImage(fieldCanvas, x, 0, sw, h, x, -r, sw, h + r * HILL_FLAT);
+      // slope shading sells the curvature: sun rakes in from the left, so
+      // west-facing rises catch light and east-facing falls sit in shade
+      const slope = (hill.ridge(x + sw) - hill.ridge(x)) / sw;
+      const lum = clamp(slope * 1.1, -0.18, 0.18);
+      hc.fillStyle = lum >= 0
+        ? `rgba(255, 246, 200, ${lum})` : `rgba(20, 40, 16, ${-lum})`;
+      hc.fillRect(x, -r, sw, h + r * HILL_FLAT);
+    }
+    // border hedge follows the roll of the ground
+    const iv = HEDGE / 2;
+    hc.strokeStyle = '#3e7a2a';
+    hc.lineWidth = HEDGE;
+    hc.beginPath();
+    hillTrace(hc, [[iv, iv], [w - iv, iv], [w - iv, h - iv], [iv, h - iv]], true);
+    hc.stroke();
+  }
+
   // ---------- world decor ----------
   const flowers = [], tufts = [];
   const fieldCanvas = document.createElement('canvas');
   function makeDecor() {
     const { w, h } = state.world;
+    makeHill();
     flowers.length = 0; tufts.length = 0;
     const k = (w * h) / FIELD_AREA;
     // pre-render the pasture once per level: flat green with soft-edged
@@ -806,6 +881,7 @@
     for (let i = 0; i < 170 * k; i++) {
       tufts.push({ x: rand(30, w - 30), y: rand(30, h - 30), s: rand(0.5, 1.15) });
     }
+    bakeHill(fieldCanvas);
   }
 
   // ---------- level generation ----------
@@ -1020,14 +1096,20 @@
     padCur += (want - padCur) * Math.min(1, 10 * pdt);
     if (Math.abs(want - padCur) < 0.5) padCur = want;
     const ah = Math.max(120, vh - padCur);
-    const scale = Math.min(vw / w, ah / h);
-    return { scale, ox: (vw - w * scale) / 2, oy: (ah - h * scale) / 2 };
+    // the hillside warp lifts the far edge up to hill.amp above world y=0,
+    // so the fit leaves that much headroom above the flat world box
+    const scale = Math.min(vw / w, ah / (h + hill.amp));
+    return { scale, ox: (vw - w * scale) / 2, oy: (ah - (h + hill.amp) * scale) / 2 + hill.amp * scale };
   }
   function guideFrom(e) {
     const { w, h } = state.world;
     const { scale, ox, oy } = viewFit();
     guide.x = clamp((e.clientX - ox) / scale, HEDGE + 16, w - HEDGE - 16);
-    guide.y = clamp((e.clientY - oy) / scale, HEDGE + 16, h - HEDGE - 16);
+    // undo the hillside warp: y' = y − R(x)·(1 − FLAT·y/h) solves to
+    // y = (y' + R) / (1 + R·FLAT/h), so the finger lands on the ground
+    const r = hill.ridge(guide.x);
+    const wy = ((e.clientY - oy) / scale + r) / (1 + r * HILL_FLAT / h);
+    guide.y = clamp(wy, HEDGE + 16, h - HEDGE - 16);
     guide.has = true;
   }
   canvas.addEventListener('pointerdown', (e) => {
@@ -2091,27 +2173,24 @@
     ctx.translate(ox, oy);
     ctx.scale(scale, scale);
 
-    // field (pre-rendered in makeDecor)
-    ctx.drawImage(fieldCanvas, 0, 0);
-    // world border hedge
-    ctx.strokeStyle = '#3e7a2a';
-    ctx.lineWidth = HEDGE;
-    ctx.strokeRect(HEDGE / 2, HEDGE / 2, w - HEDGE, h - HEDGE);
+    // field + hedge, pre-warped over the hillside (baked in makeDecor)
+    ctx.drawImage(hillCanvas, 0, -Math.ceil(hill.amp));
 
     // grass tufts
     ctx.strokeStyle = 'rgba(62, 122, 42, 0.5)';
     ctx.lineWidth = 2;
     for (const tf of tufts) {
+      const ty = hillY(tf.x, tf.y);
       ctx.beginPath();
-      ctx.moveTo(tf.x - 5 * tf.s, tf.y);
-      ctx.quadraticCurveTo(tf.x - 4 * tf.s, tf.y - 9 * tf.s, tf.x - 6 * tf.s, tf.y - 12 * tf.s);
-      ctx.moveTo(tf.x, tf.y);
-      ctx.quadraticCurveTo(tf.x, tf.y - 10 * tf.s, tf.x - 1 * tf.s, tf.y - 14 * tf.s);
-      ctx.moveTo(tf.x + 5 * tf.s, tf.y);
-      ctx.quadraticCurveTo(tf.x + 4 * tf.s, tf.y - 9 * tf.s, tf.x + 6 * tf.s, tf.y - 12 * tf.s);
+      ctx.moveTo(tf.x - 5 * tf.s, ty);
+      ctx.quadraticCurveTo(tf.x - 4 * tf.s, ty - 9 * tf.s, tf.x - 6 * tf.s, ty - 12 * tf.s);
+      ctx.moveTo(tf.x, ty);
+      ctx.quadraticCurveTo(tf.x, ty - 10 * tf.s, tf.x - 1 * tf.s, ty - 14 * tf.s);
+      ctx.moveTo(tf.x + 5 * tf.s, ty);
+      ctx.quadraticCurveTo(tf.x + 4 * tf.s, ty - 9 * tf.s, tf.x + 6 * tf.s, ty - 12 * tf.s);
       ctx.stroke();
     }
-    for (const f of flowers) drawFlower(f.x, f.y, f.s, f.c);
+    for (const f of flowers) drawFlower(f.x, hillY(f.x, f.y), f.s, f.c);
 
     const t = now / 1000;
     const inGame = state.mode === 'playing' || state.mode === 'clear' || state.mode === 'ready';
@@ -2120,7 +2199,10 @@
     if (inGame) {
       const P = state.pen;
       ctx.fillStyle = 'rgba(146, 106, 60, 0.30)';
-      ctx.fillRect(P.rect.x0, P.rect.y0, P.rect.x1 - P.rect.x0, P.rect.y1 - P.rect.y0);
+      ctx.beginPath();
+      hillTrace(ctx, [[P.rect.x0, P.rect.y0], [P.rect.x1, P.rect.y0],
+                      [P.rect.x1, P.rect.y1], [P.rect.x0, P.rect.y1]], true);
+      ctx.fill();
       // animated chevrons pointing in through the gate (until it shuts)
       const gA = Math.atan2(-P.out.y, -P.out.x); // into the pen
       for (let i = 0; state.gateT === 0 && i < 3; i++) {
@@ -2128,7 +2210,7 @@
         const cxx = P.gx + P.out.x * (110 - k * 130);
         const cyy = P.gy + P.out.y * (110 - k * 130);
         ctx.save();
-        ctx.translate(cxx, cyy);
+        ctx.translate(cxx, hillY(cxx, cyy));
         ctx.rotate(gA);
         ctx.strokeStyle = `rgba(255, 216, 77, ${0.75 * (1 - Math.abs(k - 0.5) * 2)})`;
         ctx.lineWidth = 7;
@@ -2143,15 +2225,16 @@
     // dog influence ring (a faint pressure aura helps read the herding range)
     if (state.mode === 'playing') {
       const dg = state.dog;
+      const dgy = hillY(dg.x, dg.y);
       ctx.fillStyle = 'rgba(255, 246, 232, 0.05)';
       ctx.beginPath();
-      ctx.arc(dg.x, dg.y, FLEE_RANGE, 0, Math.PI * 2);
+      ctx.arc(dg.x, dgy, FLEE_RANGE, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = 'rgba(255, 246, 232, 0.14)';
       ctx.lineWidth = 2;
       ctx.setLineDash([10, 14]);
       ctx.beginPath();
-      ctx.arc(dg.x, dg.y, FLEE_RANGE, 0, Math.PI * 2);
+      ctx.arc(dg.x, dgy, FLEE_RANGE, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -2162,21 +2245,28 @@
       ctx.strokeStyle = `rgba(127, 212, 255, ${0.6 * (1 - k)})`;
       ctx.lineWidth = 5 * (1 - k) + 1;
       ctx.beginPath();
-      ctx.arc(b.x, b.y, BARK_RANGE * (0.25 + 0.75 * k), 0, Math.PI * 2);
+      ctx.arc(b.x, hillY(b.x, b.y), BARK_RANGE * (0.25 + 0.75 * k), 0, Math.PI * 2);
       ctx.stroke();
     }
 
     // ---- actors, y-sorted for depth ----
+    // each actor draws in flat coords inside a translate down/up to the
+    // ground height under its feet, so shadows and doodles ride along
     const drawObstacle = (o) => {
+      ctx.save();
+      ctx.translate(0, -hillLift(o.x, o.y));
       ctx.fillStyle = 'rgba(0,0,0,0.16)';
       ctx.beginPath();
       ctx.ellipse(o.x, o.y + (o.kind === 'tree' ? 10 : 11), o.r * 1.15, o.r * 0.4, 0, 0, Math.PI * 2);
       ctx.fill();
       if (o.kind === 'tree') drawActor('tree', o.x, o.y - 26, 90);
       else drawActor('rock', o.x, o.y - 3, 44);
+      ctx.restore();
     };
 
     const drawSheep = (s) => {
+      ctx.save();
+      ctx.translate(0, -hillLift(s.x, s.y));
       const hop = s.panic > 0.25 ? Math.abs(Math.sin(s.bob)) * 5 : Math.sin(s.bob) * 1.2;
       ctx.fillStyle = 'rgba(0,0,0,0.14)';
       ctx.beginPath();
@@ -2197,10 +2287,13 @@
       } else if (s.penned && Math.sin(t * 2 + s.bob) > 0.965) {
         drawDoodle('note', s.x + 12, s.y - 26, 12);
       }
+      ctx.restore();
     };
 
     const drawDog = () => {
       const dg = state.dog;
+      ctx.save();
+      ctx.translate(0, -hillLift(dg.x, dg.y));
       const spd = Math.hypot(dg.vx, dg.vy);
       const lying = state.input === 'cmd' && dg.cmd === 'lie' && spd < 20;
       ctx.fillStyle = 'rgba(0,0,0,0.16)';
@@ -2212,12 +2305,14 @@
       if (lying && state.mode === 'playing') {
         drawDoodle('zzz', dg.x + 14, dg.y - 22 + Math.sin(t * 3) * 2, 13);
       }
+      ctx.restore();
     };
 
+    // depth-sort by on-screen (warped) y so overlap order matches the hill
     const ents = [];
-    for (const o of state.obstacles) ents.push({ y: o.y, draw: () => drawObstacle(o) });
-    for (const s of state.sheep) ents.push({ y: s.y, draw: () => drawSheep(s) });
-    if (inGame) ents.push({ y: state.dog.y, draw: drawDog });
+    for (const o of state.obstacles) ents.push({ y: hillY(o.x, o.y), draw: () => drawObstacle(o) });
+    for (const s of state.sheep) ents.push({ y: hillY(s.x, s.y), draw: () => drawSheep(s) });
+    if (inGame) ents.push({ y: hillY(state.dog.x, state.dog.y), draw: drawDog });
     ents.sort((a, b) => a.y - b.y);
     for (const e of ents) e.draw();
 
@@ -2229,12 +2324,12 @@
         ctx.lineWidth = 7;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(sgm.x1, sgm.y1); ctx.lineTo(sgm.x2, sgm.y2);
+        hillTrace(ctx, [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]], false);
         ctx.stroke();
         ctx.strokeStyle = '#b98a5a';
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(sgm.x1, sgm.y1); ctx.lineTo(sgm.x2, sgm.y2);
+        hillTrace(ctx, [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]], false);
         ctx.stroke();
         // posts
         const sl = Math.hypot(sgm.x2 - sgm.x1, sgm.y2 - sgm.y1);
@@ -2244,7 +2339,7 @@
           const py = sgm.y1 + (sgm.y2 - sgm.y1) * (i / np);
           ctx.fillStyle = '#6e4a2c';
           ctx.beginPath();
-          ctx.arc(px, py, 5, 0, Math.PI * 2);
+          ctx.arc(px, hillY(px, py), 5, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -2257,31 +2352,32 @@
         ctx.lineWidth = 7;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(g.x1, g.y1); ctx.lineTo(gx2, gy2);
+        hillTrace(ctx, [[g.x1, g.y1], [gx2, gy2]], false);
         ctx.stroke();
         ctx.strokeStyle = '#b98a5a';
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.moveTo(g.x1, g.y1); ctx.lineTo(gx2, gy2);
+        hillTrace(ctx, [[g.x1, g.y1], [gx2, gy2]], false);
         ctx.stroke();
         ctx.fillStyle = '#6e4a2c'; // leading post
         ctx.beginPath();
-        ctx.arc(gx2, gy2, 5, 0, Math.PI * 2);
+        ctx.arc(gx2, hillY(gx2, gy2), 5, 0, Math.PI * 2);
         ctx.fill();
       }
       // gate flags
       for (const [fx, fy] of [[P.gate.x1, P.gate.y1], [P.gate.x2, P.gate.y2]]) {
+        const fyw = hillY(fx, fy);
         ctx.strokeStyle = '#5c3d22';
         ctx.lineWidth = 4;
         ctx.beginPath();
-        ctx.moveTo(fx, fy); ctx.lineTo(fx, fy - 30);
+        ctx.moveTo(fx, fyw); ctx.lineTo(fx, fyw - 30);
         ctx.stroke();
         const wave = reducedMotion ? 0 : Math.sin(t * 5 + fx) * 2;
         ctx.fillStyle = '#e2483d';
         ctx.beginPath();
-        ctx.moveTo(fx, fy - 30);
-        ctx.lineTo(fx + 16, fy - 25 + wave);
-        ctx.lineTo(fx, fy - 20);
+        ctx.moveTo(fx, fyw - 30);
+        ctx.lineTo(fx + 16, fyw - 25 + wave);
+        ctx.lineTo(fx, fyw - 20);
         ctx.closePath();
         ctx.fill();
       }
@@ -2289,6 +2385,8 @@
 
     // floaties: doodles and command call-outs
     for (const f of state.floaties) {
+      ctx.save();
+      ctx.translate(0, -hillLift(f.x, f.y));
       ctx.globalAlpha = clamp(1 - f.t / f.life, 0, 1);
       if (f.txt) {
         ctx.font = '700 ' + f.s + 'px Fredoka, sans-serif';
@@ -2302,6 +2400,7 @@
       } else {
         drawDoodle(f.d, f.x, f.y, f.s);
       }
+      ctx.restore();
     }
     ctx.globalAlpha = 1;
 
@@ -2309,7 +2408,7 @@
 
     // guide marker (screen space): where the dog is running to
     if (guide.has && state.mode === 'playing' && state.input === 'drag') {
-      const sx = ox + guide.x * scale, sy = oy + guide.y * scale;
+      const sx = ox + guide.x * scale, sy = oy + hillY(guide.x, guide.y) * scale;
       const pulse = reducedMotion ? 1 : 1 + Math.sin(now / 140) * 0.15;
       ctx.strokeStyle = 'rgba(255, 246, 232, 0.85)';
       ctx.lineWidth = 2.5;
