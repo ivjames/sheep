@@ -1187,13 +1187,25 @@
   // magnetized to the mob's center instead of moving with its flow.
   // A split GROUP has near neighbors, feels nothing, and stays a group
   // until the dog gathers it — that's the player's job.
-  function mergePull(s) {
+  function mergePull(s, grid) {
     if (s.planted) return null;
+    // nearest-sheep search rides the same COH_RANGE grid as flocking,
+    // bounded by MERGE_REACH (≤3 cells out): the flock grows without a
+    // cap, so a flat rescan of state.sheep here would turn the sheep
+    // pass O(n²) by the big late-game mobs
+    const R = Math.ceil(MERGE_REACH / COH_RANGE);
+    const gx = Math.floor(s.x / COH_RANGE), gy = Math.floor(s.y / COH_RANGE);
     let bx = 0, by = 0, best = Infinity;
-    for (const o of state.sheep) {
-      if (o === s || o.penned) continue;
-      const dd = dist2(s.x, s.y, o.x, o.y);
-      if (dd < best) { best = dd; bx = o.x; by = o.y; }
+    for (let ci = -R; ci <= R; ci++) {
+      for (let cj = -R; cj <= R; cj++) {
+        const cell = grid.get((gx + ci) + ',' + (gy + cj));
+        if (!cell) continue;
+        for (const o of cell) {
+          if (o === s) continue;
+          const dd = dist2(s.x, s.y, o.x, o.y);
+          if (dd < best) { best = dd; bx = o.x; by = o.y; }
+        }
+      }
     }
     if (best === Infinity) return null;
     const ml = Math.sqrt(best);
@@ -1383,7 +1395,10 @@
         fy += (avy / cn - s.vy) * aw;
         catchPanic(s, nearPanic, dt);
       }
-      const mp = gs ? null : mergePull(s);
+      // any neighbor within COH_RANGE means mergePull would decline
+      // anyway (that's cohesion's range) — skip the search entirely
+      // for sheep that are already flocked
+      const mp = gs || cn ? null : mergePull(s, grid);
       if (mp) { fx += mp.x; fy += mp.y; }
       // --- dog pressure ---
       // fear of the dog is a gradient: the timid end feels it from far
