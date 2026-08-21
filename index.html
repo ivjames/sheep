@@ -1297,9 +1297,14 @@
           for (const s of state.sheep) {
             if (!s.penned) near = Math.min(near, Math.hypot(s.x - d.x, s.y - d.y));
           }
+          // ...and the approach speed is throttled by that same distance,
+          // so the dog decelerates into a creep instead of sprinting in:
+          // sheep read the dog's projected lead, and a fast approach
+          // spikes their panic into a long scattering bolt.
           const press = clamp((near - 110) / 70, -0.4, 1);
-          desx = -(rx / rr) * press * pace;
-          desy = -(ry / rr) * press * pace;
+          const spd = Math.min(press * pace, clamp((near - 90) * 2.2, 45, pace));
+          desx = -(rx / rr) * spd;
+          desy = -(ry / rr) * spd;
         } else {
           const step = clamp(dAng, -0.7, 0.7);
           const Rw = hold + 120;
