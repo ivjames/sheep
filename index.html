@@ -2134,6 +2134,27 @@
       if (s.x > w - HEDGE - wp) fx -= wk * (1 - (w - HEDGE - s.x) / wp);
       if (s.y < HEDGE + wp) fy += wk * (1 - (s.y - HEDGE) / wp);
       if (s.y > h - HEDGE - wp) fy -= wk * (1 - (h - HEDGE - s.y) / wp);
+      // --- keep off the pen rails ---
+      // same banking as the hedge: the hard collider alone let the
+      // dog's push pin a fleeing sheep against the outside of the pen,
+      // wedged in a rail corner until its fright ran out. A keep-off
+      // that scales with panic turns the pin into a slide along the
+      // rail — and where two rails meet, the pushes sum diagonally out
+      // of the corner. The gate is a gap in the rails, so the funnel
+      // mouth stays open and the nudge off the posts even centers the
+      // queue on its way through.
+      for (const seg of state.pen.segs) {
+        const abx = seg.x2 - seg.x1, aby = seg.y2 - seg.y1;
+        const len2 = abx * abx + aby * aby || 1;
+        const t = clamp(((s.x - seg.x1) * abx + (s.y - seg.y1) * aby) / len2, 0, 1);
+        const dx = s.x - (seg.x1 + abx * t), dy = s.y - (seg.y1 + aby * t);
+        const dl = Math.hypot(dx, dy);
+        if (dl > 0.01 && dl < 55) {
+          const f = (1 - dl / 55) * 100 * (1 + 1.8 * s.panic);
+          fx += (dx / dl) * f;
+          fy += (dy / dl) * f;
+        }
+      }
       // --- graze when nothing's happening ---
       if (s.panic < 0.1 && !s.planted) {
         s.wanderT -= dt;
