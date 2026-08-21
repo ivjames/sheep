@@ -1942,8 +1942,10 @@
       }
       // fear fades slowly, and hardly at all in a frightened mob: every
       // sheep keeps its neighbours' nerves up, so a spooked flock stays
-      // spooked long after the dog has eased off
-      s.panic = Math.max(0, s.panic - dt * 0.2 * (1 - 0.8 * nearPanic));
+      // spooked long after the dog has eased off. A full startle takes
+      // a sheep the better part of fifteen seconds to walk off even
+      // alone — panic is a lasting state, not a flinch
+      s.panic = Math.max(0, s.panic - dt * 0.07 * (1 - 0.8 * nearPanic));
       // any neighbor within COH_RANGE means mergePull would decline
       // anyway (that's cohesion's range) — skip the search entirely
       // for sheep that are already flocked
