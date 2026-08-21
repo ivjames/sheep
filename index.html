@@ -1530,10 +1530,11 @@
       } else if (cmd === 'walk') {
         // WALK ON drives: the dog wants the balance point — straight
         // across the flock from the gate — and presses from there, so
-        // the push always sends sheep pen-ward. It creeps to a pressed-
-        // but-comfortable distance and holds (backing off a step if it
-        // overruns); off balance it swings round the mob the shorter
-        // way instead of shoving through the middle.
+        // the push always sends sheep pen-ward. On balance it settles
+        // into a steady escort: match the flock's own drift and hold
+        // a contact ring, rather than charge-stop-charge to a fixed
+        // spot; off balance it swings round the mob the shorter way
+        // instead of shoving through the middle.
         const P = state.pen;
         let ux = flock.cx - P.gx, uy = flock.cy - P.gy;
         const ul = Math.hypot(ux, uy) || 1;
@@ -1543,23 +1544,49 @@
         const rr = Math.hypot(rx, ry) || 1;
         const aDog = Math.atan2(ry, rx);
         let dAng = ((Math.atan2(uy, ux) - aDog + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+        // track the flock's own drift, smoothed (EMA) and clamped so a
+        // sudden centroid jump (a sheep penning, a stray bolting) can't
+        // spike it, then keep only the along-the-drive-line component —
+        // lateral noise in the flock's center shouldn't tug the dog
+        // sideways off the balance line
+        if (d.lastFlockX !== undefined && dt > 1e-4) {
+          const rdx = clamp((flock.cx - d.lastFlockX) / dt, -300, 300);
+          const rdy = clamp((flock.cy - d.lastFlockY) / dt, -300, 300);
+          const a = Math.min(1, 3 * dt);
+          d.driftVX = (d.driftVX || 0) + (rdx - (d.driftVX || 0)) * a;
+          d.driftVY = (d.driftVY || 0) + (rdy - (d.driftVY || 0)) * a;
+        }
+        d.lastFlockX = flock.cx; d.lastFlockY = flock.cy;
+        // cap the matched component to a normal working walk, not a
+        // bolt — chasing a startled scatter at full pace would just run
+        // the dog onto the fleeing sheep; the ring spring below, not the
+        // drift match, handles those moments
+        const along = clamp((d.driftVX || 0) * ux + (d.driftVY || 0) * uy, -80, 80);
         if (Math.abs(dAng) < 0.55) {
-          // press keyed to the nearest sheep, not the flock's bounding
-          // radius — an elongated mob otherwise reads as "close enough"
-          // while every actual sheep stands outside flee range, and the
-          // drive deadlocks with the dog parked and the flock ignoring it.
+          // drift-matched follower: ride the flock's own gate-ward drift
+          // and add a saturating spring toward a nearest-sheep contact
+          // ring — riding the drift keeps the dog's speed near the
+          // flock's own, so its projected lead stays calm instead of
+          // spiking sheep panic on every stop-start approach. The ring is
+          // measured off the actual nearest sheep (an elongated mob's
+          // bounding radius otherwise reads "close enough" while every
+          // sheep stands outside flee range and the drive deadlocks),
+          // with a flock-spread floor so a scatter-opened gap can't read
+          // "far" and let the dog sail through a hollow mob. Everything
+          // scales with `pace`, so WALK ON taps lean the drive harder
+          // and EASY gentles it off.
           let near = Infinity;
           for (const s of state.sheep) {
             if (!s.penned) near = Math.min(near, Math.hypot(s.x - d.x, s.y - d.y));
           }
-          // ...and the approach speed is throttled by that same distance,
-          // so the dog decelerates into a creep instead of sprinting in:
-          // sheep read the dog's projected lead, and a fast approach
-          // spikes their panic into a long scattering bolt.
-          const press = clamp((near - 110) / 70, -0.4, 1);
-          const spd = Math.min(press * pace, clamp((near - 90) * 2.2, 45, pace));
-          desx = -(rx / rr) * spd;
-          desy = -(ry / rr) * spd;
+          const pressFrac = clamp(Math.min(near - 115, rr - (hold + 20)) / 60, -0.4, 1);
+          let vx = ux * (along - pressFrac * pace), vy = uy * (along - pressFrac * pace);
+          const vlen = Math.hypot(vx, vy);
+          const floor = pace * 0.12; // nudge gate-ward, never fully freeze
+          if (vlen < floor) { vx -= ux * (floor - vlen); vy -= uy * (floor - vlen); }
+          const cl = Math.hypot(vx, vy) || 1;
+          if (cl > pace) { vx *= pace / cl; vy *= pace / cl; }
+          desx = vx; desy = vy;
         } else {
           const step = clamp(dAng, -0.7, 0.7);
           const Rw = hold + 120;
