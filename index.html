@@ -2128,6 +2128,18 @@
         const press = 1 + Math.min(cn, 8) * 0.18;
         fx += gs.x * press;
         fy += gs.y * press;
+        // sheep corner hard: a runner crossing the mouth BENDS its line
+        // into the gap instead of overshooting on momentum — the pull
+        // as a plain force barely deflects a sheep at speed, so it ran
+        // straight past the funnel. Speed is kept, the line curves,
+        // and the bend scales with the suction — which is calm-scaled,
+        // so a stampede still blows past while a driven sheep turns in
+        const rspd = Math.hypot(s.vx, s.vy);
+        if (rspd > 40) {
+          const bent = turnToward(Math.atan2(s.vy, s.vx), Math.atan2(gs.y, gs.x), (2 + 6 * gs.k) * dt);
+          s.vx = Math.cos(bent) * rspd;
+          s.vy = Math.sin(bent) * rspd;
+        }
       }
       // --- keep off the hedge ---
       // the keep-off scales with panic so a stampede BANKS along the
