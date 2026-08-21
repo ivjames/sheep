@@ -9,7 +9,7 @@ The files below are loudness-normalized to −16 LUFS (EBU R128, true peak −1.
 
 ## Required attribution
 
-The Kevin MacLeod line is currently wired into the game (title screen credit for the four ✅ tracks). The Jason Shaw line becomes required only if a Jason Shaw track is wired in.
+The Kevin MacLeod line is currently wired into the game (title screen credit for the eight ✅ tracks). The Jason Shaw line becomes required only if a Jason Shaw track is wired in.
 
 > "&lt;Title&gt;" Kevin MacLeod (incompetech.com). Licensed under Creative Commons: By Attribution 4.0 — https://creativecommons.org/licenses/by/4.0/
 >
@@ -20,7 +20,7 @@ The Kevin MacLeod line is currently wired into the game (title screen credit for
 
 ## In the game
 
-The four ✅ tracks play in-game as a shuffled background playlist; the title screen carries the required Kevin MacLeod credit line. The rest remain shortlisted candidates, all previewable in `music/jukebox.html`.
+The eight ✅ tracks play in-game as a shuffled background playlist; the title screen carries the required Kevin MacLeod credit line. The rest remain shortlisted candidates, all previewable in `music/jukebox.html`.
 
 
 ## Front porch & farm
@@ -68,13 +68,13 @@ Banjo, dobro, fiddle and country guitar — chasing the sound the round-3 picks 
 
 |  | File | Title | By | Length | Notes |
 |---|---|---|---|---|---|
-|  | bama-country.mp3 | [Bama Country](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100359) | Kevin MacLeod | 3:32 | Deep-South country — harmonica, fiddle, guitar and accordion |
-|  | river-valley-breakdown.mp3 | [River Valley Breakdown](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1300032) | Kevin MacLeod | 6:06 | Six minutes of banjo–mandolin–fiddle bluegrass |
-|  | corncob.mp3 | [Corncob](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100565) | Kevin MacLeod | 0:54 | Fast banjo picking over a grooving shuffle |
+| ✅ | bama-country.mp3 | [Bama Country](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100359) | Kevin MacLeod | 3:32 | Deep-South country — harmonica, fiddle, guitar and accordion |
+| ✅ | river-valley-breakdown.mp3 | [River Valley Breakdown](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1300032) | Kevin MacLeod | 6:06 | Six minutes of banjo–mandolin–fiddle bluegrass |
+| ✅ | corncob.mp3 | [Corncob](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100565) | Kevin MacLeod | 0:54 | Fast banjo picking over a grooving shuffle |
 |  | matts-blues.mp3 | [Matt's Blues](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100165) | Kevin MacLeod | 2:47 | Americana blues with harmonica and organ |
 |  | thatched-villagers.mp3 | [Thatched Villagers](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100720) | Kevin MacLeod | 4:05 | Rustic guitar, recorder and dulcimer at a steady bounce |
 |  | kings-of-tara.mp3 | [Kings of Tara](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500071) | Kevin MacLeod | 3:42 | Banjo and flute over a cool groove |
-|  | brightly-fancy.mp3 | [Brightly Fancy](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100883) | Kevin MacLeod | 2:15 | Lively little guitar two-step |
+| ✅ | brightly-fancy.mp3 | [Brightly Fancy](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100883) | Kevin MacLeod | 2:15 | Lively little guitar two-step |
 |  | comin-round-the-mountain.mp3 | [Comin Round the Mountain](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100817) | Kevin MacLeod | 2:54 | Electro-acoustic take on the American folk song |
 |  | hoedown.mp3 | [Hoedown](https://audionautix.com/free-music/country) | Jason Shaw | 2:13 | Fast, bouncy and uplifting |
 |  | tennessee-hayride.mp3 | [Tennessee Hayride](https://audionautix.com/free-music/country) | Jason Shaw | 2:33 | Fast country bounce |
