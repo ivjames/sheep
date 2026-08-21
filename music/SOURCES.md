@@ -1,55 +1,62 @@
 # Music sources
 
-All tracks are **CC0 (public domain)** candidates from this audition round. Most come from
-[opengameart.org](https://opengameart.org) (advanced search with CC0 + Music filters; searches like
-"upbeat guitar", "acoustic guitar", "guitar loop", "ukulele", plus a sweep of Zane Little's catalog);
-two are from [freesound.org](https://freesound.org) (found with the `license:"Creative Commons 0"` filter),
-and those two start from Freesound's own HQ MP3 preview renders. CC0 requires no attribution, but composers are
-credited anyway. All files have been loudness-normalized to −16 LUFS (EBU R128, true peak −1.5 dB),
-re-encoded 44.1 kHz VBR MP3 (~100 kbps); originals can be re-fetched at full quality from the linked
-pages for final in-game use.
+This is **round 3** of the upbeat guitar candidate set. Rounds 1 (pastoral/Celtic) and 2 (upbeat guitar, first pass) were sourced under CC0, but the CC0 pool proved too thin — neither round survived audition. Round 3 switches to **CC BY 4.0**, which unlocks the professional catalogs: ten tracks by [Kevin MacLeod](https://incompetech.com) and five by [Jason Shaw](https://audionautix.com).
 
-This is the second candidate round; the first (pastoral/Celtic) was auditioned and rejected, with its
-files removed (they remain in git history). Nothing is wired into the game yet—audition in `music/jukebox.html`,
-then tell Claude which to wire in. Note that Apple Cider has loop + WAV versions and its "Juiced!" pack
-has three more course themes plus victory/failure fanfares on the source page; Ukulele Forest has matching
-intro/outro segments.
+**CC BY 4.0 requires attribution:** any track wired into the game must be credited visibly (e.g. on the start screen or in a credits panel). Old rounds' files were removed but remain in git history.
+
+The files below are loudness-normalized to −16 LUFS (EBU R128, true peak −1.5 dB), re-encoded at 44.1 kHz VBR MP3 (~100 kbps). Originals are re-fetchable at full quality from the linked pages.
 
 
-## Upbeat & sunny
+## Required attribution
 
-Bright acoustic strummers — main-theme material.
+When any track from this set is wired into the game, include both of these credit lines on the credits screen:
 
-| File | Title | By | Length | Notes |
-|---|---|---|---|---|
-| apple-cider.mp3 | [Apple Cider](https://opengameart.org/content/apple-cider) | Zane Little | 3:20 | Warm upbeat acoustic strummer; loop + WAV on the source page |
-| apple-cider-course-1.mp3 | [Apple Cider Juiced! — Course 1](https://opengameart.org/content/apple-cider-juiced) | Zane Little | 0:34 | Short course theme in the Apple Cider instrumentation — five courses plus fanfares on the source page |
-| apple-cider-course-2.mp3 | [Apple Cider Juiced! — Course 2](https://opengameart.org/content/apple-cider-juiced) | Zane Little | 0:33 | Second course theme from the same pack |
-| sunflower-valley.mp3 | [Sunflower Valley](https://opengameart.org/content/sunflower-valley) | isaiah658 | 2:22 | Spyro-style upbeat theme |
-| happy-strings.mp3 | [Happy Strings](https://freesound.org/people/Bigvegie/sounds/683104/) | Bigvegie | 0:55 | Acoustic guitar with light percussion, Latin lilt |
-| happy-taps.mp3 | [HappyTapsRev](https://freesound.org/people/Bigvegie/sounds/682159/) | Bigvegie | 1:16 | Guitar with claps and hand percussion |
-| cozy-puzzle.mp3 | [Cozy Puzzle In-Game 3](https://opengameart.org/content/cozy-puzzle-in-game-3) | Minto | 2:04 | Loopable cozy tune at 108 bpm |
-| guitar-strings-piccolo.mp3 | [Acoustic Guitar RPG Tune](https://opengameart.org/content/acoustic-guitar-rpg-tune-with-strings-and-piccolo) | Tozan | 3:36 | Guitar with strings and piccolo — author warns the ending is rough |
+> "&lt;Title&gt;" Kevin MacLeod (incompetech.com). Licensed under Creative Commons: By Attribution 4.0 — https://creativecommons.org/licenses/by/4.0/
+>
+> Music by Jason Shaw on Audionautix.com. Licensed under Creative Commons: By Attribution 4.0 — https://creativecommons.org/licenses/by/4.0/
+
+(For MacLeod tracks, fill in each used track's title; the Audionautix line covers all of Jason Shaw's tracks. Each line is only needed if a track from that composer is actually used.)
 
 
-## On the road
+## Auditioning
 
-Zane Little's driving set and kin — relaxed momentum, good under herding.
+Nothing is wired in yet. Preview all tracks in `music/jukebox.html`, then tell Claude which to wire in — the credits panel comes with them.
+
+
+## Front porch & farm
+
+Banjo, mandolin and acoustic guitar americana — the herding-level shortlist.
 
 | File | Title | By | Length | Notes |
 |---|---|---|---|---|
-| drive.mp3 | [Drive](https://opengameart.org/content/drive-0) | Zane Little | 1:38 | Road Trip Adventure-inspired cruiser |
-| detour.mp3 | [Detour](https://opengameart.org/content/detour) | Zane Little | 4:11 | Same series, longer and lazier |
-| shortcuts.mp3 | [Shortcuts](https://opengameart.org/content/shortcuts) | Zane Little | 4:50 | Big production number from the same composer |
-| road-trip.mp3 | [Road Trip](https://opengameart.org/content/road-trip) | Umplix | 1:12 | Meant to loop, works played once |
+| porch-swing-days.mp3 | [Porch Swing Days (faster)](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100716) | Kevin MacLeod | 3:05 | Feel-good flowing acoustic guitars; a slower version exists too |
+| fireflies-and-stardust.mp3 | [Fireflies and Stardust](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1600061) | Kevin MacLeod | 4:15 | Gentle rural americana — banjo, violins, mandolin, guitars |
+| still-pickin.mp3 | [Still Pickin](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1900033) | Kevin MacLeod | 4:58 | Old-fashioned pickin' and stompin' — banjo and harmonica |
+| hillbilly-swing.mp3 | [Hillbilly Swing](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1900032) | Kevin MacLeod | 2:47 | Fast banjo, fiddle and guitar |
+| cattails.mp3 | [Cattails](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100743) | Kevin MacLeod | 2:39 | Drifting guitar-and-banjo lull with accordion |
+| guts-and-bourbon.mp3 | [Guts and Bourbon](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1400032) | Kevin MacLeod | 3:29 | Country, rural, upbeat — guitars and mandolin at a gallop |
 
 
-## Short guitar loops
+## Sunny ukulele & strums
 
-Seconds-long seamless loops — cheap to keep running forever.
+MacLeod's cheery uke-and-guitar staples — menu and between-level material.
 
 | File | Title | By | Length | Notes |
 |---|---|---|---|---|
-| ukulele-forest.mp3 | [Ukulele Forest (loop)](https://opengameart.org/content/ukulele-forest-beginning-loop-and-end) | StarNinjas | 0:08 | 8-second ukulele loop; matching intro and outro segments on the source page |
-| guitar-exploration.mp3 | [Exploration](https://opengameart.org/content/exploration-0) | johnclark | 0:21 | Acoustic guitar in E major — exploration, new world, adventure |
-| acoustic-loop.mp3 | [Acoustic Loop](https://opengameart.org/content/short-looping-songs) | Umplix | 0:18 | From the Short Looping Songs pack |
+| carefree.mp3 | [Carefree](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1400037) | Kevin MacLeod | 3:25 | Ukulele, guitar and marimba — nothing says "it'll be okay" like a ukulele |
+| life-of-riley.mp3 | [Life of Riley](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1400054) | Kevin MacLeod | 3:55 | Mid-tempo cheery uke and guitar |
+| fretless.mp3 | [Fretless](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500074) | Kevin MacLeod | 5:36 | Forward-pulling guitar and ukulele with glockenspiel |
+| daily-beetle.mp3 | [Daily Beetle](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500025) | Kevin MacLeod | 5:17 | Super-catchy uke, guitar, marimba and music box |
+| happy-strummin.mp3 | [Happy Strummin'](https://audionautix.com/free-music/acoustic) | Jason Shaw | 2:14 | Bright, bouncy acoustic strummer |
+
+
+## Easy riding
+
+Jason Shaw's brighter acoustic cruisers.
+
+| File | Title | By | Length | Notes |
+|---|---|---|---|---|
+| travel-light.mp3 | [Travel Light](https://audionautix.com/free-music/acoustic) | Jason Shaw | 1:53 | Bouncy, bright and quick |
+| open-road.mp3 | [Open Road](https://audionautix.com/free-music/acoustic) | Jason Shaw | 1:22 | Driving, bright, uplifting |
+| river-meditation.mp3 | [River Meditation](https://audionautix.com/free-music/acoustic) | Jason Shaw | 2:47 | Bouncy but relaxing |
+| landras-dream.mp3 | [Landra's Dream](https://audionautix.com/free-music/acoustic) | Jason Shaw | 1:29 | Bright, relaxing, uplifting |
