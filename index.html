@@ -644,24 +644,82 @@
     }
   }
   // circle vs fence segment: push out along the normal
+  function collideSeg(e, r, s) {
+    const abx = s.x2 - s.x1, aby = s.y2 - s.y1;
+    const len2 = abx * abx + aby * aby || 1;
+    const t = clamp(((e.x - s.x1) * abx + (e.y - s.y1) * aby) / len2, 0, 1);
+    const px = s.x1 + abx * t, py = s.y1 + aby * t;
+    let dx = e.x - px, dy = e.y - py;
+    const dd = dx * dx + dy * dy, min = r + 5;
+    if (dd < min * min) {
+      const d = Math.sqrt(dd);
+      if (d < 0.001) { dx = aby; dy = -abx; }        // dead-center: shove sideways
+      const nx = dx / (d || 1), ny = dy / (d || 1);
+      e.x = px + nx * min;
+      e.y = py + ny * min;
+      const dot = e.vx * nx + e.vy * ny;
+      if (dot < 0) { e.vx -= dot * nx; e.vy -= dot * ny; }
+    }
+  }
   function collideSegs(e, r) {
-    for (const s of state.pen.segs) {
+    for (const s of state.pen.segs) collideSeg(e, r, s);
+  }
+  // the working dog stays out of the pen: from outside, the open gate is
+  // a wall to it (sheep pass freely) — but a dog somehow caught inside
+  // keeps the way out open
+  function dogGateShut(d) {
+    const P = state.pen;
+    return P.rect && !(d.x > P.rect.x0 - 6 && d.x < P.rect.x1 + 6 &&
+                       d.y > P.rect.y0 - 6 && d.y < P.rect.y1 + 6);
+  }
+
+  // a desired heading that presses into a fence, rock, or the hedge at
+  // the dog's nose gets swapped for an along-surface direction — the
+  // collision pass would only cancel the blocked part and leave the dog
+  // grinding in place, this keeps it moving at full speed along the wall.
+  // A flank passes its sweep as `sweep` (come by +1, away -1) and always
+  // rounds the obstruction with that handedness — come-by keeps the wall
+  // on its left, away on its right — so even a dead-end pocket (pen
+  // meeting the hedge) becomes a steady detour rather than a dithering
+  // grind toward the blocked side.
+  function slideDes(d, dx, dy, sweep) {
+    const sp = Math.hypot(dx, dy);
+    if (sp < 1) return { x: dx, y: dy };
+    const probe = DOG_R + 12;
+    let nx = 0, ny = 0;
+    const segs = dogGateShut(d) ? state.pen.segs.concat([state.pen.gate]) : state.pen.segs;
+    for (const s of segs) {
       const abx = s.x2 - s.x1, aby = s.y2 - s.y1;
       const len2 = abx * abx + aby * aby || 1;
-      const t = clamp(((e.x - s.x1) * abx + (e.y - s.y1) * aby) / len2, 0, 1);
-      const px = s.x1 + abx * t, py = s.y1 + aby * t;
-      let dx = e.x - px, dy = e.y - py;
-      const dd = dx * dx + dy * dy, min = r + 5;
-      if (dd < min * min) {
-        const d = Math.sqrt(dd);
-        if (d < 0.001) { dx = aby; dy = -abx; }        // dead-center: shove sideways
-        const nx = dx / (d || 1), ny = dy / (d || 1);
-        e.x = px + nx * min;
-        e.y = py + ny * min;
-        const dot = e.vx * nx + e.vy * ny;
-        if (dot < 0) { e.vx -= dot * nx; e.vy -= dot * ny; }
-      }
+      const t = clamp(((d.x - s.x1) * abx + (d.y - s.y1) * aby) / len2, 0, 1);
+      const cx = d.x - (s.x1 + abx * t), cy = d.y - (s.y1 + aby * t);
+      const cd = Math.hypot(cx, cy);
+      if (cd < probe && cd > 0.001) { nx += cx / cd; ny += cy / cd; }
     }
+    for (const o of state.obstacles) {
+      const cx = d.x - o.x, cy = d.y - o.y;
+      const cd = Math.hypot(cx, cy);
+      if (cd < o.r + probe && cd > 0.001) { nx += cx / cd; ny += cy / cd; }
+    }
+    const { w, h } = state.world;
+    if (d.x < HEDGE + probe) nx += 1;
+    if (d.x > w - HEDGE - probe) nx -= 1;
+    if (d.y < HEDGE + probe) ny += 1;
+    if (d.y > h - HEDGE - probe) ny -= 1;
+    const nl = Math.hypot(nx, ny);
+    if (nl < 0.01) return { x: dx, y: dy };
+    nx /= nl; ny /= nl;
+    const into = dx * nx + dy * ny;
+    if (into >= 0) return { x: dx, y: dy }; // already heading clear
+    if (sweep) return { x: ny * sweep * sp, y: -nx * sweep * sp };
+    let tx = dx - into * nx, ty = dy - into * ny;
+    if (Math.hypot(tx, ty) < sp * 0.25) {
+      // square-on: pick either wall tangent, consistently
+      const side = (dx * -ny + dy * nx) >= 0 ? 1 : -1;
+      tx = -ny * side; ty = nx * side;
+    }
+    const tl = Math.hypot(tx, ty) || 1;
+    return { x: tx / tl * sp, y: ty / tl * sp };
   }
 
   // ---------- game state ----------
@@ -1131,7 +1189,7 @@
   function updateDog(dt) {
     const d = state.dog;
     d.barkCd = Math.max(0, d.barkCd - dt);
-    let desx = 0, desy = 0;
+    let desx = 0, desy = 0, sweep = 0;
     if (state.input === 'drag') {
       let ix = 0, iy = 0;
       if (keys['a'] || keys['arrowleft']) ix -= 1;
@@ -1212,7 +1270,11 @@
             need = Math.max(need, Math.hypot(s.x - flock.cx, s.y - flock.cy));
           }
         }
-        const R = need + 85;
+        // ease toward the needed radius: with a big scattered flock,
+        // strays entering and leaving the sweep sector make it jump, and
+        // a smoothed radius walks the aim point instead of teleporting it
+        d.orbitR = d.orbitR ? d.orbitR + (need + 85 - d.orbitR) * Math.min(1, 4 * dt) : need + 85;
+        const R = d.orbitR;
         // chase a point on the orbit a little ahead of the sweep (canvas
         // y grows downward, so increasing angle is clockwise on screen).
         // The aim point is clamped inside the hedge: when the flock works
@@ -1232,7 +1294,13 @@
         desx = ax - d.x; desy = ay - d.y;
         const dl = Math.hypot(desx, desy) || 1;
         desx = desx / dl * pace; desy = desy / dl * pace;
+        // if a wall blocks the way, round it the way the sweep runs
+        sweep = dir;
       } // lie: desired stays 0
+      if (desx || desy) {
+        const sw = slideDes(d, desx, desy, sweep);
+        desx = sw.x; desy = sw.y;
+      }
       d.vx += (desx - d.vx) * 4 * dt;
       d.vy += (desy - d.vy) * 4 * dt;
     }
@@ -1240,6 +1308,8 @@
     d.x = clamp(d.x + d.vx * dt, HEDGE + 16, w - HEDGE - 16);
     d.y = clamp(d.y + d.vy * dt, HEDGE + 16, h - HEDGE - 16);
     collideSegs(d, DOG_R);
+    // in command mode flanks route round the pen, never through it
+    if (state.input === 'cmd' && dogGateShut(d)) collideSeg(d, DOG_R, state.pen.gate);
     collideObstacles(d, DOG_R);
     if (Math.abs(d.vx) > 30) d.facing = d.vx > 0 ? 1 : -1;
     const dspd = Math.hypot(d.vx, d.vy);
