@@ -1942,10 +1942,10 @@
       }
       // fear fades slowly, and hardly at all in a frightened mob: every
       // sheep keeps its neighbours' nerves up, so a spooked flock stays
-      // spooked long after the dog has eased off. A full startle takes
-      // a sheep the better part of fifteen seconds to walk off even
+      // spooked long after the dog has eased off. A full fright takes
+      // a sheep the better part of half a minute to walk off even
       // alone — panic is a lasting state, not a flinch
-      s.panic = Math.max(0, s.panic - dt * 0.07 * (1 - 0.8 * nearPanic));
+      s.panic = Math.max(0, s.panic - dt * 0.04 * (1 - 0.8 * nearPanic));
       // any neighbor within COH_RANGE means mergePull would decline
       // anyway (that's cohesion's range) — skip the search entirely
       // for sheep that are already flocked
@@ -1971,10 +1971,23 @@
           }
           if (s.planted && dd < 55) unplant(s, ddx / dd, ddy / dd); // dog right on top of it
           if (!s.planted) {
+            // crossing the flee line is a BOLT, not a lean-away: the
+            // moment the dog's range touches a settled sheep it jumps
+            // straight into a run away from the dog. Gated on low
+            // panic so a sheep already running isn't re-kicked every
+            // frame — one bolt per fright
+            if (s.panic < 0.6) {
+              s.vx += (ddx / dd) * 230 * mult;
+              s.vy += (ddy / dd) * 230 * mult;
+            }
             fx += (ddx / dd) * k * 520 * mult;
             fy += (ddy / dd) * k * 520 * mult;
           }
-          s.panic = Math.max(s.panic, Math.min(1, k * (1.15 - 0.35 * s.bold)));
+          // held pressure refills the fear in full: any time the dog is
+          // inside flee range — even sitting at its very edge — the
+          // timer snaps back to the top, so working the flock keeps it
+          // at peak fright and the long fade only starts once you ease off
+          s.panic = Math.max(s.panic, 1 - 0.3 * s.bold);
         } else if (!s.planted && dd < DOG_AWARE && dd > 0.01) {
           // noticed but not pressed yet: lift the head, edge away, bunch
           // up — the bolder the sheep, the less it bothers
