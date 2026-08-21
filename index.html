@@ -1984,9 +1984,13 @@
       // out and bolts; the bold end makes you get close and barely budges
       if (!grazing) {
         const range = FLEE_RANGE - (FLEE_RANGE - FLEE_RANGE_DEFIANT) * s.bold;
-        // sheep read the dog's line of travel, not just where it stands
-        const lead = 0.3 * (1 - s.bold);
-        const ddx = s.x - (d.x + d.vx * lead), ddy = s.y - (d.y + d.vy * lead);
+        // sheep track where the dog actually IS. It used to project
+        // the dog ~0.3s along its line of travel, but that phantom sat
+        // up to 100px ahead of the real dog at a sprint — with panic
+        // ramped off distance and bolts keyed to pressure, a fast
+        // flank startled sheep it hadn't reached and bent their flee
+        // direction away from a spot the dog was never going to be
+        const ddx = s.x - d.x, ddy = s.y - d.y;
         const dd = Math.hypot(ddx, ddy);
         if (dd < range && dd > 0.01) {
           const k = 1 - dd / range;
