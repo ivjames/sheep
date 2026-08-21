@@ -1754,11 +1754,12 @@
   }
   // sheep near the mouth of an open gate know what it's for and drift on
   // in. Strongest at early levels (training wheels) but never gone
-  // entirely — except at the stubborn end of the flock, which couldn't
-  // care less about your pen
+  // entirely — even a ram drags its feet at the mouth rather than
+  // ignoring the pen outright, so the funnel still works on the
+  // stubborn end instead of leaving every ram a one-sheep shoving match
   function gateSuction(s) {
     const ease = 0.4 + 0.6 * clamp(1 - (state.level - 1) / 4, 0, 1);
-    const willing = ease * (1 - s.bold * 0.85);
+    const willing = ease * Math.max(0.3, 1 - s.bold * 0.85);
     if (willing < 0.05 || s.planted) return null;
     const P = state.pen;
     // in front of the mouth only — never through the back fence
