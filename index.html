@@ -428,7 +428,7 @@
   const COMFORT = 70;             // a neighbor this close means you're IN the flock — no cohesion pull
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
-  const FEAR_HOLD = 6;            // seconds a startle pins panic at FULL — flat, not pressure-scaled
+  const FEAR_HOLD = 3;            // seconds a startle pins panic at FULL — flat, not pressure-scaled
   const MERGE_REACH = 520;        // a stray feels the pull of the NEAREST sheep out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
@@ -1590,7 +1590,24 @@
           desx = vx; desy = vy;
         } else {
           const step = clamp(dAng, -0.7, 0.7);
-          const Rw = hold + 120;
+          // the swing round the mob must clear every sheep in the
+          // sector it sweeps through, same as a called flank: `hold`
+          // caps at 240, so on a big spread-out flock a fixed arc
+          // slices INSIDE outlying clusters — a bunch sat in a corner
+          // never feels the dog pass and just gets left there, which
+          // reads as the dog ignoring them. Widening past the farthest
+          // sheep in the swing's path sweeps those clusters back into
+          // the drive instead of orbiting them out of the game.
+          let Rw = hold + 120;
+          const sd = step > 0 ? 1 : -1;
+          for (const s of state.sheep) {
+            if (s.penned) continue;
+            let da = (Math.atan2(s.y - flock.cy, s.x - flock.cx) - aDog) * sd;
+            da = ((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            if (da < 1.25 || da > Math.PI * 2 - 0.45) {
+              Rw = Math.max(Rw, Math.hypot(s.x - flock.cx, s.y - flock.cy) + 70);
+            }
+          }
           const m = HEDGE + 20;
           const ax = clamp(flock.cx + Math.cos(aDog + step) * Rw, m, state.world.w - m);
           const ay = clamp(flock.cy + Math.sin(aDog + step) * Rw, m, state.world.h - m);
@@ -1945,10 +1962,10 @@
       // fear is a TIMER, not a gradient: any startle pins panic at
       // full for FEAR_HOLD seconds flat — never scaled by how hard the
       // pressure was — and every frame of continued pressure rearms
-      // the whole clock. Only once it runs dry does the fright taper,
-      // and briskly: the guaranteed flat-out run IS the mechanic
+      // the whole clock. Once it runs dry the fright tapers over three
+      // seconds, full run easing down to a grazing meander
       if (s.fearT > 0) { s.fearT -= dt; s.panic = 1; }
-      else s.panic = Math.max(0, s.panic - dt * 0.35);
+      else s.panic = Math.max(0, s.panic - dt * 0.3);
       // any neighbor within COH_RANGE means mergePull would decline
       // anyway (that's cohesion's range) — skip the search entirely
       // for sheep that are already flocked
