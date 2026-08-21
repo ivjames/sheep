@@ -438,12 +438,21 @@
   // of it, and each sweep runs this far off the drive line before it turns.
   const WEAR_SPREAD = 45, WEAR_TIGHT = 0.82, WEAR_ARC = 0.6;
   const WEAR_BOUT = 3.6, WEAR_REST = 1.8; // seconds of wearing, then of driving
-  // casting (walk on): a stalled drive means the flock has spread away from
-  // the dog, not that the job is done, so the dog arcs across their back
-  // rather than standing. Below CAST_IDLE of its pace the drive counts as
-  // stalled, the cast comes in at CAST_GAIN of pace, and it turns CAST_ARC
+  // casting (walk on): a dog that has stopped with sheep still out in front
+  // of it hasn't finished — the flock has spread wide of it — so it arcs
+  // across their back rather than standing. The test is BOTH halves of that:
+  // the dog is barely moving (under CAST_STILL of its pace) AND the flock
+  // isn't drifting gate-ward, held for CAST_WAIT seconds so an ordinary slow
+  // press isn't mistaken for a stall. Judging it on the dog alone made the
+  // dog arc round a beautifully gathered flock it never delivered. The cast
+  // then fades in over CAST_RAMP at CAST_GAIN of pace, turning CAST_ARC
   // either side of the drive line.
-  const CAST_IDLE = 0.5, CAST_GAIN = 0.7, CAST_ARC = 0.4;
+  // The arc must stay well inside the half-radian the handler's own logic
+  // reads as the dog having drifted off the balance line: swing wider than
+  // that and every cast is answered by a corrective flank, which is how a
+  // first cut at this gathered the flock beautifully and never delivered it.
+  const CAST_STILL = 0.45, CAST_WAIT = 0.25, CAST_RAMP = 0.35;
+  const CAST_GAIN = 0.45, CAST_ARC = 0.18;
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const FEAR_HOLD = 0.5;          // seconds a startle pins panic at FULL — flat, not pressure-scaled
@@ -764,7 +773,7 @@
     auto: false,   // in-game autopilot: the dog works the flock itself
     level: 1,
     world: { w: 1600, h: 1000 },
-    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, castSide: 0, barkCd: 0 },
+    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, castSide: 0, stallT: 0, barkCd: 0 },
     pace: PACE_START, // command-mode speed gradient, 0 (halt) → 1 (flat out)
     handler: { x: 800, y: 560 },
     sheep: [],
@@ -1209,7 +1218,7 @@
     state.handler.x = clamp(P.gx + P.out.x * 150 + tx * (P.gw / 2 + 90), HEDGE + 40, w - HEDGE - 40);
     state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (P.gw / 2 + 90), HEDGE + 40, h - HEDGE - 40);
     state.dog.x = state.handler.x + 24; state.dog.y = state.handler.y + 20;
-    state.dog.vx = 0; state.dog.vy = 0; state.dog.gait = 0; state.dog.castSide = 0;
+    state.dog.vx = 0; state.dog.vy = 0; state.dog.gait = 0; state.dog.castSide = 0; state.dog.stallT = 0;
     state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
@@ -1683,8 +1692,12 @@
           // spot, which is what made the sprite flick left-right as it
           // homed: the two are the same fault, a drive that steers on one
           // signed number and stalls at nothing.
-          const idle = clamp(1 - Math.hypot(vx, vy) / (pace * CAST_IDLE), 0, 1);
-          if (idle > 0.02) {
+          // stalled = the dog has stopped AND the sheep aren't going
+          // anywhere; either alone is just a dog working slowly
+          const still = Math.hypot(d.vx, d.vy) < pace * CAST_STILL;
+          d.stallT = (still && along > -8) ? d.stallT + dt : 0;
+          const idle = clamp((d.stallT - CAST_WAIT) / CAST_RAMP, 0, 1);
+          if (idle > 0) {
             if (!d.castSide) d.castSide = dAng >= 0 ? 1 : -1;
             // turn at the edge of the cast so it sweeps back and forth
             else if (dAng * d.castSide < -CAST_ARC) d.castSide = -d.castSide;
