@@ -1761,10 +1761,28 @@
   }
   // fear spreads: one spooked sheep puts its neighbours on edge too.
   // The timid end catches a neighbour's fright in full, so panic runs
-  // through a bunched mob undimmed; only the bold shrug some of it off
-  function catchPanic(s, nearPanic, dt) {
+  // through a bunched mob undimmed; only the bold shrug some of it off.
+  // And fright is directional: a sheep catching a neighbour's panic
+  // catches its heading with it — it bolts the way the startled sheep
+  // is already running, and its own run hands that same heading to the
+  // next ring out, so one startle rolls through the mob as a stampede
+  // all going the same way instead of a shapeless scatter
+  function catchPanic(s, nearPanic, npvx, npvy, dt) {
     const target = nearPanic * (1 - 0.35 * s.bold);
-    if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 4);
+    if (target <= s.panic) return;
+    const caught = Math.min(target, s.panic + dt * 4) - s.panic;
+    s.panic += caught;
+    // the bolt is keyed to how hard the neighbour is actually running:
+    // a frightened sheep standing its ground puts the mob on edge
+    // without launching anyone. Scaling by the panic just caught makes
+    // the kick spend itself as this sheep's fear catches up — one burst
+    // per startle, not a standing shove
+    const nspd = Math.hypot(npvx, npvy);
+    const nk = clamp((nspd - 30) / 90, 0, 1);
+    if (nk > 0) {
+      s.vx += (npvx / nspd) * caught * 170 * nk;
+      s.vy += (npvy / nspd) * caught * 170 * nk;
+    }
   }
   // neighbour lookup: loose sheep bucketed into COH_RANGE-sized cells so
   // flocking only tests the 3x3 cells that can hold a sheep in range,
@@ -1875,7 +1893,7 @@
       // holding polite spacing — that's how a mob pours through a gap
       const sepPush = 320 * (gs ? 1 - 0.75 * gs.k : 1);
       // --- flocking: separation, cohesion, alignment ---
-      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0, nd = Infinity;
+      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0, npvx = 0, npvy = 0, nd = Infinity;
       const gx = Math.floor(s.x / COH_RANGE), gy = Math.floor(s.y / COH_RANGE);
       for (let ci = -1; ci <= 1; ci++) {
         for (let cj = -1; cj <= 1; cj++) {
@@ -1893,7 +1911,7 @@
             }
             if (dd < COH_RANGE * COH_RANGE) {
               cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy;
-              if (o.panic > nearPanic) nearPanic = o.panic;
+              if (o.panic > nearPanic) { nearPanic = o.panic; npvx = o.vx; npvy = o.vy; }
               if (dd < nd * nd) nd = Math.sqrt(dd);
             }
           }
@@ -1920,12 +1938,14 @@
         const aw = (0.5 + 1.4 * s.flocky) * (1 + 1.6 * s.panic);
         fx += (avx / cn - s.vx) * aw;
         fy += (avy / cn - s.vy) * aw;
-        catchPanic(s, nearPanic, dt);
+        catchPanic(s, nearPanic, npvx, npvy, dt);
       }
       // fear fades slowly, and hardly at all in a frightened mob: every
       // sheep keeps its neighbours' nerves up, so a spooked flock stays
-      // spooked long after the dog has eased off
-      s.panic = Math.max(0, s.panic - dt * 0.2 * (1 - 0.8 * nearPanic));
+      // spooked long after the dog has eased off. A full startle takes
+      // a sheep the better part of fifteen seconds to walk off even
+      // alone — panic is a lasting state, not a flinch
+      s.panic = Math.max(0, s.panic - dt * 0.07 * (1 - 0.8 * nearPanic));
       // any neighbor within COH_RANGE means mergePull would decline
       // anyway (that's cohesion's range) — skip the search entirely
       // for sheep that are already flocked
