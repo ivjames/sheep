@@ -1184,7 +1184,7 @@
       state.sheep.push({
         x, y, vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false, settle: null,
         defiant: tempers[i], ...rollTemper(tempers[i]),
-        panic: 0, fearT: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
+        panic: 0, fearT: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
     }
@@ -1860,10 +1860,18 @@
   // own fright is fading — a stampede with the pressure gone burns out
   // instead of ping-ponging forever
   function catchPanic(s, nearPanic, npvx, npvy) {
-    if (nearPanic < 0.95 || s.panic >= 0.5) return;
+    // contagCd is the loop-breaker: with a short fear hold, a pack's
+    // recovery windows overlap — one sheep dips calm enough to catch
+    // just as a neighbour spikes back to full, and the fright chains
+    // through the bunch forever. A caught sheep is immune to SECOND-
+    // HAND fright for a few seconds after: the first wave crosses the
+    // pack untouched, direct dog pressure still bites at full
+    // strength, but a wave can't re-light itself off its own embers
+    if (nearPanic < 0.95 || s.panic >= 0.5 || s.contagCd > 0) return;
     const caught = 1 - s.panic;
     s.panic = 1;
     s.fearT = FEAR_HOLD;
+    s.contagCd = 3;
     // the bolt is keyed to how hard the neighbour is actually running:
     // a frightened sheep standing its ground startles the mob without
     // launching it anywhere in particular — the flight thrust picks up
@@ -1975,6 +1983,7 @@
         continue;
       }
       s.plantCd = Math.max(0, s.plantCd - dt);
+      s.contagCd = Math.max(0, s.contagCd - dt);
 
       let fx = 0, fy = 0;
       // gate willingness: sheep near the pen mouth drift on in, and a
