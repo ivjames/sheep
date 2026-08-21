@@ -2303,6 +2303,33 @@
       return;
     }
     state.demoStallT = 0;
+    const flock = flockInfo();
+    if (flock) {
+      // repositioning is a CALLED FLANK, not walk-on's cautious swing:
+      // far off the balance line the drive creeps its way round, but a
+      // proper come-by/away orbits the mob at pace. Flank the shorter
+      // way, come off it once roughly behind the flock (hysteresis so
+      // the two commands don't chatter at the boundary)
+      let ux = flock.cx - P.gx, uy = flock.cy - P.gy;
+      const ul = Math.hypot(ux, uy) || 1;
+      const aDog = Math.atan2(d.y - flock.cy, d.x - flock.cx);
+      const dAng = ((Math.atan2(uy / ul, ux / ul) - aDog + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      const flanking = d.cmd === 'cb' || d.cmd === 'aw';
+      if (Math.abs(dAng) > 1.1 || (flanking && Math.abs(dAng) > 0.5)) {
+        d.cmd = dAng > 0 ? 'cb' : 'aw';
+        state.pace = Math.max(state.pace, PACE_START);
+        return;
+      }
+      // nobody inside pressure range yet — cover the ground at a run;
+      // creeping only matters once the dog is actually on the sheep
+      let nearM = Infinity;
+      for (const m of flock.members) nearM = Math.min(nearM, dist2(d.x, d.y, m.x, m.y));
+      if (nearM > 260 * 260) {
+        d.cmd = 'walk';
+        state.pace = Math.max(state.pace, 0.8);
+        return;
+      }
+    }
     d.cmd = 'walk';
     if (panic > 0.7) {
       state.pace = Math.max(PACE_MIN, state.pace - PACE_STEP); // easy — pushing a hot flock just scatters it
