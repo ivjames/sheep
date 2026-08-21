@@ -758,7 +758,7 @@
     auto: false,   // in-game autopilot: the dog works the flock itself
     level: 1,
     world: { w: 1600, h: 1000 },
-    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, barkCd: 0 },
+    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, barkCd: 0 },
     pace: PACE_START, // command-mode speed gradient, 0 (halt) → 1 (flat out)
     handler: { x: 800, y: 560 },
     sheep: [],
@@ -1203,7 +1203,7 @@
     state.handler.x = clamp(P.gx + P.out.x * 150 + tx * (P.gw / 2 + 90), HEDGE + 40, w - HEDGE - 40);
     state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (P.gw / 2 + 90), HEDGE + 40, h - HEDGE - 40);
     state.dog.x = state.handler.x + 24; state.dog.y = state.handler.y + 20;
-    state.dog.vx = 0; state.dog.vy = 0;
+    state.dog.vx = 0; state.dog.vy = 0; state.dog.gait = 0;
     state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
@@ -1763,8 +1763,20 @@
     // its line of travel
     if (Math.abs(d.vx) > 10) d.facing = d.vx > 0 ? 1 : -1;
     const dspd = Math.hypot(d.vx, d.vy);
-    if (dspd > 8) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), 11 * dt);
-    d.bob += dt * (dspd > 40 ? 12 : 3);
+    // Gait is a blend, not a switch. The slowest creep runs at ~52px/s,
+    // a whisker over the 40px/s cutoff the trot used to snap on at — and
+    // the dog's actual speed rides up and down around its target, so at a
+    // creep that cutoff flickered every few frames and took the footfalls,
+    // the tail, the bob rate and the body bounce with it. Easing a 0→1
+    // gait across the same range, and smoothing it in time, lets a creep
+    // read as a slow prowl that settles rather than a stutter.
+    const want = clamp((dspd - 18) / 46, 0, 1);
+    d.gait += (want - d.gait) * Math.min(1, 6 * dt);
+    // heading follows the line of travel more slowly the slower the dog
+    // goes: at a creep the velocity's direction is the noisiest thing
+    // about it, and chasing it at full rate swung the body about
+    if (dspd > 8) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), (4 + 7 * d.gait) * dt);
+    d.bob += dt * (3 + 9 * d.gait);
     // charging bark: rush straight at a sheep and the dog lets one off
     if (d.barkCd <= 0 && dspd > BARK_CHARGE_SPEED) {
       for (const s of state.sheep) {
@@ -2631,7 +2643,9 @@
     ctx.restore();
   }
 
-  function drawDogTop(x, y, size, dir, bob, moving) {
+  // `gait` is 0 (standing) → 1 (flat out): the trot, the tail swish and
+  // the bounce all scale off it so a creeping dog eases into its stride
+  function drawDogTop(x, y, size, dir, bob, gait) {
     const u = size / 34;
     const coat = '#26262e', white = '#f4efe4';
     ctx.save();
@@ -2639,7 +2653,7 @@
     ctx.rotate(dir);
     ctx.lineCap = 'round';
     // tail streams out behind, swishing wider at a run
-    const wag = Math.sin(bob * 1.6) * (moving ? 4 : 2) * u;
+    const wag = Math.sin(bob * 1.6) * (2 + 2 * gait) * u;
     ctx.strokeStyle = coat;
     ctx.lineWidth = 4.5 * u;
     ctx.beginPath();
@@ -2652,7 +2666,7 @@
     ctx.fill();
     // paws, diagonal pairs
     ctx.fillStyle = coat;
-    const step = moving ? Math.sin(bob * 2) * 4 * u : 0;
+    const step = Math.sin(bob * 2) * 4 * u * gait;
     for (const [px, py, ph] of [[8, -7, 1], [-8, -7, -1], [8, 7, -1], [-8, 7, 1]]) {
       ctx.beginPath();
       ctx.arc(px * u + step * ph, py * u, 2.2 * u, 0, Math.PI * 2);
@@ -2861,8 +2875,12 @@
       ctx.beginPath();
       ctx.ellipse(dg.x, dg.y + 15, 17, 5.5, 0, 0, Math.PI * 2);
       ctx.fill();
-      const bounce = spd > 40 ? Math.abs(Math.sin(dg.bob)) * 4 : Math.sin(dg.bob) * 1;
-      drawDogTop(dg.x, dg.y - bounce + (lying ? 4 : 0), lying ? 30 : 34, dg.dir, dg.bob, spd > 40);
+      // the bounce crossfades between an idle sway and a full trot's hop
+      // rather than switching at a speed, so a creep doesn't flicker
+      // between the two every time it drifts across the line
+      const g = dg.gait;
+      const bounce = Math.abs(Math.sin(dg.bob)) * 4 * g + Math.sin(dg.bob) * (1 - g);
+      drawDogTop(dg.x, dg.y - bounce + (lying ? 4 : 0), lying ? 30 : 34, dg.dir, dg.bob, g);
       if (lying && state.mode === 'playing') {
         drawDoodle('zzz', dg.x + 14, dg.y - 22 + Math.sin(t * 3) * 2, 13);
       }
