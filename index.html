@@ -431,6 +431,13 @@
   const FLEE_RANGE_DEFIANT = 150; // ...and the boldest make you get close
   const SEP_RANGE = 34, COH_RANGE = 190;
   const COMFORT = 70;             // a neighbor this close means you're IN the flock — no cohesion pull
+  // wearing (autopilot): how wide a mob may spread before the dog stops
+  // driving and sweeps it back together. A mob at comfortable shoulder
+  // spacing packs into a radius of about (COMFORT/2)·√n, so the trigger is
+  // that with slack; the dog keeps sweeping until it's back under WEAR_TIGHT
+  // of it, and each sweep runs this far off the drive line before it turns.
+  const WEAR_SPREAD = 45, WEAR_TIGHT = 0.82, WEAR_ARC = 0.6;
+  const WEAR_BOUT = 3.6, WEAR_REST = 1.8; // seconds of wearing, then of driving
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const FEAR_HOLD = 0.5;          // seconds a startle pins panic at FULL — flat, not pressure-scaled
@@ -769,6 +776,8 @@
     demo: false,   // title screen: the autopilot works a real field behind the panel
     demoT: 0,      // autopilot decision timer
     demoStallT: 0, // how long the funnel has been left to drain
+    wearSide: 0,   // autopilot wear sweep: +1 away-side, -1 come-by side, 0 not wearing
+    wearT: 0,      // seconds into a wear bout; negative = driving before the next one
   };
 
   // ---------- hillside ----------
@@ -1199,6 +1208,7 @@
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
     state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
+    state.wearSide = 0; state.wearT = 0;
     state.pace = PACE_START;
     state.barks = [];
     state.floaties = [];
@@ -2297,6 +2307,7 @@
       // most of what's left is in the funnel — stand off and let the
       // gate's own pull drain it; if it jams, walk back in gently
       state.demoStallT += 0.45;
+      state.wearSide = 0; state.wearT = 0;
       if (state.demoStallT < 5) {
         if (d.cmd !== 'lie') { d.cmd = 'lie'; state.pace = 0; }
       } else {
@@ -2318,7 +2329,10 @@
       const aDog = Math.atan2(d.y - flock.cy, d.x - flock.cx);
       const dAng = ((Math.atan2(uy / ul, ux / ul) - aDog + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       const flanking = d.cmd === 'cb' || d.cmd === 'aw';
-      if (Math.abs(dAng) > 1.1 || (flanking && Math.abs(dAng) > 0.5)) {
+      // a wear sweep (below) is a flank the handler is holding on purpose,
+      // so it doesn't read as the dog having drifted off the balance line
+      if (Math.abs(dAng) > 1.1 || (flanking && !state.wearSide && Math.abs(dAng) > 0.5)) {
+        state.wearSide = 0; state.wearT = 0;
         d.cmd = dAng > 0 ? 'cb' : 'aw';
         state.pace = Math.max(state.pace, PACE_START);
         return;
@@ -2328,10 +2342,44 @@
       let nearM = Infinity;
       for (const m of flock.members) nearM = Math.min(nearM, dist2(d.x, d.y, m.x, m.y));
       if (nearM > 260 * 260) {
+        state.wearSide = 0; state.wearT = 0;
         d.cmd = 'walk';
         state.pace = Math.max(state.pace, 0.8);
         return;
       }
+      // WEARING. Walk on presses the middle of the mob and nothing else,
+      // so a long drive squeezes the flock wider and wider until it's a
+      // smear too broad for the gate to take. The handler's answer isn't
+      // more walk on — it's to alternate it with flanks: sweep the dog
+      // across the drive line, come by then away, and the pressure keeps
+      // folding the edges back in. So once the group spreads past a tight
+      // mob's own footprint the drive gives way to a wear: the dog carries
+      // to one side, turns, carries back. A bout is bounded — sweeping
+      // gathers the flock but doesn't move it pen-ward, so after a couple
+      // of turns the dog drives again whatever the spread, and the two
+      // trade off. A hot flock is exempt: that spread is sheep scattering,
+      // and swinging round them at pace fans the panic instead of settling
+      // it — the drive below eases off for those instead.
+      state.wearT += 0.45;
+      if (state.wearSide && state.wearT > WEAR_BOUT) {
+        state.wearSide = 0;
+        state.wearT = -WEAR_REST; // drive at least this long before the next bout
+      }
+      const gathered = WEAR_SPREAD * Math.sqrt(flock.n) *
+        (state.wearSide ? WEAR_TIGHT : 1);
+      if (state.wearT >= 0 && flock.n > 1 && flock.r > gathered && panic < 0.7) {
+        // come by carries the dog clockwise round the mob and away runs it
+        // back the other way. Open the bout toward the side the dog already
+        // sits on rather than hauling it across the line, then turn at the
+        // end of each sweep.
+        if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; }
+        else if (dAng * state.wearSide > WEAR_ARC) state.wearSide = -state.wearSide;
+        d.cmd = state.wearSide > 0 ? 'aw' : 'cb';
+        state.pace = Math.max(state.pace, PACE_START);
+        return;
+      }
+      state.wearSide = 0;
+      state.wearT = Math.min(0, state.wearT); // a rest keeps counting down while the dog drives
     }
     d.cmd = 'walk';
     if (panic > 0.7) {
@@ -3005,6 +3053,7 @@
       state.pace = Math.max(state.pace, 0.4);
       state.demoT = 0;
       state.demoStallT = 0;
+      state.wearSide = 0; state.wearT = 0;
     } else {
       state.dog.cmd = 'lie'; // hands back a standing dog awaiting your call
       state.pace = state.input === 'cmd' ? 0 : state.pace;
