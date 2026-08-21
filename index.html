@@ -347,6 +347,7 @@
     <p class="keys-note" id="keys-note">Click to send the dog (or WASD / arrows) · charge a sheep to bark · 1–7 call commands · swap modes any time</p>
     <p class="build-tag" id="build-tag"></p>
     <p class="build-tag credit-tag">icons by Delapouite &amp; Skoll · game-icons.net · <span>CC BY 3.0</span></p>
+    <p class="build-tag credit-tag" title="&quot;Fireflies and Stardust&quot;, &quot;Still Pickin&quot;, &quot;Hillbilly Swing&quot;, &quot;Guts and Bourbon&quot; — Kevin MacLeod (incompetech.com), CC BY 4.0">music by Kevin MacLeod · incompetech.com · <span>CC BY 4.0</span></p>
   </div>
 </div>
 
@@ -425,6 +426,7 @@
     }
     if (audio.state === 'suspended') audio.resume();
     loadSamples();
+    startMusic();
   }
   function tone(freq, dur, type, vol, delay = 0, glideTo = null) {
     if (!audio || muted) return;
@@ -544,6 +546,48 @@
       [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, 0.3, 'triangle', 0.12, i * 0.1));
     },
   };
+
+  // ---------- music ----------
+  // Background tracks are CC BY 4.0, Kevin MacLeod (incompetech.com). Credit
+  // is shown on the title screen; full provenance in music/SOURCES.md.
+  const MUSIC_TRACKS = ['fireflies-and-stardust', 'still-pickin', 'hillbilly-swing', 'guts-and-bourbon'];
+  const MUSIC_VOL = 0.32;
+  let musicEl = null, musicOrder = [], musicIdx = 0, musicStarted = false;
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  function nextTrack() {
+    musicIdx++;
+    if (musicIdx >= musicOrder.length) {
+      const last = musicOrder[musicOrder.length - 1];
+      musicOrder = shuffle(MUSIC_TRACKS);
+      if (musicOrder[0] === last) {
+        const swapAt = 1 + Math.floor(Math.random() * (musicOrder.length - 1));
+        [musicOrder[0], musicOrder[swapAt]] = [musicOrder[swapAt], musicOrder[0]];
+      }
+      musicIdx = 0;
+    }
+    musicEl.src = 'music/' + musicOrder[musicIdx] + '.mp3';
+    if (!muted) musicEl.play().catch(() => { musicStarted = false; });
+  }
+  function startMusic() {
+    if (musicStarted) return;
+    musicOrder = shuffle(MUSIC_TRACKS);
+    musicIdx = 0;
+    if (!musicEl) {
+      musicEl = new Audio();
+      musicEl.volume = MUSIC_VOL;
+      musicEl.addEventListener('ended', nextTrack);
+    }
+    musicEl.src = 'music/' + musicOrder[musicIdx] + '.mp3';
+    musicStarted = true;
+    if (!muted) musicEl.play().catch(() => { musicStarted = false; });
+  }
 
   // ---------- helpers ----------
   const rand = (a, b) => a + Math.random() * (b - a);
@@ -2187,6 +2231,10 @@
   document.getElementById('mute-btn').addEventListener('click', (e) => {
     muted = !muted;
     e.currentTarget.textContent = muted ? '🔇' : '🔊';
+    if (musicEl) {
+      if (muted) musicEl.pause();
+      else musicEl.play().catch(() => { musicStarted = false; });
+    }
   });
   if (isTouch) {
     document.getElementById('keys-note').textContent =
