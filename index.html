@@ -1180,11 +1180,23 @@
           }
         }
         const R = need + 85;
-        // canvas y grows downward, so increasing angle sweeps clockwise on screen
-        const tx = -Math.sin(a) * dir, ty = Math.cos(a) * dir;
-        const corr = (R - rr) * 2.2;
-        desx = tx * pace + (rx / rr) * corr;
-        desy = ty * pace + (ry / rr) * corr;
+        // chase a point on the orbit a little ahead of the sweep (canvas
+        // y grows downward, so increasing angle is clockwise on screen).
+        // The aim point is clamped inside the hedge: when the flock works
+        // near an edge the orbit pokes through the fence, and heading for
+        // the clamped point turns the dog to skim along the fence in its
+        // direction of travel instead of pressing straight into it. If
+        // the clamp pins the point right where the dog stands (deep in a
+        // corner), look further round the orbit until it comes clear.
+        const wx0 = HEDGE + 20, wy0 = HEDGE + 20;
+        const wx1 = state.world.w - HEDGE - 20, wy1 = state.world.h - HEDGE - 20;
+        let ax = d.x, ay = d.y;
+        for (let look = 0.55; look < 2.4; look += 0.6) {
+          ax = clamp(flock.cx + Math.cos(a + dir * look) * R, wx0, wx1);
+          ay = clamp(flock.cy + Math.sin(a + dir * look) * R, wy0, wy1);
+          if (Math.hypot(ax - d.x, ay - d.y) > 30) break;
+        }
+        desx = ax - d.x; desy = ay - d.y;
         const dl = Math.hypot(desx, desy) || 1;
         desx = desx / dl * pace; desy = desy / dl * pace;
       } // lie: desired stays 0
