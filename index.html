@@ -1763,13 +1763,14 @@
     // its line of travel
     if (Math.abs(d.vx) > 10) d.facing = d.vx > 0 ? 1 : -1;
     const dspd = Math.hypot(d.vx, d.vy);
-    // Gait is a blend, not a switch. The slowest creep runs at ~52px/s,
-    // a whisker over the 40px/s cutoff the trot used to snap on at — and
-    // the dog's actual speed rides up and down around its target, so at a
-    // creep that cutoff flickered every few frames and took the footfalls,
-    // the tail, the bob rate and the body bounce with it. Easing a 0→1
-    // gait across the same range, and smoothing it in time, lets a creep
-    // read as a slow prowl that settles rather than a stutter.
+    // Gait is a blend, not a switch. A working creep runs anywhere from a
+    // near-stall to ~52px/s, straddling the 40px/s cutoff the trot used to
+    // snap on at, so a creeping dog crosses it every so often — measured at
+    // a few times a minute, not every frame. But each crossing popped the
+    // footfalls, the tail swish, the body bounce and the bob rate all at
+    // once, which is a lot of the dog's silhouette changing on one frame.
+    // Easing a 0→1 gait across the same range and smoothing it in time
+    // takes the pop out; a creep settles into a slow prowl instead.
     const want = clamp((dspd - 18) / 46, 0, 1);
     d.gait += (want - d.gait) * Math.min(1, 6 * dt);
     // heading follows the line of travel more slowly the slower the dog
