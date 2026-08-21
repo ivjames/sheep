@@ -766,7 +766,7 @@
   // H is affine in y for a fixed x, so every vertical strip of the flat
   // field maps onto the hill with one translate + stretch (an exact warp,
   // baked once per level) and the pointer math inverts in closed form.
-  const hill = { amp: 0, ridge: () => 0 };
+  const hill = { amp: 0, m: 0, top: 0, ridge: () => 0 };
   function hillLift(x, y) {
     return hill.ridge(x) * (1 - HILL_FLAT * y / state.world.h);
   }
@@ -774,12 +774,15 @@
   function makeHill() {
     const { w, h } = state.world;
     hill.amp = Math.min(w, h) * HILL_AMP;
+    // the land spreads this far past the field on every side, so letterbox
+    // bars and the command-pad strip sit over rolling pasture, not backdrop
+    hill.m = Math.round(0.4 * Math.max(w, h));
     // two sine rolls — one broad, one smaller riding on it — with random
     // phase and frequency, so every level gets its own skyline
     const a1 = rand(0, Math.PI * 2), a2 = rand(0, Math.PI * 2);
     const f1 = rand(2.8, 4.2), f2 = rand(6.5, 9.5);
     hill.ridge = (x) => {
-      const u = clamp(x / w, 0, 1);
+      const u = x / w; // unclamped: the rolls carry on past the fence
       const s = 0.62 * Math.sin(u * f1 + a1) + 0.38 * Math.sin(u * f2 + a2);
       return hill.amp * (0.5 + 0.5 * s);
     };
@@ -800,51 +803,82 @@
     }
     if (close) c.closePath();
   }
-  // pasture + slope shading + hedge, pre-warped onto one canvas per level
+  // pasture + slope shading + boundary fence, pre-warped onto one canvas
+  // per level. The canvas carries a full off-screen margin of land on
+  // every side, so no bare backdrop ever peeks out from behind the field.
   const hillCanvas = document.createElement('canvas');
-  function bakeHill(fieldCanvas) {
+  function bakeHill() {
     const { w, h } = state.world;
-    const A = Math.ceil(hill.amp);
-    hillCanvas.width = w; hillCanvas.height = h + A;
+    const M = hill.m;
+    // worst-case lift is on the far margin row y = −M: amp·(1 + FLAT·M/h)
+    hill.top = Math.ceil(M + hill.amp * (1 + HILL_FLAT * M / h));
+    hillCanvas.width = w + 2 * M;
+    hillCanvas.height = hill.top + Math.ceil((h + M) * (1 + hill.amp * HILL_FLAT / h));
     const hc = hillCanvas.getContext('2d');
-    hc.translate(0, A); // world y=0 sits amp below the canvas top
+    hc.translate(M, hill.top); // world origin
     const STRIP = 8;
-    for (let x = 0; x < w; x += STRIP) {
-      const sw = Math.min(STRIP, w - x);
+    for (let x = -M; x < w + M; x += STRIP) {
+      const sw = Math.min(STRIP, w + M - x);
       const r = hill.ridge(x + sw / 2);
-      // column [0,h] → [−R, h − R(1−FLAT)]: shift up by R, stretch by 1+R·FLAT/h
-      hc.drawImage(fieldCanvas, x, 0, sw, h, x, -r, sw, h + r * HILL_FLAT);
+      const q = r * HILL_FLAT / h; // y′ = y·(1+q) − R, affine per column
+      hc.drawImage(fieldCanvas, x + M, 0, sw, h + 2 * M,
+        x, -M * (1 + q) - r, sw, (h + 2 * M) * (1 + q));
       // slope shading sells the curvature: sun rakes in from the left, so
       // west-facing rises catch light and east-facing falls sit in shade
       const slope = (hill.ridge(x + sw) - hill.ridge(x)) / sw;
       const lum = clamp(slope * 1.1, -0.18, 0.18);
       hc.fillStyle = lum >= 0
         ? `rgba(255, 246, 200, ${lum})` : `rgba(20, 40, 16, ${-lum})`;
-      hc.fillRect(x, -r, sw, h + r * HILL_FLAT);
+      hc.fillRect(x, -M * (1 + q) - r, sw, (h + 2 * M) * (1 + q));
     }
-    // border hedge follows the roll of the ground
-    const iv = HEDGE / 2;
-    hc.strokeStyle = '#3e7a2a';
-    hc.lineWidth = HEDGE;
+    // beyond the fence the land dims a touch, so the field still pops
+    const fence = [[HEDGE, HEDGE], [w - HEDGE, HEDGE], [w - HEDGE, h - HEDGE], [HEDGE, h - HEDGE]];
+    hc.fillStyle = 'rgba(20, 40, 16, 0.13)';
     hc.beginPath();
-    hillTrace(hc, [[iv, iv], [w - iv, iv], [w - iv, h - iv], [iv, h - iv]], true);
+    hc.rect(-M, -hill.top, hillCanvas.width, hillCanvas.height);
+    hillTrace(hc, fence, true);
+    hc.fill('evenodd');
+    // the boundary fence marks the playing field, built like the pen's
+    hc.lineCap = 'round';
+    hc.strokeStyle = '#8a5f3c';
+    hc.lineWidth = 7;
+    hc.beginPath();
+    hillTrace(hc, fence, true);
     hc.stroke();
+    hc.strokeStyle = '#b98a5a';
+    hc.lineWidth = 3;
+    hc.beginPath();
+    hillTrace(hc, fence, true);
+    hc.stroke();
+    hc.fillStyle = '#6e4a2c';
+    for (let i = 0; i < 4; i++) {
+      const [ax, ay] = fence[i], [bx, by] = fence[(i + 1) % 4];
+      const np = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay) / 52));
+      for (let j = 0; j < np; j++) { // each edge owns its starting corner post
+        const px = ax + (bx - ax) * j / np, py = ay + (by - ay) * j / np;
+        hc.beginPath();
+        hc.arc(px, hillY(px, py), 5, 0, Math.PI * 2);
+        hc.fill();
+      }
+    }
   }
 
   // ---------- world decor ----------
-  const flowers = [], tufts = [];
   const fieldCanvas = document.createElement('canvas');
   function makeDecor() {
     const { w, h } = state.world;
     makeHill();
-    flowers.length = 0; tufts.length = 0;
-    const k = (w * h) / FIELD_AREA;
+    const M = hill.m;
+    const k = ((w + 2 * M) * (h + 2 * M)) / FIELD_AREA;
     // pre-render the pasture once per level: flat green with soft-edged
-    // patches of lighter and darker grass — pasture, not a mowed pitch
-    fieldCanvas.width = w; fieldCanvas.height = h;
+    // patches of lighter and darker grass — pasture, not a mowed pitch.
+    // It runs a margin M past the field on every side so the warped bake
+    // can cover the whole viewport with land.
+    fieldCanvas.width = w + 2 * M; fieldCanvas.height = h + 2 * M;
     const fc = fieldCanvas.getContext('2d');
+    fc.translate(M, M); // paint in world coords over [−M, w+M] × [−M, h+M]
     fc.fillStyle = '#7ec850';
-    fc.fillRect(0, 0, w, h);
+    fc.fillRect(-M, -M, w + 2 * M, h + 2 * M);
     for (let i = 0; i < 30 * k; i++) {
       const [cr, cg, cb, ca] = Math.random() < 0.55
         ? [111, 183, 70, 0.5] : [139, 210, 92, 0.45];
@@ -853,7 +887,7 @@
       grad.addColorStop(0.55, `rgba(${cr},${cg},${cb},${ca * 0.8})`);
       grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
       fc.save();
-      fc.translate(rand(0, w), rand(0, h));
+      fc.translate(rand(-M, w + M), rand(-M, h + M));
       fc.rotate(rand(0, Math.PI));
       const big = i % 2 === 0; // half broad drifts, half smaller mottles
       fc.scale(rand(big ? 100 : 40, big ? 280 : 110), rand(big ? 70 : 30, big ? 180 : 80));
@@ -868,20 +902,31 @@
       fc.fillStyle = Math.random() < 0.5
         ? 'rgba(104, 176, 64, 0.3)' : 'rgba(152, 218, 102, 0.3)';
       fc.beginPath();
-      fc.arc(rand(0, w), rand(0, h), rand(1.5, 5), 0, Math.PI * 2);
+      fc.arc(rand(-M, w + M), rand(-M, h + M), rand(1.5, 5), 0, Math.PI * 2);
       fc.fill();
     }
+    // ground decor goes into the flat texture too, so the strip warp and the
+    // slope shading carry it onto the hill for free (the ≤1.1× vertical
+    // stretch on a flower or a blade of grass is imperceptible)
     for (let i = 0; i < 80 * k; i++) {
-      flowers.push({
-        x: rand(60, w - 60), y: rand(60, h - 60),
-        c: ['#fff6e8', '#ffb3d9', '#ff8fa3', '#ffd166', '#c69bf5', '#ff9c6b'][Math.floor(rand(0, 6))],
-        s: rand(13, 21),
-      });
+      drawFlower(rand(-M + 30, w + M - 30), rand(-M + 30, h + M - 30), rand(13, 21),
+        ['#fff6e8', '#ffb3d9', '#ff8fa3', '#ffd166', '#c69bf5', '#ff9c6b'][Math.floor(rand(0, 6))], fc);
     }
+    fc.strokeStyle = 'rgba(62, 122, 42, 0.5)';
+    fc.lineWidth = 2;
     for (let i = 0; i < 170 * k; i++) {
-      tufts.push({ x: rand(30, w - 30), y: rand(30, h - 30), s: rand(0.5, 1.15) });
+      const tx = rand(-M + 30, w + M - 30), ty = rand(-M + 30, h + M - 30);
+      const s = rand(0.5, 1.15);
+      fc.beginPath();
+      fc.moveTo(tx - 5 * s, ty);
+      fc.quadraticCurveTo(tx - 4 * s, ty - 9 * s, tx - 6 * s, ty - 12 * s);
+      fc.moveTo(tx, ty);
+      fc.quadraticCurveTo(tx, ty - 10 * s, tx - 1 * s, ty - 14 * s);
+      fc.moveTo(tx + 5 * s, ty);
+      fc.quadraticCurveTo(tx + 4 * s, ty - 9 * s, tx + 6 * s, ty - 12 * s);
+      fc.stroke();
     }
-    bakeHill(fieldCanvas);
+    bakeHill();
   }
 
   // ---------- level generation ----------
@@ -1978,22 +2023,22 @@
     ctx.restore();
   }
 
-  function drawFlower(x, y, s, c) {
+  function drawFlower(x, y, s, c, g = ctx) {
     const u = s / 15;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.fillStyle = c;
+    g.save();
+    g.translate(x, y);
+    g.fillStyle = c;
     for (let i = 0; i < 5; i++) {
       const a = i / 5 * Math.PI * 2;
-      ctx.beginPath();
-      ctx.ellipse(Math.cos(a) * 3.2 * u, Math.sin(a) * 3.2 * u, 2.7 * u, 1.8 * u, a, 0, Math.PI * 2);
-      ctx.fill();
+      g.beginPath();
+      g.ellipse(Math.cos(a) * 3.2 * u, Math.sin(a) * 3.2 * u, 2.7 * u, 1.8 * u, a, 0, Math.PI * 2);
+      g.fill();
     }
-    ctx.fillStyle = '#ffd84d';
-    ctx.beginPath();
-    ctx.arc(0, 0, 1.9 * u, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
+    g.fillStyle = '#ffd84d';
+    g.beginPath();
+    g.arc(0, 0, 1.9 * u, 0, Math.PI * 2);
+    g.fill();
+    g.restore();
   }
 
   function drawActor(name, x, y, size) {
@@ -2173,24 +2218,9 @@
     ctx.translate(ox, oy);
     ctx.scale(scale, scale);
 
-    // field + hedge, pre-warped over the hillside (baked in makeDecor)
-    ctx.drawImage(hillCanvas, 0, -Math.ceil(hill.amp));
-
-    // grass tufts
-    ctx.strokeStyle = 'rgba(62, 122, 42, 0.5)';
-    ctx.lineWidth = 2;
-    for (const tf of tufts) {
-      const ty = hillY(tf.x, tf.y);
-      ctx.beginPath();
-      ctx.moveTo(tf.x - 5 * tf.s, ty);
-      ctx.quadraticCurveTo(tf.x - 4 * tf.s, ty - 9 * tf.s, tf.x - 6 * tf.s, ty - 12 * tf.s);
-      ctx.moveTo(tf.x, ty);
-      ctx.quadraticCurveTo(tf.x, ty - 10 * tf.s, tf.x - 1 * tf.s, ty - 14 * tf.s);
-      ctx.moveTo(tf.x + 5 * tf.s, ty);
-      ctx.quadraticCurveTo(tf.x + 4 * tf.s, ty - 9 * tf.s, tf.x + 6 * tf.s, ty - 12 * tf.s);
-      ctx.stroke();
-    }
-    for (const f of flowers) drawFlower(f.x, hillY(f.x, f.y), f.s, f.c);
+    // land + fence, pre-warped over the hillside (baked in makeDecor);
+    // the canvas carries its own off-screen margin of land on every side
+    ctx.drawImage(hillCanvas, -hill.m, -hill.top);
 
     const t = now / 1000;
     const inGame = state.mode === 'playing' || state.mode === 'clear' || state.mode === 'ready';
