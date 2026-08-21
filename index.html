@@ -2196,7 +2196,10 @@
       s.vy += fy * dt;
       s.vx -= s.vx * 2.4 * dt;
       s.vy -= s.vy * 2.4 * dt;
-      let cap = s.planted ? 10 : 26 + s.panic * (150 + 30 * s.bold);
+      // the bold term in the base gives rams a brisker trot at any
+      // fright level — bold used to pay off only at full panic, so a
+      // driven ram lagged the woollier sheep it was walking with
+      let cap = s.planted ? 10 : 26 + 14 * s.bold + s.panic * (150 + 30 * s.bold);
       // the funnel pulls at a run, quicker still with a crowd behind —
       // and a frightened sheep that's found the gate flat-out bolts in
       if (gs) cap = Math.max(cap, (45 + 130 * gs.k + 60 * Math.min(cn, 6) / 6) * (1 + 0.45 * s.panic));
