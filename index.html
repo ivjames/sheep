@@ -1508,7 +1508,12 @@
       cx /= members.length; cy /= members.length;
       let r = 0;
       for (const s of members) r = Math.max(r, Math.hypot(s.x - cx, s.y - cy));
-      clusters.push({ n: members.length, cx, cy, r });
+      // members ride along so the dog's positioning (contact ring,
+      // swing widening, flank clearance) reads ONLY the group it
+      // committed to — with the pick stable but the geometry still
+      // scanning the whole field, a far-off second group kept bending
+      // the dog's arcs toward it and the dog dithered between targets
+      clusters.push({ n: members.length, cx, cy, r, members });
     }
     const d = state.dog;
     let pick = null;
@@ -1643,8 +1648,8 @@
           // scales with `pace`, so WALK ON taps lean the drive harder
           // and EASY gentles it off.
           let near = Infinity;
-          for (const s of state.sheep) {
-            if (!s.penned) near = Math.min(near, Math.hypot(s.x - d.x, s.y - d.y));
+          for (const s of flock.members) {
+            near = Math.min(near, Math.hypot(s.x - d.x, s.y - d.y));
           }
           const pressFrac = clamp(Math.min(near - 115, rr - (hold + 20)) / 60, -0.4, 1);
           let vx = ux * (along - pressFrac * pace), vy = uy * (along - pressFrac * pace);
@@ -1666,8 +1671,7 @@
           // the drive instead of orbiting them out of the game.
           let Rw = hold + 120;
           const sd = step > 0 ? 1 : -1;
-          for (const s of state.sheep) {
-            if (s.penned) continue;
+          for (const s of flock.members) {
             let da = (Math.atan2(s.y - flock.cy, s.x - flock.cx) - aDog) * sd;
             da = ((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
             if (da < 1.25 || da > Math.PI * 2 - 0.45) {
@@ -1694,8 +1698,7 @@
         // dog is sweeping into, so a flank swings out and around a strayed
         // outlier instead of slicing inside it toward the flock's middle
         let need = 70;
-        for (const s of state.sheep) {
-          if (s.penned) continue;
+        for (const s of flock.members) {
           let da = (Math.atan2(s.y - flock.cy, s.x - flock.cx) - a) * dir;
           da = ((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
           // ahead of the sweep (~72°), plus a little behind so the dog
