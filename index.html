@@ -103,7 +103,7 @@
     35% { transform: scale(1.25); }
     100% { transform: scale(1); }
   }
-  #level-chip, #mode-btn, #mute-btn {
+  #level-chip, #mode-btn, #cam-btn, #mute-btn {
     pointer-events: auto;
     cursor: pointer;
     border: 0;
@@ -341,6 +341,7 @@
   <div class="hud-chip" id="fps-chip"><span id="fps-dot">●</span><span class="wide-only"> <span id="fps-val" style="font-variant-numeric:tabular-nums">--</span> fps</span></div>
   <div id="hud-spacer"></div>
   <button class="hud-chip" id="mode-btn" aria-label="Switch input mode">🎯<span class="wide-only"> guide</span></button>
+  <button class="hud-chip" id="cam-btn" aria-label="Switch camera angle">🎥<span class="wide-only"> <span id="cam-name">hillside</span></span></button>
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
 </div>
 
@@ -372,7 +373,7 @@
       <button class="big-btn" id="start-drag-btn"><span class="btn-label"><svg viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M311.133 257.95a15.074 15.074 0 0 1-12.845 17.026l-147.248 20.61-21.33 32.522-82.637 11.57 21.33-32.568-24.547 3.44c-.278 0-.555.12-.843.165a15.218 15.218 0 0 1-2.108.144 15.074 15.074 0 0 1-2.074-30.016c.29 0 .567 0 .855-.078l24.547-3.438-29.45-25.512 82.582-11.547 29.45 25.51 147.26-20.608a15.196 15.196 0 0 1 2.107-.145 15.085 15.085 0 0 1 14.953 12.923zm-36.704-38.546a32.4 32.4 0 0 1 10.847-10.326 23.427 23.427 0 0 1 13.422-3.04 27.875 27.875 0 0 1 13.542 5.047 44.557 44.557 0 0 1 11.924 12.59 66.342 66.342 0 0 1 8.386 19.134 77.48 77.48 0 0 1 2.562 21.995 67.895 67.895 0 0 1-3.494 19.966 46.132 46.132 0 0 1-8.54 15.352 28.163 28.163 0 0 1-12.402 8.552 23.382 23.382 0 0 1-13.765.255 32.012 32.012 0 0 1-12.512-7.122 45.478 45.478 0 0 1-5.734-6.2l-32.278 4.514a131.154 131.154 0 0 0 7.1 15.973 104.566 104.566 0 0 0 18.656 25.512 69.016 69.016 0 0 0 23.893 15.806 48.373 48.373 0 0 0 27.597 2.22 53.43 53.43 0 0 0 26.31-14.876c7.898-7.853 14.42-18.258 19.112-30.514a131.997 131.997 0 0 0 8.32-41.995 153.26 153.26 0 0 0-5.48-46.92 128.758 128.758 0 0 0-18.49-39.932c-7.6-10.726-16.417-18.946-25.78-24.403a52.998 52.998 0 0 0-27.962-7.62 48.573 48.573 0 0 0-26.278 8.718 69.88 69.88 0 0 0-20.165 21.897 107.505 107.505 0 0 0-11.99 29.516A137.144 137.144 0 0 0 237.68 235l31.192-4.37a49.172 49.172 0 0 1 5.557-11.226zm198.305-34.984c-10.926-35.274-27.287-64.757-46.842-87.374-18.557-21.518-39.544-36.26-61.118-44.213-20.155-7.41-40.564-8.74-59.953-4.248-18.058 4.204-35.196 13.466-50.603 27.62-14.42 13.21-26.09 29.626-35.185 47.807a233.224 233.224 0 0 0-19.29 56.57 286.023 286.023 0 0 0-5.856 60.674l22.582-3.16a209.143 209.143 0 0 1 5.047-40.344 166.26 166.26 0 0 1 15.972-42.926c7.365-13.4 16.716-25.124 27.997-34.087 11.89-9.44 24.88-14.986 38.3-16.64 14.165-1.774 28.773.744 42.938 7.51 14.863 7.1 29.084 18.78 41.485 34.774 12.856 16.572 23.515 37.46 30.66 61.917a225.515 225.515 0 0 1 8.74 74.65c-1.254 24.05-6.4 46.422-14.72 65.656-8.042 18.58-18.857 33.887-31.824 44.88-12.313 10.47-26.345 16.915-41.463 18.656a76.226 76.226 0 0 1-41.163-7.1c-12.313-5.722-23.826-14.485-34.03-25.51a162.212 162.212 0 0 1-25.724-37.637 204.584 204.584 0 0 1-14.542-38.578l-22.484 3.106a280.965 280.965 0 0 0 19.966 57.823 228.2 228.2 0 0 0 32.168 50.092c12.99 15.186 27.82 27.83 43.914 36.793 17.18 9.574 36.027 15.064 55.705 14.865 21.263-.21 41.44-7.022 59.52-19.778 19.356-13.654 36.005-33.897 48.617-59.432 13.244-26.82 21.697-58.788 24.048-93.64a300.742 300.742 0 0 0-12.856-108.76z"/></svg>Guide the dog</span><span class="sub">it chases your finger</span></button>
       <button class="big-btn alt" id="start-cmd-btn"><span class="btn-label"><svg viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M93.75 81.443c-5.38 0-12.368 2.49-22.358 8.967 3.966 4.682 8.167 9.687 16.47 19.256 5.782 6.663 11.618 13.29 16.026 18.088.038.042.055.055.092.096l30.894-17.932-14.652-14.148c-11.292-9.404-18.644-13.866-25.418-14.293-.345-.022-.696-.034-1.055-.034zm120.08 15.082c-.885-.01-1.767-.006-2.643.01-10.46.193-20.2 2.23-26.742 5.424l-67.262 39.038c2.45.544 4.885 1.196 7.287 2.02 17.275 5.923 33.093 18.223 49.568 34.7l216.44 213.5 80.978-44.433L258.54 111.38c-8.656-7.84-22.49-12.908-36.693-14.394-2.677-.28-5.363-.43-8.018-.46zM58.192 102.74c-17.543 20.723-20.57 37.186-15.326 57.004.692 2.618 3.057 6.357 6.373 10.47 2.195-3.144 4.55-6.304 7.086-9.478 3.99-4.995 8.385-9.183 13.085-12.558l-.106-.2 2.768-1.61c1.354-.862 2.73-1.66 4.13-2.393l11.868-6.89c-4.175-4.618-8.94-10.017-13.803-15.622-5.956-6.864-11.732-13.62-16.074-18.723zm184.093 13.438l58.415 61.67c-46.086-5.037-56.79 13.2-69.027 34.2l-57.334-59.304 67.946-36.566zM103.702 157.23c-.714-.016-1.43-.016-2.15.002-6.976.18-14.207 2.058-22.252 5.885-3.035 2.29-5.99 5.196-8.91 8.852-25.77 32.264-30.45 59.135-25.484 83.477 4.965 24.343 20.536 46.656 37.916 66.455 13.314 15.168 28.86 23.992 48.472 27.93 19.614 3.94 43.438 2.708 71.98-3.475 33.246-7.2 66.01 8.42 95.81 27.665 26.118 16.868 50.676 37.09 70.98 49.95l8.79-18.935-217.52-214.57-.022-.022c-15.524-15.524-29.565-25.905-42.682-30.402-5.02-1.722-9.925-2.695-14.928-2.813zm367.08 210.456l-73.45 40.304-10.48 22.567 70.833-38.41 13.096-24.46z"/></svg>Command mode</span><span class="sub">whistle the dog around</span></button>
     </div>
-    <p class="keys-note" id="keys-note">Click to send the dog (or WASD / arrows) · charge a sheep to bark · 1–7 call commands · swap modes any time</p>
+    <p class="keys-note" id="keys-note">Click to send the dog (or WASD / arrows) · charge a sheep to bark · 1–7 call commands · C camera angle · swap modes any time</p>
     <p class="build-tag" id="build-tag"></p>
     <p class="build-tag credit-tag">icons by Delapouite &amp; Skoll · game-icons.net · <span>CC BY 3.0</span></p>
     <p class="build-tag credit-tag" title="&quot;Fireflies and Stardust&quot;, &quot;Still Pickin&quot;, &quot;Hillbilly Swing&quot;, &quot;Guts and Bourbon&quot;, &quot;Bama Country&quot;, &quot;River Valley Breakdown&quot;, &quot;Corncob&quot;, &quot;Brightly Fancy&quot; — Kevin MacLeod (incompetech.com), CC BY 4.0">music by Kevin MacLeod · incompetech.com · <span>CC BY 4.0</span></p>
@@ -767,10 +768,75 @@
   // field maps onto the hill with one translate + stretch (an exact warp,
   // baked once per level) and the pointer math inverts in closed form.
   const hill = { amp: 0, m: 0, top: 0, ridge: () => 0 };
+
+  // ---------- camera ----------
+  // Two stages, both exactly invertible. Stage 1 is the hillside lift
+  // above (now scaled by cam.hillK). Stage 2 tilts the result into a
+  // perspective trapezoid: each row scales horizontally by s(v), running
+  // from sFar at the field's far edge to sNear at the near edge, and the
+  // vertical map is ∫s, so foreshortening matches the horizontal squeeze.
+  // camera presets: hillK scales the ridge; sFar/sNear set the perspective
+  // trapezoid (far-row / near-row horizontal scale). sFar = sNear = 1 means
+  // no tilt, and every formula below degenerates to the current behavior.
+  const CAMS = {
+    hillside:  { label: 'hillside',  hillK: 1, sFar: 1,    sNear: 1 },
+    spectator: { label: 'spectator', hillK: 1, sFar: 0.72, sNear: 1.15 },
+    overhead:  { label: 'overhead',  hillK: 0, sFar: 1,    sNear: 1 },
+  };
+  const CAM_ORDER = ['hillside', 'spectator', 'overhead'];
+  const CAM_KEY = 'comeby-cam';
+  let camKey = 'hillside';
+  let cam = CAMS.hillside;
+  try {
+    const saved = localStorage.getItem(CAM_KEY);
+    if (saved && CAMS[saved]) { camKey = saved; cam = CAMS[saved]; }
+  } catch (err) { /* storage walled off — stay on the default */ }
+
   function hillLift(x, y) {
-    return hill.ridge(x) * (1 - HILL_FLAT * y / state.world.h);
+    return hill.ridge(x) * cam.hillK * (1 - HILL_FLAT * y / state.world.h);
   }
   const hillY = (x, y) => y - hillLift(x, y);
+  // stage-2 row scale: s(v) = sFar at the field's far row (v = 0), sNear at v = h
+  const camG = () => (cam.sNear - cam.sFar) / state.world.h;
+  // world point → screen point, through both stages
+  function camPt(x, y) {
+    const w = state.world.w;
+    const v = y - hillLift(x, y);
+    const s0 = cam.sFar, g = camG();
+    return {
+      x: w / 2 + (x - w / 2) * (s0 + g * v),
+      y: s0 * v + g * v * v / 2, // ∫₀^v s, so Y(0) pins the field's far edge
+    };
+  }
+  // sprite depth scale under the tilt (1 in the untilted presets)
+  function camScale(x, y) {
+    return cam.sFar + camG() * (y - hillLift(x, y));
+  }
+  // screen point → world point: undo the tilt (a quadratic in v), then the lift
+  function camInv(X, Y) {
+    const { w, h } = state.world;
+    const s0 = cam.sFar, g = camG();
+    const v = Math.abs(g) < 1e-9
+      ? Y / s0
+      : (-s0 + Math.sqrt(Math.max(0, s0 * s0 + 2 * g * Y))) / g;
+    const u = w / 2 + (X - w / 2) / (s0 + g * v);
+    const r = hill.ridge(u) * cam.hillK;
+    return { x: u, y: (v + r) / (1 + r * HILL_FLAT / h) };
+  }
+  function setCamera(name) {
+    if (!CAMS[name]) return;
+    camKey = name;
+    cam = CAMS[name];
+    try { localStorage.setItem(CAM_KEY, name); } catch (err) { /* storage walled off */ }
+    bakeLand();
+    const el = document.getElementById('cam-name');
+    if (el) el.textContent = cam.label;
+  }
+  function cycleCam() {
+    const i = CAM_ORDER.indexOf(camKey);
+    setCamera(CAM_ORDER[(i + 1) % CAM_ORDER.length]);
+    toast('🎥 Camera: ' + cam.label);
+  }
   function makeHill() {
     const { w, h } = state.world;
     hill.amp = Math.min(w, h) * HILL_AMP;
@@ -787,18 +853,21 @@
       return hill.amp * (0.5 + 0.5 * s);
     };
   }
-  // trace world-space points through the warp, subdividing runs in x so
-  // horizontal edges bow with the ridge (vertical runs stay straight: the
-  // warp never moves x, and for fixed x it is affine in y)
-  function hillTrace(c, pts, close) {
-    c.moveTo(pts[0][0], hillY(pts[0][0], pts[0][1]));
+  // trace world-space points through the camera, subdividing runs so edges
+  // bow with the ridge. Under the tilt only fixed-x runs stay straight and
+  // horizontal edges still bow, so subdivide on whichever axis runs longer.
+  // `map` overrides the point mapper (the stage-1 bake traces in (u,v) space).
+  function camTrace(c, pts, close, map) {
+    const f = map || camPt;
+    let p = f(pts[0][0], pts[0][1]);
+    c.moveTo(p.x, p.y);
     const last = close ? pts.length : pts.length - 1;
     for (let i = 0; i < last; i++) {
       const [ax, ay] = pts[i], [bx, by] = pts[(i + 1) % pts.length];
-      const n = Math.max(1, Math.ceil(Math.abs(bx - ax) / 24));
+      const n = Math.max(1, Math.ceil(Math.max(Math.abs(bx - ax), Math.abs(by - ay)) / 24));
       for (let k = 1; k <= n; k++) {
-        const x = ax + (bx - ax) * k / n, y = ay + (by - ay) * k / n;
-        c.lineTo(x, hillY(x, y));
+        p = f(ax + (bx - ax) * k / n, ay + (by - ay) * k / n);
+        c.lineTo(p.x, p.y);
       }
     }
     if (close) c.closePath();
@@ -816,16 +885,18 @@
     hillCanvas.height = hill.top + Math.ceil((h + M) * (1 + hill.amp * HILL_FLAT / h));
     const hc = hillCanvas.getContext('2d');
     hc.translate(M, hill.top); // world origin
+    // hillCanvas is pre-tilt, so its own tracing stays in (u,v) space
+    const s1 = (x, y) => ({ x, y: hillY(x, y) });
     const STRIP = 8;
     for (let x = -M; x < w + M; x += STRIP) {
       const sw = Math.min(STRIP, w + M - x);
-      const r = hill.ridge(x + sw / 2);
+      const r = hill.ridge(x + sw / 2) * cam.hillK;
       const q = r * HILL_FLAT / h; // y′ = y·(1+q) − R, affine per column
       hc.drawImage(fieldCanvas, x + M, 0, sw, h + 2 * M,
         x, -M * (1 + q) - r, sw, (h + 2 * M) * (1 + q));
       // slope shading sells the curvature: sun rakes in from the left, so
       // west-facing rises catch light and east-facing falls sit in shade
-      const slope = (hill.ridge(x + sw) - hill.ridge(x)) / sw;
+      const slope = (hill.ridge(x + sw) - hill.ridge(x)) * cam.hillK / sw;
       const lum = clamp(slope * 1.1, -0.18, 0.18);
       hc.fillStyle = lum >= 0
         ? `rgba(255, 246, 200, ${lum})` : `rgba(20, 40, 16, ${-lum})`;
@@ -836,19 +907,19 @@
     hc.fillStyle = 'rgba(20, 40, 16, 0.13)';
     hc.beginPath();
     hc.rect(-M, -hill.top, hillCanvas.width, hillCanvas.height);
-    hillTrace(hc, fence, true);
+    camTrace(hc, fence, true, s1);
     hc.fill('evenodd');
     // the boundary fence marks the playing field, built like the pen's
     hc.lineCap = 'round';
     hc.strokeStyle = '#8a5f3c';
     hc.lineWidth = 7;
     hc.beginPath();
-    hillTrace(hc, fence, true);
+    camTrace(hc, fence, true, s1);
     hc.stroke();
     hc.strokeStyle = '#b98a5a';
     hc.lineWidth = 3;
     hc.beginPath();
-    hillTrace(hc, fence, true);
+    camTrace(hc, fence, true, s1);
     hc.stroke();
     hc.fillStyle = '#6e4a2c';
     for (let i = 0; i < 4; i++) {
@@ -861,6 +932,56 @@
         hc.fill();
       }
     }
+  }
+
+  // stage 2: tilt the hill-baked land into screen space, row by row.
+  // Each hillCanvas row j is the land at v = j − hill.top; it maps to a
+  // horizontal band at Y(v) scaled by s(v) about the field's centerline.
+  const landCanvas = document.createElement('canvas');
+  const land = { ox: 0, oy: 0, bb: { x0: 0, y0: 0, x1: 1, y1: 1 } };
+  let landImg = hillCanvas;
+  function bakeLand() {
+    bakeHill();
+    const { w, h } = state.world;
+    if (cam.sFar === 1 && cam.sNear === 1) {
+      // no tilt: the stage-1 bake is already the finished land
+      landImg = hillCanvas;
+      land.ox = hill.m;
+      land.oy = hill.top;
+    } else {
+      const s0 = cam.sFar, g = camG();
+      const sClamp = (s) => clamp(s, 0.2, 1.6); // keep the far margin sane
+      const W1 = hillCanvas.width;
+      const vTop = -hill.top, vBot = hillCanvas.height - hill.top;
+      const sMax = Math.max(sClamp(s0 + g * vTop), sClamp(s0 + g * vBot));
+      landCanvas.width = Math.ceil(W1 * sMax);
+      land.ox = Math.ceil((hill.m + w / 2) * sMax - w / 2);
+      land.oy = Math.ceil(-(s0 * vTop + g * vTop * vTop / 2));
+      landCanvas.height = land.oy + Math.ceil(s0 * vBot + g * vBot * vBot / 2) + 2;
+      const lc = landCanvas.getContext('2d');
+      for (let j = 0; j < hillCanvas.height; j += 2) {
+        const v = j - hill.top, v2 = v + 2;
+        const sv = sClamp(s0 + g * v);
+        const Yv = s0 * v + g * v * v / 2, Yv2 = s0 * v2 + g * v2 * v2 / 2;
+        lc.drawImage(hillCanvas, 0, j, W1, 2,
+          land.ox + (w / 2 - (hill.m + w / 2) * sv), land.oy + Yv,
+          W1 * sv, Math.max(Yv2 - Yv, 0.5));
+      }
+      landImg = landCanvas;
+    }
+    // screen-space bounding box of the FIELD (margins excluded) — viewFit
+    // frames this, so every preset fills the viewport the same way
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [ax, ay, bx, by] of [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]) {
+      for (let i = 0; i <= 16; i++) {
+        const p = camPt(ax + (bx - ax) * i / 16, ay + (by - ay) * i / 16);
+        if (p.x < x0) x0 = p.x;
+        if (p.x > x1) x1 = p.x;
+        if (p.y < y0) y0 = p.y;
+        if (p.y > y1) y1 = p.y;
+      }
+    }
+    land.bb = { x0, y0, x1, y1 };
   }
 
   // ---------- world decor ----------
@@ -926,7 +1047,7 @@
       fc.quadraticCurveTo(tx + 4 * s, ty - 9 * s, tx + 6 * s, ty - 12 * s);
       fc.stroke();
     }
-    bakeHill();
+    bakeLand();
   }
 
   // ---------- level generation ----------
@@ -1116,6 +1237,8 @@
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     keys[e.key.toLowerCase()] = true;
     if (!e.repeat && CMD_KEYS[e.key] && state.input === 'cmd') issueCommand(CMD_KEYS[e.key]);
+    // C swaps the camera angle — works in either input mode
+    if (!e.repeat && e.key.toLowerCase() === 'c') cycleCam();
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
@@ -1141,20 +1264,25 @@
     padCur += (want - padCur) * Math.min(1, 10 * pdt);
     if (Math.abs(want - padCur) < 0.5) padCur = want;
     const ah = Math.max(120, vh - padCur);
-    // the hillside warp lifts the far edge up to hill.amp above world y=0,
-    // so the fit leaves that much headroom above the flat world box
-    const scale = Math.min(vw / w, ah / (h + hill.amp));
-    return { scale, ox: (vw - w * scale) / 2, oy: (ah - (h + hill.amp) * scale) / 2 + hill.amp * scale };
+    // the camera can lift, squeeze, and stretch the field, so fit to the
+    // screen-space bounding box the bake measured rather than the flat box
+    const bb = land.bb;
+    const bw = Math.max(1, bb.x1 - bb.x0), bh = Math.max(1, bb.y1 - bb.y0);
+    const scale = Math.min(vw / bw, ah / bh);
+    return {
+      scale,
+      ox: (vw - bw * scale) / 2 - bb.x0 * scale,
+      oy: (ah - bh * scale) / 2 - bb.y0 * scale,
+    };
   }
   function guideFrom(e) {
     const { w, h } = state.world;
     const { scale, ox, oy } = viewFit();
-    guide.x = clamp((e.clientX - ox) / scale, HEDGE + 16, w - HEDGE - 16);
-    // undo the hillside warp: y' = y − R(x)·(1 − FLAT·y/h) solves to
-    // y = (y' + R) / (1 + R·FLAT/h), so the finger lands on the ground
-    const r = hill.ridge(guide.x);
-    const wy = ((e.clientY - oy) / scale + r) / (1 + r * HILL_FLAT / h);
-    guide.y = clamp(wy, HEDGE + 16, h - HEDGE - 16);
+    // undo the camera (tilt, then hillside warp) so the finger lands on
+    // the ground it's pointing at, whatever the preset
+    const p = camInv((e.clientX - ox) / scale, (e.clientY - oy) / scale);
+    guide.x = clamp(p.x, HEDGE + 16, w - HEDGE - 16);
+    guide.y = clamp(p.y, HEDGE + 16, h - HEDGE - 16);
     guide.has = true;
   }
   canvas.addEventListener('pointerdown', (e) => {
@@ -2218,9 +2346,9 @@
     ctx.translate(ox, oy);
     ctx.scale(scale, scale);
 
-    // land + fence, pre-warped over the hillside (baked in makeDecor);
+    // land + fence, pre-warped through the camera (baked in makeDecor);
     // the canvas carries its own off-screen margin of land on every side
-    ctx.drawImage(hillCanvas, -hill.m, -hill.top);
+    ctx.drawImage(landImg, -land.ox, -land.oy);
 
     const t = now / 1000;
     const inGame = state.mode === 'playing' || state.mode === 'clear' || state.mode === 'ready';
@@ -2230,8 +2358,8 @@
       const P = state.pen;
       ctx.fillStyle = 'rgba(146, 106, 60, 0.30)';
       ctx.beginPath();
-      hillTrace(ctx, [[P.rect.x0, P.rect.y0], [P.rect.x1, P.rect.y0],
-                      [P.rect.x1, P.rect.y1], [P.rect.x0, P.rect.y1]], true);
+      camTrace(ctx, [[P.rect.x0, P.rect.y0], [P.rect.x1, P.rect.y0],
+                     [P.rect.x1, P.rect.y1], [P.rect.x0, P.rect.y1]], true);
       ctx.fill();
       // animated chevrons pointing in through the gate (until it shuts)
       const gA = Math.atan2(-P.out.y, -P.out.x); // into the pen
@@ -2239,8 +2367,10 @@
         const k = ((t * 0.7 + i / 3) % 1);
         const cxx = P.gx + P.out.x * (110 - k * 130);
         const cyy = P.gy + P.out.y * (110 - k * 130);
+        const cp = camPt(cxx, cyy), ck = camScale(cxx, cyy);
         ctx.save();
-        ctx.translate(cxx, hillY(cxx, cyy));
+        ctx.translate(cp.x, cp.y);
+        ctx.scale(ck, ck);
         ctx.rotate(gA);
         ctx.strokeStyle = `rgba(255, 216, 77, ${0.75 * (1 - Math.abs(k - 0.5) * 2)})`;
         ctx.lineWidth = 7;
@@ -2255,16 +2385,16 @@
     // dog influence ring (a faint pressure aura helps read the herding range)
     if (state.mode === 'playing') {
       const dg = state.dog;
-      const dgy = hillY(dg.x, dg.y);
+      const dp = camPt(dg.x, dg.y), dk = camScale(dg.x, dg.y);
       ctx.fillStyle = 'rgba(255, 246, 232, 0.05)';
       ctx.beginPath();
-      ctx.arc(dg.x, dgy, FLEE_RANGE, 0, Math.PI * 2);
+      ctx.arc(dp.x, dp.y, FLEE_RANGE * dk, 0, Math.PI * 2);
       ctx.fill();
       ctx.strokeStyle = 'rgba(255, 246, 232, 0.14)';
       ctx.lineWidth = 2;
       ctx.setLineDash([10, 14]);
       ctx.beginPath();
-      ctx.arc(dg.x, dgy, FLEE_RANGE, 0, Math.PI * 2);
+      ctx.arc(dp.x, dp.y, FLEE_RANGE * dk, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -2272,19 +2402,23 @@
     // bark shockwaves
     for (const b of state.barks) {
       const k = b.t / 0.6;
+      const bp = camPt(b.x, b.y), bk = camScale(b.x, b.y);
       ctx.strokeStyle = `rgba(127, 212, 255, ${0.6 * (1 - k)})`;
       ctx.lineWidth = 5 * (1 - k) + 1;
       ctx.beginPath();
-      ctx.arc(b.x, hillY(b.x, b.y), BARK_RANGE * (0.25 + 0.75 * k), 0, Math.PI * 2);
+      ctx.arc(bp.x, bp.y, BARK_RANGE * (0.25 + 0.75 * k) * bk, 0, Math.PI * 2);
       ctx.stroke();
     }
 
     // ---- actors, y-sorted for depth ----
-    // each actor draws in flat coords inside a translate down/up to the
-    // ground height under its feet, so shadows and doodles ride along
+    // each actor draws in flat coords inside a transform that puts its feet
+    // on the camera's ground and scales it for depth, so shadows and
+    // doodles ride along (the scale is 1 in the untilted presets)
     const drawObstacle = (o) => {
+      const p = camPt(o.x, o.y), k = camScale(o.x, o.y);
       ctx.save();
-      ctx.translate(0, -hillLift(o.x, o.y));
+      ctx.translate(p.x - o.x * k, p.y - o.y * k);
+      ctx.scale(k, k);
       ctx.fillStyle = 'rgba(0,0,0,0.16)';
       ctx.beginPath();
       ctx.ellipse(o.x, o.y + (o.kind === 'tree' ? 10 : 11), o.r * 1.15, o.r * 0.4, 0, 0, Math.PI * 2);
@@ -2295,8 +2429,10 @@
     };
 
     const drawSheep = (s) => {
+      const p = camPt(s.x, s.y), k = camScale(s.x, s.y);
       ctx.save();
-      ctx.translate(0, -hillLift(s.x, s.y));
+      ctx.translate(p.x - s.x * k, p.y - s.y * k);
+      ctx.scale(k, k);
       const hop = s.panic > 0.25 ? Math.abs(Math.sin(s.bob)) * 5 : Math.sin(s.bob) * 1.2;
       ctx.fillStyle = 'rgba(0,0,0,0.14)';
       ctx.beginPath();
@@ -2322,8 +2458,10 @@
 
     const drawDog = () => {
       const dg = state.dog;
+      const p = camPt(dg.x, dg.y), k = camScale(dg.x, dg.y);
       ctx.save();
-      ctx.translate(0, -hillLift(dg.x, dg.y));
+      ctx.translate(p.x - dg.x * k, p.y - dg.y * k);
+      ctx.scale(k, k);
       const spd = Math.hypot(dg.vx, dg.vy);
       const lying = state.input === 'cmd' && dg.cmd === 'lie' && spd < 20;
       ctx.fillStyle = 'rgba(0,0,0,0.16)';
@@ -2338,11 +2476,11 @@
       ctx.restore();
     };
 
-    // depth-sort by on-screen (warped) y so overlap order matches the hill
+    // depth-sort by on-screen (camera) y so overlap order matches the land
     const ents = [];
-    for (const o of state.obstacles) ents.push({ y: hillY(o.x, o.y), draw: () => drawObstacle(o) });
-    for (const s of state.sheep) ents.push({ y: hillY(s.x, s.y), draw: () => drawSheep(s) });
-    if (inGame) ents.push({ y: hillY(state.dog.x, state.dog.y), draw: drawDog });
+    for (const o of state.obstacles) ents.push({ y: camPt(o.x, o.y).y, draw: () => drawObstacle(o) });
+    for (const s of state.sheep) ents.push({ y: camPt(s.x, s.y).y, draw: () => drawSheep(s) });
+    if (inGame) ents.push({ y: camPt(state.dog.x, state.dog.y).y, draw: drawDog });
     ents.sort((a, b) => a.y - b.y);
     for (const e of ents) e.draw();
 
@@ -2354,12 +2492,12 @@
         ctx.lineWidth = 7;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        hillTrace(ctx, [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]], false);
+        camTrace(ctx, [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]], false);
         ctx.stroke();
         ctx.strokeStyle = '#b98a5a';
         ctx.lineWidth = 3;
         ctx.beginPath();
-        hillTrace(ctx, [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]], false);
+        camTrace(ctx, [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]], false);
         ctx.stroke();
         // posts
         const sl = Math.hypot(sgm.x2 - sgm.x1, sgm.y2 - sgm.y1);
@@ -2367,9 +2505,10 @@
         for (let i = 0; i <= np; i++) {
           const px = sgm.x1 + (sgm.x2 - sgm.x1) * (i / np);
           const py = sgm.y1 + (sgm.y2 - sgm.y1) * (i / np);
+          const pp = camPt(px, py);
           ctx.fillStyle = '#6e4a2c';
           ctx.beginPath();
-          ctx.arc(px, hillY(px, py), 5, 0, Math.PI * 2);
+          ctx.arc(pp.x, pp.y, 5 * camScale(px, py), 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -2382,41 +2521,48 @@
         ctx.lineWidth = 7;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        hillTrace(ctx, [[g.x1, g.y1], [gx2, gy2]], false);
+        camTrace(ctx, [[g.x1, g.y1], [gx2, gy2]], false);
         ctx.stroke();
         ctx.strokeStyle = '#b98a5a';
         ctx.lineWidth = 3;
         ctx.beginPath();
-        hillTrace(ctx, [[g.x1, g.y1], [gx2, gy2]], false);
+        camTrace(ctx, [[g.x1, g.y1], [gx2, gy2]], false);
         ctx.stroke();
+        const gp = camPt(gx2, gy2);
         ctx.fillStyle = '#6e4a2c'; // leading post
         ctx.beginPath();
-        ctx.arc(gx2, hillY(gx2, gy2), 5, 0, Math.PI * 2);
+        ctx.arc(gp.x, gp.y, 5 * camScale(gx2, gy2), 0, Math.PI * 2);
         ctx.fill();
       }
       // gate flags
       for (const [fx, fy] of [[P.gate.x1, P.gate.y1], [P.gate.x2, P.gate.y2]]) {
-        const fyw = hillY(fx, fy);
+        const fp = camPt(fx, fy), fk = camScale(fx, fy);
+        ctx.save();
+        ctx.translate(fp.x - fx * fk, fp.y - fy * fk);
+        ctx.scale(fk, fk);
         ctx.strokeStyle = '#5c3d22';
         ctx.lineWidth = 4;
         ctx.beginPath();
-        ctx.moveTo(fx, fyw); ctx.lineTo(fx, fyw - 30);
+        ctx.moveTo(fx, fy); ctx.lineTo(fx, fy - 30);
         ctx.stroke();
         const wave = reducedMotion ? 0 : Math.sin(t * 5 + fx) * 2;
         ctx.fillStyle = '#e2483d';
         ctx.beginPath();
-        ctx.moveTo(fx, fyw - 30);
-        ctx.lineTo(fx + 16, fyw - 25 + wave);
-        ctx.lineTo(fx, fyw - 20);
+        ctx.moveTo(fx, fy - 30);
+        ctx.lineTo(fx + 16, fy - 25 + wave);
+        ctx.lineTo(fx, fy - 20);
         ctx.closePath();
         ctx.fill();
+        ctx.restore();
       }
     }
 
     // floaties: doodles and command call-outs
     for (const f of state.floaties) {
+      const p = camPt(f.x, f.y), k = camScale(f.x, f.y);
       ctx.save();
-      ctx.translate(0, -hillLift(f.x, f.y));
+      ctx.translate(p.x - f.x * k, p.y - f.y * k);
+      ctx.scale(k, k);
       ctx.globalAlpha = clamp(1 - f.t / f.life, 0, 1);
       if (f.txt) {
         ctx.font = '700 ' + f.s + 'px Fredoka, sans-serif';
@@ -2438,7 +2584,8 @@
 
     // guide marker (screen space): where the dog is running to
     if (guide.has && state.mode === 'playing' && state.input === 'drag') {
-      const sx = ox + guide.x * scale, sy = oy + hillY(guide.x, guide.y) * scale;
+      const p = camPt(guide.x, guide.y);
+      const sx = ox + p.x * scale, sy = oy + p.y * scale;
       const pulse = reducedMotion ? 1 : 1 + Math.sin(now / 140) * 0.15;
       ctx.strokeStyle = 'rgba(255, 246, 232, 0.85)';
       ctx.lineWidth = 2.5;
@@ -2543,6 +2690,9 @@
   const readyBtn = document.getElementById('ready-btn');
   readyBtn.addEventListener('click', beginLevel);
   document.getElementById('build-tag').textContent = 'build ' + BUILD;
+  // camera chip: cycle hillside → spectator → overhead (also the C key)
+  document.getElementById('cam-name').textContent = cam.label;
+  document.getElementById('cam-btn').addEventListener('click', cycleCam);
   document.getElementById('mute-btn').addEventListener('click', (e) => {
     muted = !muted;
     e.currentTarget.textContent = muted ? '🔇' : '🔊';
@@ -2621,7 +2771,7 @@
   requestAnimationFrame(frame);
 
   // debug/test handle
-  window.__cb = { state, startLevel, issueCommand, tryBark };
+  window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv };
 })();
 </script>
 </body>

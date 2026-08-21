@@ -99,6 +99,11 @@ pressure in a ring, and the only thing that shifts a planted sheep.
   they pick up the panel and button text colours.
 - Build stamp + self-update: deploys stamp the commit into `BUILD`, and open
   tabs poll their own URL and offer/auto-apply a refresh.
+- Camera angles: the HUD 🎥 chip (or the `C` key) cycles **hillside →
+  spectator → overhead**. The field is simulated flat and draped through a
+  two-stage, exactly invertible camera — the hillside ridge lift, then a
+  perspective tilt — so pointer input still lands on the right patch of
+  grass in every angle. The choice is remembered in `localStorage`.
 - Dev shortcut: the HUD level chip is a button — click it to jump between
   levels by tens (1, 10, 20 … 100) for stress-testing big flocks.
 
