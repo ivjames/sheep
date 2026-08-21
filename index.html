@@ -27,6 +27,7 @@
     color: var(--cream);
     -webkit-user-select: none;
     user-select: none;
+    -webkit-touch-callout: none;
     touch-action: none;
   }
   #game {
@@ -44,8 +45,13 @@
     right: 0;
     display: none;
     align-items: center;
+    flex-wrap: wrap; /* overflow wraps to a second row, never off-screen */
     gap: 12px;
-    padding: 10px 14px;
+    /* viewport-fit=cover lets notches/rounded corners cover the edges */
+    padding: calc(10px + env(safe-area-inset-top, 0px))
+             calc(14px + env(safe-area-inset-right, 0px))
+             10px
+             calc(14px + env(safe-area-inset-left, 0px));
     pointer-events: none;
     font-family: var(--display);
   }
@@ -63,6 +69,28 @@
     white-space: nowrap;
   }
   #hud-spacer { flex: 1; }
+  /* phones: keep everything on ONE row — stat chips go compact, the
+     fps meter collapses to its colored dot, and the action buttons go
+     icon-only (their toasts still name the mode on switch) */
+  @media (max-width: 700px) {
+    #hud {
+      gap: 5px;
+      padding: calc(8px + env(safe-area-inset-top, 0px))
+               calc(8px + env(safe-area-inset-right, 0px))
+               8px
+               calc(8px + env(safe-area-inset-left, 0px));
+    }
+    .hud-chip { font-size: 12.5px; padding: 6px 9px; gap: 4px; }
+    .hud-chip .wide-only { display: none; }
+  }
+  /* the narrowest phones: the dev fps meter gives up its seat */
+  @media (max-width: 420px) {
+    #fps-chip { display: none; }
+  }
+  @media (max-width: 350px) {
+    #hud { gap: 4px; }
+    .hud-chip { font-size: 11px; padding: 5px 7px; }
+  }
   /* dev FPS meter: dot takes the tier color, chip pulses when the
      frame rate crosses a threshold in either direction */
   #fps-chip.fps-good #fps-dot { color: #7ede6f; }
@@ -307,12 +335,12 @@
 
 <div id="hud">
   <button class="hud-chip" id="level-chip" aria-label="Jump to level">Level 1</button>
-  <div class="hud-chip">🐑 <span id="sheep-count" style="font-variant-numeric:tabular-nums">0/0</span> penned</div>
+  <div class="hud-chip">🐑 <span id="sheep-count" style="font-variant-numeric:tabular-nums">0/0</span> <span class="wide-only">penned</span></div>
   <div class="hud-chip">⏱ <span id="time-chip" style="font-variant-numeric:tabular-nums">0:00</span></div>
   <!-- dev: frame-rate meter, color-coded by budget -->
-  <div class="hud-chip" id="fps-chip"><span id="fps-dot">●</span> <span id="fps-val" style="font-variant-numeric:tabular-nums">--</span> fps</div>
+  <div class="hud-chip" id="fps-chip"><span id="fps-dot">●</span><span class="wide-only"> <span id="fps-val" style="font-variant-numeric:tabular-nums">--</span> fps</span></div>
   <div id="hud-spacer"></div>
-  <button class="hud-chip" id="mode-btn" aria-label="Switch input mode">🕹️ drag</button>
+  <button class="hud-chip" id="mode-btn" aria-label="Switch input mode">🎯<span class="wide-only"> guide</span></button>
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
 </div>
 
@@ -900,6 +928,11 @@
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
+  // iOS Safari can still pop the text-selection magnifier on a double
+  // tap even with user-select off — swallow the events that summon it
+  document.addEventListener('dblclick', (e) => e.preventDefault());
+  document.addEventListener('selectstart', (e) => e.preventDefault());
+
   // rabbit-style guide (drag mode): your finger is the dog's target — it
   // chases the spot, and if you lift, finishes the run and stops there
   const guide = { id: null, has: false, x: 0, y: 0 };
@@ -1180,11 +1213,23 @@
           }
         }
         const R = need + 85;
-        // canvas y grows downward, so increasing angle sweeps clockwise on screen
-        const tx = -Math.sin(a) * dir, ty = Math.cos(a) * dir;
-        const corr = (R - rr) * 2.2;
-        desx = tx * pace + (rx / rr) * corr;
-        desy = ty * pace + (ry / rr) * corr;
+        // chase a point on the orbit a little ahead of the sweep (canvas
+        // y grows downward, so increasing angle is clockwise on screen).
+        // The aim point is clamped inside the hedge: when the flock works
+        // near an edge the orbit pokes through the fence, and heading for
+        // the clamped point turns the dog to skim along the fence in its
+        // direction of travel instead of pressing straight into it. If
+        // the clamp pins the point right where the dog stands (deep in a
+        // corner), look further round the orbit until it comes clear.
+        const wx0 = HEDGE + 20, wy0 = HEDGE + 20;
+        const wx1 = state.world.w - HEDGE - 20, wy1 = state.world.h - HEDGE - 20;
+        let ax = d.x, ay = d.y;
+        for (let look = 0.55; look < 2.4; look += 0.6) {
+          ax = clamp(flock.cx + Math.cos(a + dir * look) * R, wx0, wx1);
+          ay = clamp(flock.cy + Math.sin(a + dir * look) * R, wy0, wy1);
+          if (Math.hypot(ax - d.x, ay - d.y) > 30) break;
+        }
+        desx = ax - d.x; desy = ay - d.y;
         const dl = Math.hypot(desx, desy) || 1;
         desx = desx / dl * pace; desy = desy / dl * pace;
       } // lie: desired stays 0
@@ -1256,7 +1301,9 @@
     if (ml < COH_RANGE) return null; // close enough — cohesion handles it
     if (ml > MERGE_REACH) return null; // too far to see — truly lost
     const k = Math.min(1, (ml - COH_RANGE) / (MERGE_REACH - COH_RANGE));
-    const pull = (8 + 36 * s.flocky) * (0.4 + 0.6 * k);
+    // a calm stray ambles back; a frightened one has one destination —
+    // the safety of the mob — and runs for it
+    const pull = (8 + 36 * s.flocky) * (0.4 + 0.6 * k) * (1 + 1.5 * s.panic);
     return { x: ((bx - s.x) / ml) * pull, y: ((by - s.y) / ml) * pull };
   }
   // sheep near the mouth of an open gate know what it's for and drift on
@@ -1273,9 +1320,13 @@
     // aim a little inside the gate so the pull carries sheep over the line
     const tx = P.gx - P.out.x * 34 - s.x, ty = P.gy - P.out.y * 34 - s.y;
     const tl = Math.hypot(tx, ty);
-    if (tl < 0.01 || tl > GATE_PULL) return null;
-    const k = 1 - tl / GATE_PULL;
-    const f = willing * (40 + 320 * k * k);
+    // a spooked sheep is hunting for an exit, so it spots the gate from
+    // farther out — and once it knows where it's going, panic stops
+    // meaning "away from the dog" and starts meaning "through the gap"
+    const reach = GATE_PULL * (1 + 0.4 * s.panic);
+    if (tl < 0.01 || tl > reach) return null;
+    const k = 1 - tl / reach;
+    const f = willing * (40 + 320 * k * k) * (1 + 1.1 * s.panic);
     return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * willing };
   }
   // a settling spot deep in the pen, spread across the back, so each
@@ -1288,10 +1339,12 @@
     }
     return { x: clamp(P.cx, iz.x0 + 8, iz.x1 - 8), y: clamp(P.cy, iz.y0 + 8, iz.y1 - 8) };
   }
-  // fear spreads: one spooked sheep puts its neighbours on edge too
+  // fear spreads: one spooked sheep puts its neighbours on edge too.
+  // The timid end catches a neighbour's fright in full, so panic runs
+  // through a bunched mob undimmed; only the bold shrug some of it off
   function catchPanic(s, nearPanic, dt) {
-    const target = nearPanic * (0.9 - 0.4 * s.bold);
-    if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 3);
+    const target = nearPanic * (1 - 0.35 * s.bold);
+    if (target > s.panic) s.panic = Math.min(target, s.panic + dt * 4);
   }
   // neighbour lookup: loose sheep bucketed into COH_RANGE-sized cells so
   // flocking only tests the 3x3 cells that can hold a sheep in range,
@@ -1381,7 +1434,6 @@
         if (Math.hypot(s.vx, s.vy) > 4) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), 2.5 * dt);
         continue;
       }
-      s.panic = Math.max(0, s.panic - dt * 0.35);
       s.plantCd = Math.max(0, s.plantCd - dt);
 
       let fx = 0, fy = 0;
@@ -1439,6 +1491,10 @@
         fy += (avy / cn - s.vy) * aw;
         catchPanic(s, nearPanic, dt);
       }
+      // fear fades slowly, and hardly at all in a frightened mob: every
+      // sheep keeps its neighbours' nerves up, so a spooked flock stays
+      // spooked long after the dog has eased off
+      s.panic = Math.max(0, s.panic - dt * 0.2 * (1 - 0.8 * nearPanic));
       // any neighbor within COH_RANGE means mergePull would decline
       // anyway (that's cohesion's range) — skip the search entirely
       // for sheep that are already flocked
@@ -1515,8 +1571,9 @@
       s.vx -= s.vx * 2.4 * dt;
       s.vy -= s.vy * 2.4 * dt;
       let cap = s.planted ? 10 : 26 + s.panic * (150 + 30 * s.bold);
-      // the funnel pulls at a run, quicker still with a crowd behind
-      if (gs) cap = Math.max(cap, 45 + 130 * gs.k + 60 * Math.min(cn, 6) / 6);
+      // the funnel pulls at a run, quicker still with a crowd behind —
+      // and a frightened sheep that's found the gate flat-out bolts in
+      if (gs) cap = Math.max(cap, (45 + 130 * gs.k + 60 * Math.min(cn, 6) / 6) * (1 + 0.45 * s.panic));
       const spd = Math.hypot(s.vx, s.vy);
       if (spd > cap) { s.vx *= cap / spd; s.vy *= cap / spd; }
       s.x = clamp(s.x + s.vx * dt, HEDGE + 14, w - HEDGE - 14);
@@ -2160,7 +2217,10 @@
     levelChip.textContent = 'Level ' + state.level;
     const penned = state.sheep.filter(s => s.penned).length;
     sheepCount.textContent = penned + '/' + state.sheep.length;
-    modeBtn.textContent = state.input === 'drag' ? '🎯 guide' : '🗣️ commands';
+    // the label word hides on phones (.wide-only) — icon carries the mode
+    modeBtn.innerHTML = state.input === 'drag'
+      ? '🎯<span class="wide-only"> guide</span>'
+      : '🗣️<span class="wide-only"> commands</span>';
   }
 
   const cmdBtns = [...cmdUi.querySelectorAll('.cmd-btn')];
