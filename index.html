@@ -391,9 +391,10 @@
   const FLEE_RANGE = 235;         // how far the most timid sheep feels the dog
   const FLEE_RANGE_DEFIANT = 150; // ...and the boldest make you get close
   const SEP_RANGE = 34, COH_RANGE = 190;
+  const COMFORT = 70;             // a neighbor this close means you're IN the flock — no cohesion pull
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
-  const MERGE_REACH = 520;        // stray sheep feel the mob's pull out to here
+  const MERGE_REACH = 520;        // a stray feels the pull of the NEAREST sheep out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
@@ -1174,20 +1175,45 @@
   // scared sheep bunch much tighter; how keenly each one follows is its
   // own flocky trait — the stubborn end barely flocks at all
   function cohesionWeight(s) {
-    return (6 + 22 * s.flocky) + s.panic * (14 + 70 * s.flocky);
+    // no panic term: fear amplifies FLOW (alignment), never the inward
+    // pull — a spooked sheep joins the stampede, it doesn't dive for
+    // the middle of it
+    return (12 + 24 * s.flocky) * (1 + 0.5 * s.panic);
   }
-  // a sheep off on its own feels the mob's pull, so strays and split
-  // groups drift back together and merge instead of scattering for good
-  function mergePull(s, flock) {
-    if (!flock || flock.n < 2 || s.planted) return null;
-    const n = flock.n; // centroid of the *others*, not counting this sheep
-    const mx = (flock.cx * n - s.x) / (n - 1) - s.x;
-    const my = (flock.cy * n - s.y) / (n - 1) - s.y;
-    const ml = Math.hypot(mx, my);
+  // a sheep off on its own makes for the NEAREST sheep it can see, so
+  // strays drift back and merge instead of scattering for good. Never
+  // the flock's centroid: the old center-of-mass pull dragged two split
+  // groups toward the empty middle between them, which read as sheep
+  // magnetized to the mob's center instead of moving with its flow.
+  // A split GROUP has near neighbors, feels nothing, and stays a group
+  // until the dog gathers it — that's the player's job.
+  function mergePull(s, grid) {
+    if (s.planted) return null;
+    // nearest-sheep search rides the same COH_RANGE grid as flocking,
+    // bounded by MERGE_REACH (≤3 cells out): the flock grows without a
+    // cap, so a flat rescan of state.sheep here would turn the sheep
+    // pass O(n²) by the big late-game mobs
+    const R = Math.ceil(MERGE_REACH / COH_RANGE);
+    const gx = Math.floor(s.x / COH_RANGE), gy = Math.floor(s.y / COH_RANGE);
+    let bx = 0, by = 0, best = Infinity;
+    for (let ci = -R; ci <= R; ci++) {
+      for (let cj = -R; cj <= R; cj++) {
+        const cell = grid.get((gx + ci) + ',' + (gy + cj));
+        if (!cell) continue;
+        for (const o of cell) {
+          if (o === s) continue;
+          const dd = dist2(s.x, s.y, o.x, o.y);
+          if (dd < best) { best = dd; bx = o.x; by = o.y; }
+        }
+      }
+    }
+    if (best === Infinity) return null;
+    const ml = Math.sqrt(best);
     if (ml < COH_RANGE) return null; // close enough — cohesion handles it
+    if (ml > MERGE_REACH) return null; // too far to see — truly lost
     const k = Math.min(1, (ml - COH_RANGE) / (MERGE_REACH - COH_RANGE));
-    const pull = (8 + 36 * s.flocky) * (0.4 + 0.6 * k) * (1 + s.panic * 1.5);
-    return { x: (mx / ml) * pull, y: (my / ml) * pull };
+    const pull = (8 + 36 * s.flocky) * (0.4 + 0.6 * k);
+    return { x: ((bx - s.x) / ml) * pull, y: ((by - s.y) / ml) * pull };
   }
   // sheep near the mouth of an open gate know what it's for and drift on
   // in. Strongest at early levels (training wheels) but never gone
@@ -1257,7 +1283,6 @@
     const d = state.dog;
     const iz = state.pen.inner;
     const grazing = state.mode === 'title' || state.mode === 'ready';
-    const flock = flockInfo();
     const grid = sheepGrid();
     const pgrid = penGrid();
     for (const s of state.sheep) {
@@ -1323,7 +1348,7 @@
       // holding polite spacing — that's how a mob pours through a gap
       const sepPush = 320 * (gs ? 1 - 0.75 * gs.k : 1);
       // --- flocking: separation, cohesion, alignment ---
-      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0;
+      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0, nd = Infinity;
       const gx = Math.floor(s.x / COH_RANGE), gy = Math.floor(s.y / COH_RANGE);
       for (let ci = -1; ci <= 1; ci++) {
         for (let cj = -1; cj <= 1; cj++) {
@@ -1342,24 +1367,38 @@
             if (dd < COH_RANGE * COH_RANGE) {
               cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy;
               if (o.panic > nearPanic) nearPanic = o.panic;
+              if (dd < nd * nd) nd = Math.sqrt(dd);
             }
           }
         }
       }
       if (cn && !s.planted) {
-        // deep in the funnel the mob's rearward pull lets go — a sheep
-        // committed to the gate isn't dragged back out by the bunch
-        const cw = cohesionWeight(s) * (gs ? 1 - gs.k : 1);
-        const tx = cx / cn - s.x, ty = cy / cn - s.y;
-        const tl = Math.hypot(tx, ty);
-        if (tl > 18) { fx += (tx / tl) * cw; fy += (ty / tl) * cw; }
-        // match the mob's heading — sheep steer off each other constantly
-        const aw = 0.5 + 1.4 * s.flocky;
+        // cohesion only while actually coming loose: a sheep with a
+        // neighbor at comfortable range is IN the flock and feels no
+        // inward pull at all. The old always-on pull is what dragged a
+        // grazing herd into a knot and a running one toward its own
+        // center of mass instead of along the mob's line of travel.
+        // (Deep in the funnel it lets go entirely — a sheep committed
+        // to the gate isn't dragged back out by the bunch.)
+        if (nd > COMFORT) {
+          const cw = cohesionWeight(s) * (gs ? 1 - gs.k : 1);
+          const tx = cx / cn - s.x, ty = cy / cn - s.y;
+          const tl = Math.hypot(tx, ty);
+          if (tl > 0.01) { fx += (tx / tl) * cw; fy += (ty / tl) * cw; }
+        }
+        // match the mob's heading — sheep steer off each other
+        // constantly, and a spooked sheep runs with the flow rather
+        // than thinking for itself, so panic turns this UP (where it
+        // used to turn cohesion up and curl the herd inward)
+        const aw = (0.5 + 1.4 * s.flocky) * (1 + 1.6 * s.panic);
         fx += (avx / cn - s.vx) * aw;
         fy += (avy / cn - s.vy) * aw;
         catchPanic(s, nearPanic, dt);
       }
-      const mp = gs ? null : mergePull(s, flock);
+      // any neighbor within COH_RANGE means mergePull would decline
+      // anyway (that's cohesion's range) — skip the search entirely
+      // for sheep that are already flocked
+      const mp = gs || cn ? null : mergePull(s, grid);
       if (mp) { fx += mp.x; fy += mp.y; }
       // --- dog pressure ---
       // fear of the dog is a gradient: the timid end feels it from far
