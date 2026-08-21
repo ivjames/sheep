@@ -1820,7 +1820,12 @@
   // stubborn end instead of leaving every ram a one-sheep shoving match
   function gateSuction(s) {
     const ease = 0.4 + 0.6 * clamp(1 - (state.level - 1) / 4, 0, 1);
-    const willing = ease * Math.max(0.3, 1 - s.bold * 0.85);
+    // a panicked sheep isn't reasoning about doorways — it's running.
+    // The gate only draws a sheep with its head together, so a calmly
+    // driven flock files in while a stampede blows straight past the
+    // mouth. Penning takes controlled pressure, not a blow-up.
+    const calm = 1 - 0.8 * s.panic;
+    const willing = ease * Math.max(0.3, 1 - s.bold * 0.85) * calm;
     if (willing < 0.05 || s.planted) return null;
     const P = state.pen;
     // in front of the mouth only — never through the back fence
@@ -1828,13 +1833,10 @@
     // aim a little inside the gate so the pull carries sheep over the line
     const tx = P.gx - P.out.x * 34 - s.x, ty = P.gy - P.out.y * 34 - s.y;
     const tl = Math.hypot(tx, ty);
-    // a spooked sheep is hunting for an exit, so it spots the gate from
-    // farther out — and once it knows where it's going, panic stops
-    // meaning "away from the dog" and starts meaning "through the gap"
-    const reach = GATE_PULL * (1 + 0.4 * s.panic);
+    const reach = GATE_PULL;
     if (tl < 0.01 || tl > reach) return null;
     const k = 1 - tl / reach;
-    const f = willing * (40 + 320 * k * k) * (1 + 1.1 * s.panic);
+    const f = willing * (40 + 320 * k * k);
     return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * willing };
   }
   // a settling spot deep in the pen, spread across the back, so each
