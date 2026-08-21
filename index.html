@@ -418,9 +418,13 @@
   const PACE_STEP = 0.1;          // WALK ON taps add this, EASY taps shed it — 10 notches
   const PACE_START = 0.6, PACE_MIN = 0.1;
   // pace→speed is curved: a collie is properly fast at the top of the
-  // range and barely moves at the bottom — the creep is the point
-  const PACE_CURVE = 1.35;
-  const paceSpeed = (p) => CMD_SPEED * Math.pow(p, PACE_CURVE);
+  // range and creeps at the bottom — but a creep is still a stalk, so
+  // the curve gets a floor: the lowest notch moves at a deliberate
+  // ~52px/s instead of a near-freeze. Only STEADY (pace 0) is a halt.
+  const PACE_CURVE = 1.6;
+  const PACE_FLOOR = 0.13;        // fraction of full speed the slowest creep keeps
+  const paceSpeed = (p) => p <= 0 ? 0 :
+    CMD_SPEED * (PACE_FLOOR + (1 - PACE_FLOOR) * Math.pow(p, PACE_CURVE));
   const SHEEP_R = 12, DOG_R = 13;
   const FLEE_RANGE = 235;         // how far the most timid sheep feels the dog
   const FLEE_RANGE_DEFIANT = 150; // ...and the boldest make you get close
@@ -1680,9 +1684,12 @@
     // in command mode flanks route round the pen, never through it
     if (state.input === 'cmd' && dogGateShut(d)) collideSeg(d, DOG_R, state.pen.gate);
     collideObstacles(d, DOG_R);
-    if (Math.abs(d.vx) > 30) d.facing = d.vx > 0 ? 1 : -1;
+    // orient even at a creep: the old thresholds sat above creeping
+    // speed, so a stalking dog slid along without turning its body to
+    // its line of travel
+    if (Math.abs(d.vx) > 10) d.facing = d.vx > 0 ? 1 : -1;
     const dspd = Math.hypot(d.vx, d.vy);
-    if (dspd > 25) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), 11 * dt);
+    if (dspd > 8) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), 11 * dt);
     d.bob += dt * (dspd > 40 ? 12 : 3);
     // charging bark: rush straight at a sheep and the dog lets one off
     if (d.barkCd <= 0 && dspd > BARK_CHARGE_SPEED) {
