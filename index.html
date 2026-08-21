@@ -27,6 +27,7 @@
     color: var(--cream);
     -webkit-user-select: none;
     user-select: none;
+    -webkit-touch-callout: none;
     touch-action: none;
   }
   #game {
@@ -926,6 +927,11 @@
     if (!e.repeat && CMD_KEYS[e.key] && state.input === 'cmd') issueCommand(CMD_KEYS[e.key]);
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+  // iOS Safari can still pop the text-selection magnifier on a double
+  // tap even with user-select off — swallow the events that summon it
+  document.addEventListener('dblclick', (e) => e.preventDefault());
+  document.addEventListener('selectstart', (e) => e.preventDefault());
 
   // rabbit-style guide (drag mode): your finger is the dog's target — it
   // chases the spot, and if you lift, finishes the run and stops there
