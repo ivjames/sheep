@@ -428,7 +428,7 @@
   const COMFORT = 70;             // a neighbor this close means you're IN the flock — no cohesion pull
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
-  const FEAR_HOLD = 3;            // seconds a startle pins panic at FULL — flat, not pressure-scaled
+  const FEAR_HOLD = 1;            // seconds a startle pins panic at FULL — flat, not pressure-scaled
   const MERGE_REACH = 520;        // a stray feels the pull of the NEAREST sheep out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
@@ -1962,10 +1962,10 @@
       // fear is a TIMER, not a gradient: any startle pins panic at
       // full for FEAR_HOLD seconds flat — never scaled by how hard the
       // pressure was — and every frame of continued pressure rearms
-      // the whole clock. Once it runs dry the fright tapers over three
-      // seconds, full run easing down to a grazing meander
+      // the whole clock. Once it runs dry the fright tapers over two
+      // seconds, full sprint easing down to a grazing meander
       if (s.fearT > 0) { s.fearT -= dt; s.panic = 1; }
-      else s.panic = Math.max(0, s.panic - dt * 0.3);
+      else s.panic = Math.max(0, s.panic - dt * 0.45);
       // any neighbor within COH_RANGE means mergePull would decline
       // anyway (that's cohesion's range) — skip the search entirely
       // for sheep that are already flocked
@@ -2054,7 +2054,11 @@
         fy += gs.y * press;
       }
       // --- keep off the hedge ---
-      const wp = 60, wk = 140;
+      // the keep-off scales with panic so a stampede BANKS along the
+      // fence: a calm graze needs only a nudge, but a sheep in full
+      // flight would otherwise out-thrust the wall and grind into a
+      // corner until its fright ran out
+      const wp = 60, wk = 140 * (1 + 1.6 * s.panic);
       if (s.x < HEDGE + wp) fx += wk * (1 - (s.x - HEDGE) / wp);
       if (s.x > w - HEDGE - wp) fx -= wk * (1 - (w - HEDGE - s.x) / wp);
       if (s.y < HEDGE + wp) fy += wk * (1 - (s.y - HEDGE) / wp);
