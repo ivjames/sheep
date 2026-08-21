@@ -1992,25 +1992,22 @@
           }
           if (s.planted && dd < 55) unplant(s, ddx / dd, ddy / dd); // dog right on top of it
           if (!s.planted) {
-            // the flee range is two bands. The outer band is WORKING
-            // pressure: the sheep yields ground at a wary trot — panic
-            // held under the flight threshold, no timer, no bolt — so
-            // a dog holding its distance moves the flock without
-            // lighting it up. Only pressing into the inner band (past
-            // STARTLE_K) is a STARTLE: bolt kick, full panic, and the
-            // fear clock armed — and rearmed every frame it's held
-            // there. The bolt is gated on low panic so a sheep already
-            // running isn't re-kicked every frame — one per fright
+            // panic RAMPS with how close the dog presses: the mere
+            // edge of the range is a wary trot, half-way in is a run,
+            // right on top is full flight — no hard line where the
+            // flock flips from calm to stampede. Deep pressure still
+            // BOLTS a settled sheep (gated on low panic — one kick
+            // per fright) and arms the fear clock, scaled by how far
+            // past the startle line the dog is pressing, so only a
+            // real charge buys the full guaranteed sprint
             if (k > STARTLE_K) {
               if (s.panic < 0.6) {
                 s.vx += (ddx / dd) * 230 * mult;
                 s.vy += (ddy / dd) * 230 * mult;
               }
-              s.panic = 1;
-              s.fearT = FEAR_HOLD;
-            } else {
-              s.panic = Math.max(s.panic, 0.45 * (k / STARTLE_K));
+              s.fearT = Math.max(s.fearT, FEAR_HOLD * (k - STARTLE_K) / (1 - STARTLE_K));
             }
+            s.panic = Math.max(s.panic, Math.min(1, k * 1.15));
             fx += (ddx / dd) * k * 520 * mult;
             fy += (ddy / dd) * k * 520 * mult;
           }
