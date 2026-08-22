@@ -3416,18 +3416,24 @@
     ctx.fill();
     ctx.globalAlpha = headAlpha;
 
-    // head + muzzle
+    // head + muzzle. In profile the skull is long and the muzzle juts
+    // forward; squared up to the camera both collapse onto the centreline.
+    // The muzzle's offset rides on `side` so it reaches zero head-on —
+    // otherwise a sheep looking straight at you keeps its nose stuck out
+    // sideways and reads as still being in profile.
     ctx.fillStyle = skin;
     ctx.beginPath();
-    ctx.ellipse(headX, headY, 4.6 * u, 3.4 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(headX, headY, (4.6 - 1.1 * face) * u, (3.4 + 0.3 * face) * u, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(headX + 3.3 * u * (0.35 + 0.65 * side), headY + 0.7 * u, 2.5 * u, 1.9 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(headX + 3.3 * u * side * (0.35 + 0.65 * side), headY + (0.7 + 0.9 * face) * u,
+                (2.5 - 0.5 * face) * u, (1.9 - 0.3 * face) * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    // wool fringe on the crown so the head reads as poking out of the fleece
+    // wool fringe on the crown so the head reads as poking out of the fleece —
+    // it slides to sit square on top of the skull as the sheep turns to face you
     ctx.fillStyle = wool;
     ctx.beginPath();
-    ctx.arc(headX - 2.8 * u, headY - 2.3 * u, 2.1 * u, 0, Math.PI * 2);
+    ctx.arc(headX - 2.8 * u * side, headY - 2.3 * u, 2.1 * u, 0, Math.PI * 2);
     ctx.fill();
 
     // near ear, over the head
@@ -3436,17 +3442,20 @@
     ctx.ellipse(headX - 2.6 * u, headY + earSpread, 3 * u, 1.3 * u, 0.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // eyes: one dot in profile, a second fades in as the sheep faces you —
-    // drawn as separate fills so the profile eye's alpha never rides on
-    // the crossfade meant only for the second one
+    // eyes: one in profile, a symmetric PAIR once the sheep squares up. They
+    // separate SIDEWAYS as `face` rises rather than stacking one above the
+    // other — a second eye below the first just reads as a profile head that
+    // has grown a spare, not as a face looking back at you. Drawn as separate
+    // fills so the profile eye's alpha never rides the far eye's crossfade.
+    const eyeY = headY - (1.3 - 0.5 * face) * u;
     ctx.fillStyle = eyeCol;
     ctx.beginPath();
-    ctx.arc(headX + 1.3 * u, headY - 1.3 * u * (1 - 0.4 * face), 0.85 * u, 0, Math.PI * 2);
+    ctx.arc(headX + (1.3 + 0.6 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
     ctx.fill();
     if (face > 0.04) {
       ctx.globalAlpha = headAlpha * Math.min(1, face * 2.2);
       ctx.beginPath();
-      ctx.arc(headX + 1.3 * u, headY + 1.5 * u * face, 0.85 * u, 0, Math.PI * 2);
+      ctx.arc(headX + (1.3 - 3.2 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = 1;
     }
