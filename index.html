@@ -956,7 +956,14 @@
   // no tilt, and every formula below degenerates to the current behavior.
   const CAMS = {
     hillside:  { label: 'hillside',  hillK: 1, sFar: 1,    sNear: 1 },
-    spectator: { label: 'spectator', hillK: 1, sFar: 0.72, sNear: 1.15 },
+    // tilt strength is the RATIO sNear/sFar; their MEAN sets how much
+    // vertical room the field takes (total height is h·(sFar+sNear)/2), so
+    // holding the mean at 0.93 buys depth without changing the footprint.
+    // The ceiling is memory, not geometry: the land's off-field margin grows
+    // with the tilt, and fieldCanvas is sized for the worst-case preset, so
+    // every player pays the largest ratio in this table on every camera.
+    // 1.75 costs ~92MB; 2.5 costs ~264MB, which is iOS Safari's crash range.
+    spectator: { label: 'spectator', hillK: 1, sFar: 0.676, sNear: 1.184 },
     overhead:  { label: 'overhead',  hillK: 0, sFar: 1,    sNear: 1 },
   };
   const CAM_ORDER = ['hillside', 'spectator', 'overhead'];
