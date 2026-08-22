@@ -1673,6 +1673,9 @@
         defiant: tempers[i], ...rollTemper(tempers[i]),
         panic: 0, fearT: 0, fright: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
+        // heads start up — the flock has just noticed you — then settle to
+        // grazing. Staggered timers so they don't lift and drop in unison.
+        alert: 1, lookT: rand(1, 9), lookHold: 0,
       });
     }
 
@@ -2496,6 +2499,27 @@
     const pgrid = penGrid();
     for (const s of state.sheep) {
       s.bob += dt * (2 + s.panic * 9);
+
+      // Head carriage. A sheep grazes head-down and lifts to look; a flock
+      // that never lifts reads as scenery rather than as animals deciding
+      // whether you matter. Alert snaps UP and eases DOWN — a startle is
+      // instant, but wariness outlasts its cause, which is also what makes
+      // a worked flock look worked rather than merely pushed around.
+      {
+        const spd = Math.hypot(s.vx, s.vy);
+        const NOTICE = FLEE_RANGE + 120; // they clock the dog well before they flee
+        const dogD = Math.hypot(d.x - s.x, d.y - s.y);
+        let want = spd > 12 ? 1 : 0;     // you cannot graze and travel at once
+        want = Math.max(want, Math.min(1, s.panic * 1.6));
+        if (dogD < NOTICE) want = Math.max(want, 1 - dogD / NOTICE);
+        if (s.planted) want = 1;         // a planted sheep is staring you down
+        // idle look-around, so a settled flock still has heads moving
+        s.lookT -= dt;
+        if (s.lookT <= 0) { s.lookT = rand(5, 13); s.lookHold = rand(0.7, 2.4); }
+        if (s.lookHold > 0) { s.lookHold -= dt; want = Math.max(want, 0.7); }
+        if (s.penned && s.settle) want *= 0.3; // home and safe — back to the grass
+        s.alert += (want - s.alert) * Math.min(1, (want > s.alert ? 9 : 1.3) * dt);
+      }
       if (s.penned) {
         const P = state.pen;
         // fresh through the gate (or milled back near it): hustle to a
@@ -3223,7 +3247,7 @@
   // (grazing, not a dog's alert-up head). The pose is authored right-facing
   // and mirrored, never rotated, so it reads correctly from every heading
   // with no sprite-sheet popping.
-  function drawSheepTop(x, y, size, dir, ram, bob, moving) {
+  function drawSheepTop(x, y, size, dir, ram, bob, moving, alert) {
     const u = size / 30;
     const wool = ram ? '#d9c6a8' : '#f6f1e6';
     const shade = ram ? '#b8a284' : '#ddd3bf';
@@ -3324,12 +3348,19 @@
     // the UI it looked like a rendering fault. The rear view is carried by
     // the tail breaking the outline and the hind legs beneath it.
 
-    // head: a distinct dark wedge carried low, out ahead of the body —
-    // sliding back to body-center as side -> 0. Sized to still read at
-    // game scale, closer to the old top-down model's head mass.
-    const headX = bodyCx + 7 * u * side;
-    const headY = (6.6 - 0.4 * side) * u;
-    const headAlpha = 1 - rear * 0.94;  // grazing face tucks out of sight from behind
+    // head: a distinct dark wedge, sliding back to body-centre as side -> 0.
+    // `alert` carries it between grazing and looking up: down at the grass
+    // when settled, up level with the shoulder when something has its
+    // attention. It also draws back slightly as it rises — a sheep lifting
+    // its head pulls it in over the shoulders, it doesn't just pivot up.
+    // up AND forward: the barrel is long, so a head that only rises ends up
+    // sitting inside the fleece like a mask on the shoulder. Lifting it to
+    // the front edge keeps it clear of the wool with a neck between.
+    const headX = bodyCx + (7 + 3.2 * alert) * u * side;
+    const headY = ((6.6 - 0.4 * side) - 12.5 * alert) * u;
+    // face hides from behind only while the head is down and tucked past the
+    // fleece; a raised head stays visible over the rump
+    const headAlpha = 1 - rear * (0.94 - 0.5 * alert);
     const earSpread = (2.2 + 2 * (1 - side)) * u;
 
     // the neck wedge keeps the head attached to the barrel in profile, but it
@@ -3339,10 +3370,13 @@
     ctx.globalAlpha = headAlpha;
     ctx.fillStyle = skin;
     ctx.beginPath();
-    ctx.moveTo(bodyCx + bodyRx * 0.5, bodyCy + bodyRy * 0.62);
+    // the neck roots higher up the shoulder as the head rises — a lifted
+    // head is carried on a neck out of the withers, not out of the brisket
+    const neckTop = 0.62 - 0.52 * alert, neckBot = 0.82 - 0.34 * alert;
+    ctx.moveTo(bodyCx + bodyRx * 0.5, bodyCy + bodyRy * neckTop);
     ctx.lineTo(headX - 1 * u, headY - 2 * u);
     ctx.lineTo(headX - 3.4 * u, headY + 1 * u);
-    ctx.lineTo(bodyCx + bodyRx * 0.12, bodyCy + bodyRy * 0.82);
+    ctx.lineTo(bodyCx + bodyRx * 0.12, bodyCy + bodyRy * neckBot);
     ctx.closePath();
     ctx.fill();
 
@@ -3939,7 +3973,7 @@
         ctx.fill();
       }
       drawSheepTop(s.x, s.y - hop, s.defiant ? 32 : 30, s.dir, s.defiant, s.bob,
-        Math.hypot(s.vx, s.vy) > 12);
+        Math.hypot(s.vx, s.vy) > 12, s.alert);
       if (s.planted) {
         drawDoodle('huff', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
       } else if (!s.penned && s.panic > 0.75) {
