@@ -920,9 +920,20 @@
     const M = hill.m;
     // worst-case lift is on the far margin row y = −M: amp·(1 + FLAT·M/h)
     hill.top = Math.ceil(M + hill.amp * (1 + HILL_FLAT * M / h));
-    hillCanvas.width = w + 2 * M;
-    hillCanvas.height = hill.top + Math.ceil((h + M) * (1 + hill.amp * HILL_FLAT / h));
+    const hcW = w + 2 * M;
+    const hcH = hill.top + Math.ceil((h + M) * (1 + hill.amp * HILL_FLAT / h));
+    // resizing (.width/.height) forces the browser to discard and reallocate
+    // the whole backing bitmap — costly, and needless when the dims (which
+    // only depend on world size, constant within a session) haven't changed.
+    // Skipped resizes still need the reset a real resize would've given us:
+    // cleared pixels and identity transform, restored explicitly below.
+    if (hillCanvas.width !== hcW || hillCanvas.height !== hcH) {
+      hillCanvas.width = hcW;
+      hillCanvas.height = hcH;
+    }
     const hc = hillCanvas.getContext('2d');
+    hc.setTransform(1, 0, 0, 1, 0, 0);
+    hc.clearRect(0, 0, hillCanvas.width, hillCanvas.height);
     hc.translate(M, hill.top); // world origin
     // hillCanvas is pre-tilt, so its own tracing stays in (u,v) space
     const s1 = (x, y) => ({ x, y: hillY(x, y) });
@@ -1014,11 +1025,20 @@
       const W1 = hillCanvas.width;
       const vTop = -hill.top, vBot = hillCanvas.height - hill.top;
       const sMax = Math.max(sClamp(s0 + g * vTop), sClamp(s0 + g * vBot));
-      landCanvas.width = Math.ceil(W1 * sMax);
+      const lcW = Math.ceil(W1 * sMax);
       land.ox = Math.ceil((hill.m + w / 2) * sMax - w / 2);
       land.oy = Math.ceil(-(s0 * vTop + g * vTop * vTop / 2));
-      landCanvas.height = land.oy + Math.ceil(s0 * vBot + g * vBot * vBot / 2) + 2;
+      const lcH = land.oy + Math.ceil(s0 * vBot + g * vBot * vBot / 2) + 2;
+      // as with hillCanvas, only reallocate when the size actually changed
+      // (it can, e.g. after a camera swap changes sMax) — and since each
+      // scanline strip below is scaled by its own sv, a narrower row can
+      // leave old margin pixels unpainted, so always clear explicitly.
+      if (landCanvas.width !== lcW || landCanvas.height !== lcH) {
+        landCanvas.width = lcW;
+        landCanvas.height = lcH;
+      }
       const lc = landCanvas.getContext('2d');
+      lc.clearRect(0, 0, landCanvas.width, landCanvas.height);
       for (let j = 0; j < hillCanvas.height; j += 2) {
         const v = j - hill.top, v2 = v + 2;
         const sv = sClamp(s0 + g * v);
@@ -1055,8 +1075,16 @@
     // patches of lighter and darker grass — pasture, not a mowed pitch.
     // It runs a margin M past the field on every side so the warped bake
     // can cover the whole viewport with land.
-    fieldCanvas.width = w + 2 * M; fieldCanvas.height = h + 2 * M;
+    const fcW = w + 2 * M, fcH = h + 2 * M;
+    // see bakeHill: skip the reallocation when the size is unchanged, but
+    // reproduce what it would've given us — a clean transform (the fillRect
+    // right below repaints every pixel, so no explicit clear is needed).
+    if (fieldCanvas.width !== fcW || fieldCanvas.height !== fcH) {
+      fieldCanvas.width = fcW;
+      fieldCanvas.height = fcH;
+    }
     const fc = fieldCanvas.getContext('2d');
+    fc.setTransform(1, 0, 0, 1, 0, 0);
     fc.translate(M, M); // paint in world coords over [−M, w+M] × [−M, h+M]
     fc.fillStyle = '#7ec850';
     fc.fillRect(-M, -M, w + 2 * M, h + 2 * M);
