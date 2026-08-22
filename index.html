@@ -3695,19 +3695,24 @@
     leg(fHipX + splay, shoulderY, fHipX + splay + ph * strideAmt, footY - Math.max(0, ph) * liftAmt, bendF);
     leg(rHipX + splay * 0.7, hipY, rHipX + splay * 0.7 - ph * strideAmt, footY - Math.max(0, -ph) * liftAmt, bendR);
 
-    // head: the anchor of the silhouette. In the stalk it thrusts far ahead
-    // of the chest, level with the topline; at a run it lifts clear of the
-    // body so daylight opens between skull and withers and the neck reads
-    // run carriage is extended, not lifted — a galloping collie keeps its
-    // head roughly level with its back, reaching
-    const headX = lerp(0, lerp(7.2, 10.6, g), side) * u;
-    const headY = withersY + lerp(1.5, -3.2, g) * u;
+    // head: the anchor of the silhouette. In the stalk it thrusts ahead of
+    // the chest, level with the topline; at a run the carriage is extended
+    // rather than lifted — a galloping collie keeps its head roughly level
+    // with its back, reaching.
+    //
+    // It is placed relative to the neck's own root rather than in body
+    // coordinates, so NECK scales the whole neck without disturbing the
+    // direction the pose is reaching in, or needing every head offset
+    // re-tuned to match.
+    const neckSx = Lf * 0.5 * side, neckSy = withersY + 1.1 * u;
+    const NECK = 0.75;
+    const headX = neckSx + NECK * (lerp(0, lerp(7.2, 10.6, g), side) * u - neckSx);
+    const headY = neckSy + NECK * (withersY + lerp(1.5, -3.2, g) * u - neckSy);
     const headRx = (3.3 + 0.5 * (1 - side)) * u, headRy = 3.0 * u;
     // how much of the *face side* of the head the camera sees; kills the
     // snout, blaze and nose from dead behind without a pop
     const fv = Math.min(1, (side + face) * 1.4);
 
-    const neckSx = Lf * 0.5 * side, neckSy = withersY + 1.1 * u;
     const neckEx = headX - 1.4 * u * side, neckEy = headY + 1.6 * u;
     const nw = lerp(3.4, 3.1, g) * u;
     ctx.strokeStyle = coat;
