@@ -3282,11 +3282,13 @@
     const bodyCx = 0.4 * u;
     const bodyCy = hipY - bodyRy - 0.3 * u;
 
-    // fore/aft leg pairs converge under the barrel as side -> 0, keeping a
-    // little residual stance width so head/tail-on still reads as two legs
-    // rather than one fat column. The near pair (viewer's side) sits a
-    // touch lower and draws over the body, the far pair a touch higher and
-    // draws behind it — that overlap alone sells the depth.
+    // Hips and shoulders sit well up INSIDE the barrel, not on its lower
+    // edge, and every leg is drawn before the fleece — so what shows is the
+    // stretch below the wool line, the way a real sheep's legs appear to
+    // start halfway up the animal. The near pair still sits a touch lower
+    // and wider than the far pair, which is what carries the depth now that
+    // overlap no longer can.
+    const legTopY = hipY - 3.4 * u;
     const frontHipX = bodyCx + (1.4 + 3.2 * side) * u;
     const rearHipX = bodyCx - (1.6 + 3.6 * side) * u;
     const pairSpread = (1 - side) * 1.5 * u;
@@ -3311,9 +3313,46 @@
       ctx.fill();
     }
 
-    // far pair first, tucked up and in — mostly hidden by the body fill
-    leg(frontHipX, hipY - pairSpread * 0.5, frontHipX - strideX, footY - pairSpread - strideY);
-    leg(rearHipX, hipY - pairSpread * 0.5, rearHipX + strideX, footY - pairSpread + strideY);
+    // all four under the fleece: far pair tucked up and in, near pair a
+    // touch lower and wider
+    leg(frontHipX, legTopY - pairSpread * 0.5, frontHipX - strideX, footY - pairSpread - strideY);
+    leg(rearHipX, legTopY - pairSpread * 0.5, rearHipX + strideX, footY - pairSpread + strideY);
+    leg(frontHipX, legTopY + pairSpread * 0.5, frontHipX + strideX, footY + pairSpread + strideY);
+    leg(rearHipX, legTopY + pairSpread * 0.5, rearHipX - strideX, footY + pairSpread - strideY);
+
+    // Head anchors are computed up here because the NECK draws under the
+    // fleece, for the same reason the legs do: run it over the wool and a
+    // raised head drags a dark blade across the barrel. Under it, only the
+    // stretch between the skull and the wool line shows, which is all of a
+    // sheep's neck you ever actually see.
+    //
+    // The head goes up AND forward with `alert` — the barrel is long, so a
+    // head that only rises ends up sitting in the fleece like a mask on the
+    // shoulder. Lifting it to the front edge keeps it clear, with neck between.
+    const headX = bodyCx + (7 + 3.2 * alert) * u * side;
+    const headY = ((6.6 - 0.4 * side) - 12.5 * alert) * u;
+    // the face hides from behind only while the head is down and tucked past
+    // the fleece; a raised head stays visible over the rump
+    const headAlpha = 1 - rear * (0.94 - 0.5 * alert);
+    // in profile the far ear is behind the skull and should not read at all;
+    // the pair only splits apart as the sheep squares up to you or away
+    const earSpread = (0.7 + 3.4 * (1 - side)) * u;
+    const farEar = Math.min(1, (1 - side) * 2.2);
+
+    // neck, under the fleece: rooted at the withers and widening into the
+    // shoulder rather than tapering to a point, so what emerges reads as a
+    // neck rather than a spike
+    const neckTop = -0.30 - 0.16 * alert, neckBot = 0.34 - 0.20 * alert;
+    ctx.globalAlpha = headAlpha;
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.moveTo(bodyCx + bodyRx * 0.34, bodyCy + bodyRy * neckTop);
+    ctx.lineTo(headX - 0.6 * u, headY - 2.6 * u);
+    ctx.lineTo(headX - 3.2 * u, headY + 1.6 * u);
+    ctx.lineTo(bodyCx + bodyRx * 0.1, bodyCy + bodyRy * neckBot);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
 
     // wool barrel: darker rim behind, lit fleece in front — the rim offset
     // fades out approaching head/tail-on so a round cloud stays round
@@ -3355,37 +3394,6 @@
     // the UI it looked like a rendering fault. The rear view is carried by
     // the tail breaking the outline and the hind legs beneath it.
 
-    // head: a distinct dark wedge, sliding back to body-centre as side -> 0.
-    // `alert` carries it between grazing and looking up: down at the grass
-    // when settled, up level with the shoulder when something has its
-    // attention. It also draws back slightly as it rises — a sheep lifting
-    // its head pulls it in over the shoulders, it doesn't just pivot up.
-    // up AND forward: the barrel is long, so a head that only rises ends up
-    // sitting inside the fleece like a mask on the shoulder. Lifting it to
-    // the front edge keeps it clear of the wool with a neck between.
-    const headX = bodyCx + (7 + 3.2 * alert) * u * side;
-    const headY = ((6.6 - 0.4 * side) - 12.5 * alert) * u;
-    // face hides from behind only while the head is down and tucked past the
-    // fleece; a raised head stays visible over the rump
-    const headAlpha = 1 - rear * (0.94 - 0.5 * alert);
-    const earSpread = (2.2 + 2 * (1 - side)) * u;
-
-    // the neck wedge keeps the head attached to the barrel in profile, but it
-    // fades with the head rather than staying opaque: from directly behind
-    // there is no neck to see, and leaving it lit drew a dark blade under the
-    // fleece that read as a stray shape rather than as part of the animal
-    ctx.globalAlpha = headAlpha;
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    // the neck roots higher up the shoulder as the head rises — a lifted
-    // head is carried on a neck out of the withers, not out of the brisket
-    const neckTop = 0.62 - 0.52 * alert, neckBot = 0.82 - 0.34 * alert;
-    ctx.moveTo(bodyCx + bodyRx * 0.5, bodyCy + bodyRy * neckTop);
-    ctx.lineTo(headX - 1 * u, headY - 2 * u);
-    ctx.lineTo(headX - 3.4 * u, headY + 1 * u);
-    ctx.lineTo(bodyCx + bodyRx * 0.12, bodyCy + bodyRy * neckBot);
-    ctx.closePath();
-    ctx.fill();
 
     // far horn — curling behind the skull. Horns stay bold from every
     // heading (only a slight rear fade) so the ram reads from behind too
@@ -3401,12 +3409,12 @@
       ctx.globalAlpha = 1;
     }
 
-    ctx.globalAlpha = headAlpha;
-    // far ear, behind the head
+    ctx.globalAlpha = headAlpha * farEar;
     ctx.fillStyle = skin;
     ctx.beginPath();
     ctx.ellipse(headX - 2.6 * u, headY - earSpread, 3 * u, 1.3 * u, -0.5, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = headAlpha;
 
     // head + muzzle
     ctx.fillStyle = skin;
@@ -3456,10 +3464,6 @@
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
-
-    // near pair last, drawn over the body
-    leg(frontHipX, hipY + pairSpread * 0.5, frontHipX + strideX, footY + pairSpread + strideY);
-    leg(rearHipX, hipY + pairSpread * 0.5, rearHipX - strideX, footY + pairSpread - strideY);
 
     ctx.restore();
   }
@@ -3528,7 +3532,9 @@
     const fHipX = lerp(0, 4.6 + 1.0 * g, side) * u;
     const rHipX = -lerp(0, 5.2 + 1.4 * g, side) * u;
     const splay = (1 - side) * 1.45 * u;
-    const hipY = bellyY - 1.2 * u;
+    // shoulders and hips ride up inside the ribcage rather than sitting on
+    // the belly line, so the legs read as emerging from under the dog
+    const hipY = bellyY - 3.1 * u;
     const legW = (2.5 + 0.3 * side) * u;
     const ph = Math.sin(bob * 2);
     const strideAmt = (1.4 + 4.0 * g) * u * side;
@@ -3570,18 +3576,23 @@
     // wag rotates from vertical (profile) to side-to-side (rear) so a dog
     // running away still shows a moving tail
     const wag = Math.sin(bob * 1.6) * (1 + 1.5 * g) * u;
-    // seen from behind the tail points at the horizon, so it forfeits its
-    // sideways reach; instead the base slides to the centre of the rump and
-    // the whole thing droops until the tip clears the body's lower edge —
-    // otherwise a dog running dead away loses its tail behind itself and
-    // reads as a rabbit
+    // The root stays put on the croup at every heading. Sliding it down the
+    // rump as the dog turned away made the tail look unhitched — it read as
+    // dropping off the animal rather than as a tail seen end-on. Turning
+    // away it keeps its anchor and only loses sideways reach, with just
+    // enough extra droop for the tip to clear the body's lower edge so a dog
+    // running dead away doesn't read as a rabbit.
     const tBx = -Lr * 0.95 * side;
-    const tBy = croupY + 1.0 * u + rear * (bellyY - croupY) * lerp(0.15, 0.55, g);
+    const tBy = croupY + 1.0 * u;
     const reach = lerp(3.2, 8.0, g) * u * lerp(0.4, 1, side);
-    const droop = (lerp(6.2, 1.0, g) + (1 - side) * 1.2 + rear * (1 - side) * lerp(1.5, 5.5, g)) * u;
+    const droop = (lerp(6.2, 1.0, g) + (1 - side) * 1.2 + rear * (1 - side) * lerp(0.4, 1.6, g)) * u;
     const tTx = tBx - reach + wag * (1 - side) * 0.9;
     const tTy = tBy + droop + wag * side;
-    const tCx = tBx - reach * 0.55, tCy = tBy + lerp(2.2, 1.8, g) * u;
+    // the control point swings OPPOSITE the tip, so the tail bends into an S
+    // through the wag instead of swinging rigidly from the root like a stick
+    const bend = -wag * 0.55;
+    const tCx = tBx - reach * 0.55 + bend * (1 - side) * 0.9;
+    const tCy = tBy + lerp(2.2, 1.8, g) * u + bend * side;
     // the white is a flash on the last stretch of the tail, not half of it
     const TIP = 0.76, IT = 1 - TIP;
     const spX = IT * IT * tBx + 2 * IT * TIP * tCx + TIP * TIP * tTx;
