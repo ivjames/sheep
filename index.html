@@ -476,12 +476,22 @@
   // ...but the arc floor alone still chatters: on a fast orbit dAng swings
   // back across the (now-tiny) turn threshold within a tick or two of the
   // last flip, so a bout that should read as one wide carry-and-return
-  // instead reads as a stutter of one-tick comes-by and aways. WEAR_LEG_MIN
-  // is a floor under the SIDE rather than the angle — once the dog turns,
-  // it holds that side at least this long before the arc test is allowed
-  // to flip it again, so a fast orbit still gets a real carry each way
-  // instead of dithering on the line the arc test alone was meant to avoid.
-  const WEAR_LEG_MIN = 1.8;
+  // instead reads as a stutter of one-tick comes-by and aways. WEAR_LEG_ARC
+  // is a floor under the SIDE rather than the moment-to-moment arc test —
+  // once the dog turns, it must sweep at least this much of the circle
+  // before the arc test is allowed to flip it again, so a fast orbit still
+  // gets a real carry each way instead of dithering on the line the arc
+  // test alone was meant to avoid. It's cast as an ANGLE, not a time:
+  // angular speed round the flock is pace/(r+85), so a floor held in
+  // SECONDS asks more of the circle from a tight little group than from a
+  // wide mob — sized for a big flock's pace it was a modest corner, but on
+  // a tight pair or trio the same seconds could carry the dog most of the
+  // way around them (that was the bug: a "come by" reading as a full
+  // loop). A floor held in RADIANS asks the same real turn on the ground
+  // no matter how tight the circle is, so the time actually spent on a
+  // leg falls out proportional to the size of the group being worked —
+  // the way a handler's own sense of "a real carry" would.
+  const WEAR_LEG_ARC = 0.9;
   // the autopilot re-decides on this beat, and once it commits to a group
   // it stays on it (or what's left of it) at least this long — an unhurried
   // handler who lets each phase play out rather than flip-flopping
@@ -916,7 +926,7 @@
     demoStallT: 0, // how long the funnel has been left to drain
     wearSide: 0,   // autopilot wear sweep: +1 away-side, -1 come-by side, 0 not wearing
     wearT: 0,      // seconds into a wear bout; negative = driving before the next one
-    wearLegT: 0,   // seconds since the current side was last set — see WEAR_LEG_MIN
+    wearLegArc: 0, // radians swept on the current side since it was last set — see WEAR_LEG_ARC
     stallT: 0,     // seconds the drive has been stopped with sheep still out
     workHold: 0,   // seconds left on the dog's commitment to its picked group
     autoWaitT: 0,  // autopilot's pause on an interstitial before it plays on
@@ -2866,9 +2876,9 @@
         // rather than dithering on the line.
         const step = paceSpeed(state.pace) / (flock.r + 85) * AUTO_TICK;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
-        state.wearLegT += AUTO_TICK;
-        if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; state.stallT = 0; state.wearLegT = 0; }
-        else if (dAng * state.wearSide > turn && state.wearLegT >= WEAR_LEG_MIN) { state.wearSide = -state.wearSide; state.wearLegT = 0; }
+        state.wearLegArc += step;
+        if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; state.stallT = 0; state.wearLegArc = 0; }
+        else if (dAng * state.wearSide > turn && state.wearLegArc >= WEAR_LEG_ARC) { state.wearSide = -state.wearSide; state.wearLegArc = 0; }
         d.cmd = state.wearSide > 0 ? 'aw' : 'cb';
         state.pace = Math.max(state.pace, PACE_START);
         return;
