@@ -69,6 +69,32 @@
     white-space: nowrap;
   }
   #hud-spacer { flex: 1; }
+  /* stamina meter: a slim bar that empties as the dog spends its wind */
+  #stam-bar {
+    display: block;
+    width: 46px;
+    height: 7px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.28);
+    overflow: hidden;
+  }
+  #stam-fill {
+    display: block;
+    height: 100%;
+    width: 100%;
+    border-radius: 999px;
+    background: #7ede6f;
+    transition: width 0.12s linear, background-color 0.3s;
+  }
+  #stam-chip.stam-low #stam-fill { background: var(--gold); }
+  /* blown: the bar goes red and the chip breathes, so a capped top speed
+     never reads as the controls having gone vague */
+  #stam-chip.stam-blown #stam-fill { background: #ff6b5e; }
+  #stam-chip.stam-blown { animation: stam-pant 0.9s ease-in-out infinite; }
+  @keyframes stam-pant {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.62; }
+  }
   /* the flock-overlay chip lights gold while its viz is up */
   #viz-btn.viz-on { background: var(--gold); color: var(--plum); }
   /* phones: keep everything on ONE row — stat chips go compact, the
@@ -88,6 +114,7 @@
   /* the narrowest phones: the dev fps meter gives up its seat */
   @media (max-width: 420px) {
     #fps-chip { display: none; }
+    #stam-bar { width: 34px; }
   }
   @media (max-width: 350px) {
     #hud { gap: 4px; }
@@ -105,7 +132,7 @@
     35% { transform: scale(1.25); }
     100% { transform: scale(1); }
   }
-  #level-chip, #auto-btn, #mode-btn, #cam-btn, #viz-btn, #speed-btn, #mute-btn {
+  #level-chip, #kennel-btn, #auto-btn, #mode-btn, #cam-btn, #viz-btn, #speed-btn, #mute-btn {
     pointer-events: auto;
     cursor: pointer;
     border: 0;
@@ -144,6 +171,66 @@
     font-variant-numeric: tabular-nums;
   }
   #level-picker button:hover { background: var(--gold); color: var(--plum); }
+  /* the kennel: dog attribute sliders, hung under its own HUD chip */
+  #kennel {
+    position: fixed;
+    top: 52px;
+    right: 14px;
+    z-index: 45;
+    width: min(330px, calc(100vw - 28px));
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
+    padding: 14px 16px 12px;
+    background: var(--plum);
+    border-radius: 18px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    pointer-events: auto;
+    color: var(--cream);
+    font-family: var(--display);
+  }
+  #kennel h3 { margin: 0 0 4px; font-size: 17px; letter-spacing: 0.02em; }
+  .kennel-note { margin: 0 0 12px; font-size: 12px; line-height: 1.4; opacity: 0.72; }
+  .kennel-row { margin-bottom: 13px; }
+  .kennel-head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .kennel-head .kennel-val {
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+    color: var(--gold);
+    font-size: 13px;
+  }
+  .kennel-row input[type=range] {
+    width: 100%;
+    margin: 5px 0 2px;
+    accent-color: var(--gold);
+    cursor: pointer;
+  }
+  .kennel-blurb { font-size: 11.5px; line-height: 1.35; opacity: 0.66; }
+  .kennel-foot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-top: 4px;
+    font-size: 11.5px;
+    opacity: 0.7;
+  }
+  .kennel-foot button {
+    font-family: var(--display);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--cream);
+    background: rgba(255, 246, 232, 0.12);
+    border: 0;
+    border-radius: 999px;
+    padding: 6px 12px;
+    cursor: pointer;
+  }
+  .kennel-foot button:hover { background: var(--gold); color: var(--plum); }
   /* ---------- Command buttons ---------- */
   /* a compact 3-column pad, bottom-center — a clean 3x2, no full-width span:
        COME BY   LIE DOWN  AWAY
@@ -386,13 +473,28 @@
   <div class="hud-chip">⏱ <span id="time-chip" style="font-variant-numeric:tabular-nums">0:00</span></div>
   <!-- dev: frame-rate meter, color-coded by budget -->
   <div class="hud-chip" id="fps-chip"><span id="fps-dot">●</span><span class="wide-only"> <span id="fps-val" style="font-variant-numeric:tabular-nums">--</span> fps</span></div>
+  <!-- the dog's wind: drains on a sprint, fills back at a walk -->
+  <div class="hud-chip" id="stam-chip" aria-label="Dog stamina" title="Stamina — the dog's wind"><span id="stam-face">🐕</span><span id="stam-bar"><i id="stam-fill"></i></span></div>
   <div id="hud-spacer"></div>
+  <button class="hud-chip" id="kennel-btn" aria-label="Dog attributes">🦴<span class="wide-only"> kennel</span></button>
   <button class="hud-chip" id="auto-btn" aria-label="Toggle autopilot">🐕<span class="wide-only"> auto</span></button>
   <button class="hud-chip" id="mode-btn" aria-label="Switch input mode">🎯<span class="wide-only"> guide</span></button>
   <button class="hud-chip" id="cam-btn" aria-label="Switch camera angle">🎥<span class="wide-only"> <span id="cam-name">hillside</span></span></button>
   <button class="hud-chip" id="viz-btn" aria-label="Toggle flock overlay">🗺️<span class="wide-only"> overlay</span></button>
   <button class="hud-chip" id="speed-btn" aria-label="Cycle game speed">⏩<span class="wide-only"> 1x</span></button>
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
+</div>
+
+<!-- the dog's attribute sheet: four knobs the training mechanic will move -->
+<div id="kennel" class="hidden">
+  <h3>🦴 Kennel</h3>
+  <p class="kennel-note">What this dog is made of. Baseline is the dog the game shipped with — slide either way to feel the difference.</p>
+  <div id="kennel-rows"></div>
+  <div class="kennel-foot">
+    <button id="kennel-reset">Reset to baseline</button>
+    <button id="kennel-share">Copy dog link</button>
+  </div>
+  <p class="kennel-note" style="margin:10px 0 0">Ratings persist, and ride in the URL: <code>?dog-speed=0.9&amp;dog-stamina=0.2</code>.</p>
 </div>
 
 <!-- dev shortcut: jump between levels for stress-testing -->
@@ -463,6 +565,53 @@
   const BUILD = 'dev';
   const HEDGE = 26;               // world border thickness
   const FIELD_AREA = 1650000;     // world w*h — sized to viewport aspect per level
+  // ---------- dog attributes ----------
+  // The dog is not a fixed animal. Four ratings describe what THIS dog is
+  // made of, and each one drives one concrete lever in the sim, so a dog
+  // can be grown over a career instead of playing the same on level 1 and
+  // level 100. They're the knobs a training mechanic moves; nothing here
+  // decides HOW they're earned — that's a separate question, and keeping
+  // the two apart means the progression can be redesigned without
+  // re-tuning the dog.
+  //
+  // Every rating runs 0..1 and 0.5 is the tuned BASELINE: statK maps the
+  // two halves separately so a rating of exactly 0.5 yields exactly 1.0,
+  // and a baseline dog therefore plays bit-for-bit the game that shipped.
+  // `lo`/`hi` are the multipliers at the ends of the range.
+  const DOG_ATTR = {
+    presence: {
+      icon: '🎯', label: 'Presence', lo: 0.70, hi: 1.35,
+      blurb: 'How far the dog\u2019s authority reaches. Scales every radius it works through \u2014 flee, notice and bark \u2014 so a big-presence dog moves the flock from further out and stands further off it.',
+    },
+    speed: {
+      icon: '\u26a1', label: 'Speed', lo: 0.76, hi: 1.24,
+      blurb: 'Top speed and acceleration, in both drive modes and at every notch of pace. A quick dog gets round a flank before the mob rolls; a slow one has to read the line earlier.',
+    },
+    stamina: {
+      icon: '\U0001fac1', label: 'Stamina', lo: 0.5, hi: 2.0,
+      blurb: 'How long it can hold a sprint, and how fast it gets its wind back. Only real running spends it. Run the pool dry and the dog is blown: its top speed is capped until it has breathed.',
+    },
+    patience: {
+      icon: '\U0001f9d8', label: 'Patience', lo: 0.55, hi: 1.8,
+      blurb: 'How long it will hold a decision. Sticks with a group, sees a wear sweep out, waits out a jam at the gate mouth, and needs a committed charge before it barks. An impatient dog reacts sooner but flits.',
+    },
+  };
+  const DOG_KEYS = Object.keys(DOG_ATTR);
+  const DOG_KEY = 'comeby-dog';
+  const DOG_PARAM = 'dog-'; // URL prefix — bare ?speed= is the sim-speed toggle
+  // stamina, in the concrete: the pool is measured in SECONDS of flat-out
+  // running at the baseline rating. Only the top of the speed range costs
+  // anything — a working trot is free, and the cost curves in (squared) so
+  // it's a sprint that tires the dog, not the ordinary business of a level.
+  // Sized so a baseline dog can hold a sprint far longer than any single
+  // run at the flock takes: the mechanic is a ceiling on flat-out running,
+  // not a clock ticking through every level.
+  const STAM_POOL = 22;           // seconds of sprint from full
+  const STAM_REGEN = 0.11;        // pool fractions per second, resting
+  const STAM_EASY = 0.55;         // fraction of top speed that costs nothing
+  const STAM_BARK = 0.05;         // a bark is a burst of effort of its own
+  const STAM_BLOWN = 0.62;        // top speed while blown...
+  const STAM_WIND = 0.30;         // ...until the pool has climbed back to here
   const DOG_SPEED = 345;          // direct-drive top speed
   const DOG_ACCEL = 2400, DOG_DRAG = 6;
   const CMD_SPEED = 340;          // command-mode speed at full pace
@@ -474,8 +623,12 @@
   // ~52px/s instead of a near-freeze. Only LIE DOWN (pace 0) is a halt.
   const PACE_CURVE = 1.6;
   const PACE_FLOOR = 0.13;        // fraction of full speed the slowest creep keeps
+  // ...and the whole curve is scaled by the dog itself (see dogSpeedK) —
+  // its speed rating and whatever wind it has left — so every reader of
+  // "how fast is the dog at this pace", the autopilot's stall test
+  // included, agrees about what this particular animal can do
   const paceSpeed = (p) => p <= 0 ? 0 :
-    CMD_SPEED * (PACE_FLOOR + (1 - PACE_FLOOR) * Math.pow(p, PACE_CURVE));
+    CMD_SPEED * dogSpeedK() * (PACE_FLOOR + (1 - PACE_FLOOR) * Math.pow(p, PACE_CURVE));
   const SHEEP_R = 12, DOG_R = 13;
   const FLEE_RANGE = 235;         // how far the most timid sheep feels the dog
   const FLEE_RANGE_DEFIANT = 150; // ...and the boldest make you get close
@@ -941,7 +1094,12 @@
     auto: false,   // in-game autopilot: the dog works the flock itself
     level: 1,
     world: { w: 1600, h: 1000 },
-    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, casting: 0, castSide: 0, stallT: 0, driveT: 0, barkCd: 0 },
+    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, casting: 0, castSide: 0, stallT: 0, driveT: 0, barkCd: 0,
+           // wind: `stam` is the pool (1 full → 0 empty), `blown` latches
+           // when it runs out and clears once STAM_WIND is back, and
+           // `windK` is the speed cap it costs — eased, not switched, so
+           // the dog runs out of puff instead of hitting a wall
+           stam: 1, blown: false, windK: 1 },
     pace: PACE_START, // command-mode speed gradient, 0 (halt) → 1 (flat out)
     handler: { x: 800, y: 560 },
     sheep: [],
@@ -969,6 +1127,55 @@
     groupViz: false,  // overlay chip / F key: group bounds + density heat + centroids
     bakePending: false, // a land bake is chunking across frames — see startBake()
   };
+
+  // ---------- dog attributes: ratings, derived levers ----------
+  // ratings live here; dogK holds what the sim actually reads, recomputed
+  // only when a rating changes so the hot loops just read a number
+  const dogStats = { presence: 0.5, speed: 0.5, stamina: 0.5, patience: 0.5 };
+  const dogK = { presence: 1, speed: 1, stamina: 1, patience: 1, tick: 1, barkGate: 1 };
+  // 0 → lo, 0.5 → exactly 1, 1 → hi
+  function statK(a, r) {
+    return r <= 0.5 ? a.lo + (1 - a.lo) * (r * 2) : 1 + (a.hi - 1) * ((r - 0.5) * 2);
+  }
+  function applyDogStats() {
+    for (const k of DOG_KEYS) dogK[k] = statK(DOG_ATTR[k], dogStats[k]);
+    // the autopilot's decision beat takes a gentler share of patience than
+    // the holds do: stretched the full way, a patient dog re-reads the
+    // field so rarely that it stops tracking a moving flock at all
+    dogK.tick = 1 + (dogK.patience - 1) * 0.45;
+    // ...and the charge a bark needs is a narrower band still — patience
+    // here is only the difference between a dog that yaps whenever it
+    // happens to pass a sheep and one that means it
+    dogK.barkGate = 1 + (dogK.patience - 1) * 0.3;
+  }
+  // top speed, after the dog's own legs AND whatever wind it has left
+  function dogSpeedK() { return dogK.speed * state.dog.windK; }
+  function setDogStat(name, r) {
+    if (!DOG_ATTR[name]) return;
+    dogStats[name] = clamp(r, 0, 1);
+    applyDogStats();
+    saveDogStats();
+  }
+  function saveDogStats() {
+    try { localStorage.setItem(DOG_KEY, JSON.stringify(dogStats)); }
+    catch (err) { /* storage walled off — the ratings just don't persist */ }
+  }
+  {
+    try {
+      const raw = JSON.parse(localStorage.getItem(DOG_KEY) || 'null');
+      if (raw) for (const k of DOG_KEYS) {
+        if (Number.isFinite(raw[k])) dogStats[k] = clamp(raw[k], 0, 1);
+      }
+    } catch (err) { /* storage walled off or garbage stored — stay baseline */ }
+    // ...and the URL wins over the stored sheet, so a tuning session or a
+    // bug report can pin an exact dog: ?dog-presence=0.9&dog-stamina=0.2.
+    // Prefixed because bare ?speed= is already the sim-speed toggle.
+    for (const k of DOG_KEYS) {
+      const q = parseFloat(urlParams.get(DOG_PARAM + k));
+      if (Number.isFinite(q)) dogStats[k] = clamp(q, 0, 1);
+    }
+    applyDogStats();
+  }
 
   // ---------- hillside ----------
   // The pasture is simulated flat but DRAWN draped over a rolling hillside.
@@ -1826,6 +2033,7 @@
     state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
+    state.dog.stam = 1; state.dog.blown = false; state.dog.windK = 1; // a level starts fresh
     state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
     state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.workHold = 0;
     state.pace = PACE_START;
@@ -2203,8 +2411,13 @@
     const d = state.dog;
     if (d.barkCd > 0) return;
     d.barkCd = BARK_COOLDOWN;
+    // a bark is thrown from the chest — it costs wind, which is what keeps
+    // a low-stamina dog from simply barking its way round a level
+    d.stam = clamp(d.stam - STAM_BARK / dogK.stamina, 0, 1);
     state.barksUsed++;
-    state.barks.push({ x: d.x, y: d.y, t: 0 });
+    // the pulse carries the radius it was thrown at, so a bark already in
+    // flight keeps its own reach even if the dog's presence changes under it
+    state.barks.push({ x: d.x, y: d.y, t: 0, r: BARK_RANGE * dogK.presence });
     sfx.bark();
     state.floaties.push({ x: d.x + d.facing * -26, y: d.y - 26, vy: -60, t: 0, life: 0.7, d: 'spark', s: 20 });
   }
@@ -2306,7 +2519,7 @@
         for (const c of clusters) {
           if (!pick || dist2(c.cx, c.cy, P.gx, P.gy) > dist2(pick.cx, pick.cy, P.gx, P.gy)) pick = c;
         }
-        state.workHold = WORK_HOLD;
+        state.workHold = WORK_HOLD * dogK.patience;
       }
     } else {
       pick = clusters[0];
@@ -2319,6 +2532,10 @@
   function updateDog(dt) {
     const d = state.dog;
     d.barkCd = Math.max(0, d.barkCd - dt);
+    // this dog's legs, this dog's remaining wind — read once, so the
+    // guide's rubber band, the top-speed clamp and the stamina cost below
+    // are all measured against the same number
+    const sk = dogSpeedK(), top = DOG_SPEED * sk;
     let desx = 0, desy = 0, sweep = 0;
     if (state.input === 'drag' && !state.demo && !state.auto) {
       let ix = 0, iy = 0;
@@ -2332,8 +2549,8 @@
         // keys / stick direct-drive, and take over from the guide
         guide.has = false;
         if (ilen > 1) { ix /= ilen; iy /= ilen; }
-        d.vx += ix * DOG_ACCEL * dt;
-        d.vy += iy * DOG_ACCEL * dt;
+        d.vx += ix * DOG_ACCEL * sk * dt;
+        d.vy += iy * DOG_ACCEL * sk * dt;
         d.vx -= d.vx * DOG_DRAG * dt;
         d.vy -= d.vy * DOG_DRAG * dt;
       } else if (guide.has) {
@@ -2342,7 +2559,7 @@
         const tx = guide.x - d.x, ty = guide.y - d.y;
         const td = Math.hypot(tx, ty);
         if (td < 8 && guide.id === null) guide.has = false; // got there
-        const sp = Math.min(DOG_SPEED, td * 3.4);
+        const sp = Math.min(top, td * 3.4);
         d.vx += ((td > 0.01 ? tx / td * sp : 0) - d.vx) * 9 * dt;
         d.vy += ((td > 0.01 ? ty / td * sp : 0) - d.vy) * 9 * dt;
       } else {
@@ -2350,7 +2567,7 @@
         d.vy -= d.vy * DOG_DRAG * dt;
       }
       const spd = Math.hypot(d.vx, d.vy);
-      if (spd > DOG_SPEED) { d.vx *= DOG_SPEED / spd; d.vy *= DOG_SPEED / spd; }
+      if (spd > top) { d.vx *= top / spd; d.vy *= top / spd; }
     } else {
       // command mode: the dog works the flock on its own
       const pace = paceSpeed(state.pace);
@@ -2409,7 +2626,10 @@
           for (const s of flock.members) {
             near = Math.min(near, hyp(s.x - d.x, s.y - d.y));
           }
-          const pressFrac = clamp(Math.min(near - 115, rr - (hold + 20)) / 60, -0.4, 1);
+          // the contact ring is a slice of the dog's own reach, not a fixed
+          // 115px: a wide-presence dog that closed to the old distance would
+          // already have every sheep in front of it running
+          const pressFrac = clamp(Math.min(near - 115 * dogK.presence, rr - (hold + 20)) / 60, -0.4, 1);
           let vx = ux * (along - pressFrac * pace), vy = uy * (along - pressFrac * pace);
           const vlen = Math.hypot(vx, vy);
           const floor = pace * 0.12; // nudge gate-ward, never fully freeze
@@ -2433,7 +2653,7 @@
             else d.driveT = 0;
             const still = Math.hypot(d.vx, d.vy) < pace * CAST_STILL;
             d.stallT = (still && along > -8) ? (d.stallT || 0) + dt : 0;
-            if (!d.casting && d.stallT > CAST_WAIT) d.casting = 1;
+            if (!d.casting && d.stallT > CAST_WAIT * dogK.patience) d.casting = 1;
             else if (d.casting && d.driveT > CAST_DONE) { d.casting = 0; d.castSide = 0; }
             if (d.casting) {
               if (!d.castSide) d.castSide = dAng >= 0 ? 1 : -1;
@@ -2555,19 +2775,46 @@
     // a stalled drive rather than leaving the dog to reverse on the spot
     if (dspd > 8) d.dir = turnToward(d.dir, Math.atan2(d.vy, d.vx), (4 + 7 * d.gait) * dt);
     d.bob += dt * (3 + 9 * d.gait);
-    // charging bark: rush straight at a sheep and the dog lets one off
-    if (d.barkCd <= 0 && dspd > BARK_CHARGE_SPEED) {
+    // charging bark: rush straight at a sheep and the dog lets one off.
+    // The speed it takes is a fraction of THIS dog's top speed, not a flat
+    // number — pinned flat, a slow dog could never bark at all and a fast
+    // one barked at a canter. How straight the charge has to be is the
+    // patience rating's business: a patient dog wants to mean it.
+    if (d.barkCd <= 0 && dspd > BARK_CHARGE_SPEED * sk) {
       for (const s of state.sheep) {
         if (s.penned) continue;
         const dx = s.x - d.x, dy = s.y - d.y;
         const dd = Math.hypot(dx, dy);
         if (dd < BARK_CHARGE_RANGE && dd > 0.01 &&
-            (d.vx * dx + d.vy * dy) / (dspd * dd) > 0.55) {
+            (d.vx * dx + d.vy * dy) / (dspd * dd) > clamp(0.55 * dogK.barkGate, 0.3, 0.9)) {
           tryBark();
           break;
         }
       }
     }
+    updateWind(d, dspd, top, dt);
+  }
+
+  // The dog's wind. Effort is what it is doing ABOVE an easy working pace,
+  // squared so the cost is concentrated at the sprinting end: a drive, a
+  // creep and a steady flank are all free, and it is holding flat out that
+  // spends the pool. Empty and the dog is blown — top speed capped until it
+  // has breathed STAM_WIND back — and the cap eases in and out rather than
+  // switching, so a dog running out of puff slows like one.
+  //
+  // Deliberately NOT applied while the level clock is stopped: the pre-level
+  // graze and the title demo would otherwise blow a dog nobody was driving.
+  function updateWind(d, spd, top, dt) {
+    if (state.mode !== 'playing') { d.stam = 1; d.blown = false; d.windK = 1; return; }
+    const over = top > 1 ? (spd / top - STAM_EASY) / (1 - STAM_EASY) : 0;
+    const effort = clamp(over, 0, 1) ** 2;
+    if (effort > 0) d.stam -= effort * dt / (STAM_POOL * dogK.stamina);
+    else d.stam += STAM_REGEN * dogK.stamina * (0.55 + 0.45 * (1 - clamp(spd / (top || 1), 0, 1))) * dt;
+    d.stam = clamp(d.stam, 0, 1);
+    if (d.stam <= 0) d.blown = true;
+    else if (d.blown && d.stam >= STAM_WIND) d.blown = false;
+    const want = d.blown ? STAM_BLOWN : 1;
+    d.windK += (want - d.windK) * Math.min(1, 2.5 * dt);
   }
 
   // ---------- flocking helpers ----------
@@ -2753,7 +3000,7 @@
       // a worked flock look worked rather than merely pushed around.
       {
         const spd = Math.hypot(s.vx, s.vy);
-        const NOTICE = FLEE_RANGE + 120; // they clock the dog well before they flee
+        const NOTICE = FLEE_RANGE * dogK.presence + 120; // they clock the dog well before they flee
         const dogD = Math.hypot(d.x - s.x, d.y - s.y);
         let want = spd > 12 ? 1 : 0;     // you cannot graze and travel at once
         want = Math.max(want, Math.min(1, s.panic * 1.6));
@@ -2905,7 +3152,11 @@
       // fear of the dog is a gradient: the timid end feels it from far
       // out and bolts; the bold end makes you get close and barely budges
       if (!grazing) {
-        const range = FLEE_RANGE - (FLEE_RANGE - FLEE_RANGE_DEFIANT) * s.bold;
+        // ...and the whole gradient is scaled by the DOG's presence: the
+        // sheep's temperament sets where it sits between timid and bold,
+        // the dog sets how far that reaches on the ground
+        const range = (FLEE_RANGE - (FLEE_RANGE - FLEE_RANGE_DEFIANT) * s.bold) * dogK.presence;
+        const aware = DOG_AWARE * dogK.presence;
         // sheep track where the dog actually IS. It used to project
         // the dog ~0.3s along its line of travel, but that phantom sat
         // up to 100px ahead of the real dog at a sprint — with panic
@@ -2945,10 +3196,10 @@
             fx += (ddx / dd) * k * 520 * mult;
             fy += (ddy / dd) * k * 520 * mult;
           }
-        } else if (!s.planted && dd < DOG_AWARE && dd > 0.01) {
+        } else if (!s.planted && dd < aware && dd > 0.01) {
           // noticed but not pressed yet: lift the head, edge away, bunch
           // up — the bolder the sheep, the less it bothers
-          const k = (1 - (dd - range) / (DOG_AWARE - range)) * (1 - s.bold);
+          const k = (1 - (dd - range) / (aware - range)) * (1 - s.bold);
           fx += (ddx / dd) * k * 70;
           fy += (ddy / dd) * k * 70;
           s.panic = Math.max(s.panic, k * 0.4);
@@ -2958,8 +3209,8 @@
       for (const b of state.barks) {
         const bdx = s.x - b.x, bdy = s.y - b.y;
         const bd = hyp(bdx, bdy);
-        if (bd < BARK_RANGE && bd > 0.01 && b.t < BARK_LIFE) {
-          const k = (1 - b.t / BARK_LIFE) * (1 - bd / BARK_RANGE);
+        if (bd < b.r && bd > 0.01 && b.t < BARK_LIFE) {
+          const k = (1 - b.t / BARK_LIFE) * (1 - bd / b.r);
           if (s.planted) unplant(s, bdx / bd, bdy / bd);
           fx += (bdx / bd) * k * 1500;
           fy += (bdy / bd) * k * 1500;
@@ -3157,7 +3408,11 @@
   function autopilot(dt) {
     state.demoT -= dt;
     if (state.demoT > 0) return;
-    state.demoT = AUTO_TICK;
+    // one beat, read once: `tick` is both the interval to the next decision
+    // and the step every timer below advances by, so stretching it for a
+    // patient dog can't leave the two disagreeing about how much time passed
+    const tick = AUTO_TICK * dogK.tick;
+    state.demoT = tick;
     const d = state.dog;
     const P = state.pen;
     let n = 0, panic = 0, planted = false;
@@ -3185,9 +3440,9 @@
       if (mouth >= flock.n * 0.7) {
         // most of the worked lot is in the funnel — stand off and let the
         // gate's own pull drain it; if it jams, walk back in gently
-        state.demoStallT += AUTO_TICK;
+        state.demoStallT += tick;
         state.wearSide = 0; state.wearT = 0;
-        if (state.demoStallT < 5) {
+        if (state.demoStallT < 5 * dogK.patience) {
           if (d.cmd !== 'lie') { d.cmd = 'lie'; state.pace = 0; }
         } else {
           d.cmd = 'walk';
@@ -3223,7 +3478,8 @@
       // creeping only matters once the dog is actually on the sheep
       let nearM = Infinity;
       for (const m of flock.members) nearM = Math.min(nearM, dist2(d.x, d.y, m.x, m.y));
-      if (nearM > 260 * 260) {
+      const reach = 260 * dogK.presence;
+      if (nearM > reach * reach) {
         state.wearSide = 0; state.wearT = Math.min(0, state.wearT);
         d.cmd = 'walk';
         state.pace = Math.max(state.pace, 0.8);
@@ -3252,12 +3508,12 @@
       // line, and then has to be flanked back onto balance — measured at
       // half the deliveries for a tighter, undelivered flock.
       state.stallT = Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
-        ? state.stallT + AUTO_TICK : 0;
-      const stalled = state.stallT >= STALL_HOLD;
-      state.wearT += AUTO_TICK;
-      if (state.wearSide && state.wearT > WEAR_BOUT) {
+        ? state.stallT + tick : 0;
+      const stalled = state.stallT >= STALL_HOLD * dogK.patience;
+      state.wearT += tick;
+      if (state.wearSide && state.wearT > WEAR_BOUT * dogK.patience) {
         state.wearSide = 0;
-        state.wearT = -WEAR_REST; // drive at least this long before the next bout
+        state.wearT = -WEAR_REST * dogK.patience; // drive at least this long before the next bout
       }
       // spread-or-stalled only decides whether to START a bout — once one is
       // under way it runs on its own account to WEAR_BOUT (that's the bound,
@@ -3293,7 +3549,7 @@
         // past: the arc gives way to the ground the dog is about to cover,
         // down to a floor that keeps a fast orbit sweeping a real width
         // rather than dithering on the line.
-        const step = paceSpeed(state.pace) / (flock.r + 85) * AUTO_TICK;
+        const step = paceSpeed(state.pace) / (flock.r + 85) * tick;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
         state.wearLegArc += step;
         if (!state.wearSide) { state.wearSide = dAng >= 0 ? -1 : 1; state.wearT = 0; state.stallT = 0; state.wearLegArc = 0; }
@@ -3374,6 +3630,16 @@
     if (tc !== lastTimeShown) {
       lastTimeShown = tc;
       timeChip.textContent = Math.floor(tc / 60) + ':' + String(tc % 60).padStart(2, '0');
+    }
+    // stamina moves every frame but the bar only needs whole percent, so
+    // quantize and dedupe — same trick as the clock, and it keeps a style
+    // write off the hot path when the dog is just trotting
+    const sq = Math.round(state.dog.stam * 100);
+    if (sq !== lastStamShown) {
+      lastStamShown = sq;
+      stamFill.style.width = sq + '%';
+      stamChip.classList.toggle('stam-low', sq < 35 && !state.dog.blown);
+      stamChip.classList.toggle('stam-blown', state.dog.blown);
     }
   }
 
@@ -4475,10 +4741,11 @@
     if (state.mode === 'playing') {
       const dg = state.dog, dk = camScale(dg.x, dg.y);
       const RING_N = 48; // drawn every frame — smooth without being wasteful
+      const R = FLEE_RANGE * dogK.presence; // the ring IS the presence rating, drawn
       ctx.beginPath();
       for (let i = 0; i <= RING_N; i++) {
         const a = Math.PI * 2 * i / RING_N;
-        const p = camPt(dg.x + Math.cos(a) * FLEE_RANGE, dg.y + Math.sin(a) * FLEE_RANGE);
+        const p = camPt(dg.x + Math.cos(a) * R, dg.y + Math.sin(a) * R);
         i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
       }
       ctx.closePath();
@@ -4495,7 +4762,7 @@
     for (const b of state.barks) {
       const k = b.t / 0.6;
       const bk = camScale(b.x, b.y);
-      const r = BARK_RANGE * (0.25 + 0.75 * k);
+      const r = b.r * (0.25 + 0.75 * k);
       const RING_N = 40; // a handful of these on screen at once — a touch leaner than the ring
       ctx.beginPath();
       for (let i = 0; i <= RING_N; i++) {
@@ -4574,6 +4841,10 @@
       drawDogTop(dg.x, dg.y - bounce + (lying ? 4 : 0), lying ? 30 : 34, dg.dir, dg.bob, g);
       if (lying && state.mode === 'playing') {
         drawDoodle('zzz', dg.x + 14, dg.y - 22 + Math.sin(t * 3) * 2, 13);
+      } else if (state.mode === 'playing' && dg.stam < 0.28) {
+        // running out of wind shows on the dog, not just on the HUD bar —
+        // the same sweat mark a panicking sheep wears
+        drawDoodle('sweat', dg.x + 15, dg.y - 24 - bounce + Math.sin(t * 7) * 2, 12);
       }
       ctx.restore();
     };
@@ -4783,7 +5054,9 @@
   const clearTitle = document.getElementById('clear-title');
   const clearTag = document.getElementById('clear-tag');
   const clearSeedEl = document.getElementById('clear-seed');
-  let lastTimeShown = -1;
+  let lastTimeShown = -1, lastStamShown = -1;
+  const stamChip = document.getElementById('stam-chip');
+  const stamFill = document.getElementById('stam-fill');
 
   // dev/enthusiast affordance: show the field's seed and let a tap copy a
   // shareable ?seed=&level= link for it via the clipboard
@@ -4927,10 +5200,79 @@
   }
   levelChip.addEventListener('click', () => {
     levelPicker.classList.toggle('hidden');
+    kennel.classList.add('hidden');
   });
   document.addEventListener('pointerdown', (e) => {
     if (levelPicker.contains(e.target) || levelChip.contains(e.target)) return;
     levelPicker.classList.add('hidden');
+  });
+
+  // ---------- the kennel ----------
+  // The attribute sheet, live: drag a slider and the sim reads the new
+  // value on the very next frame — no level restart, nothing cached. It's
+  // the bench the training mechanic will be tuned against, so it shows the
+  // raw multiplier each rating lands on next to the rating itself.
+  const kennel = document.getElementById('kennel');
+  const kennelBtn = document.getElementById('kennel-btn');
+  const kennelRows = document.getElementById('kennel-rows');
+  const kennelInputs = {};
+  const kennelVals = {};
+  for (const key of DOG_KEYS) {
+    const a = DOG_ATTR[key];
+    const row = document.createElement('div');
+    row.className = 'kennel-row';
+    row.innerHTML =
+      '<div class="kennel-head"><span>' + a.icon + '</span><span>' + a.label + '</span>' +
+      '<span class="kennel-val"></span></div>' +
+      '<input type="range" min="0" max="1" step="0.01" aria-label="' + a.label + '">' +
+      '<div class="kennel-blurb">' + a.blurb + '</div>';
+    const input = row.querySelector('input');
+    input.addEventListener('input', () => {
+      setDogStat(key, parseFloat(input.value));
+      paintKennel();
+    });
+    kennelInputs[key] = input;
+    kennelVals[key] = row.querySelector('.kennel-val');
+    kennelRows.appendChild(row);
+  }
+  function paintKennel() {
+    for (const key of DOG_KEYS) {
+      const r = dogStats[key];
+      kennelInputs[key].value = r;
+      // the rating as the training mechanic will count it, and beside it
+      // the multiplier the sim actually applies — 1.00× is the baseline
+      kennelVals[key].textContent =
+        Math.round(r * 100) + ' · ' + dogK[key].toFixed(2) + '\u00d7' +
+        (Math.abs(r - 0.5) < 0.005 ? ' base' : '');
+    }
+  }
+  paintKennel();
+  document.getElementById('kennel-reset').addEventListener('click', () => {
+    for (const key of DOG_KEYS) setDogStat(key, 0.5);
+    paintKennel();
+    toast('🦴 Back to the baseline dog');
+  });
+  // a shareable dog, the same way the seed chip shares a field
+  document.getElementById('kennel-share').addEventListener('click', () => {
+    const u = new URL(location.href);
+    for (const key of DOG_KEYS) u.searchParams.set(DOG_PARAM + key, dogStats[key].toFixed(2));
+    const url = u.toString();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url)
+        .then(() => toast('🔗 Dog link copied'))
+        .catch(() => toast('🔗 ' + url));
+    } else {
+      toast('🔗 ' + url);
+    }
+  });
+  kennelBtn.addEventListener('click', () => {
+    kennel.classList.toggle('hidden');
+    levelPicker.classList.add('hidden');
+    if (!kennel.classList.contains('hidden')) paintKennel();
+  });
+  document.addEventListener('pointerdown', (e) => {
+    if (kennel.contains(e.target) || kennelBtn.contains(e.target)) return;
+    kennel.classList.add('hidden');
   });
 
   const startDragBtn = document.getElementById('start-drag-btn');

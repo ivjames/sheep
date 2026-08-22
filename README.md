@@ -55,6 +55,39 @@ Pick one on the title screen, swap any time mid-game with the HUD toggle:
 sheep and the dog barks on its own as it closes in — a burst of extra
 pressure in a ring, and the only thing that shifts a planted sheep.
 
+## The dog
+
+Not every collie is the same animal. Four ratings describe what *this* dog is
+made of, and each drives one concrete lever in the sim:
+
+| Rating | What it moves |
+|---|---|
+| 🎯 **Presence** | Every radius the dog works through — how far sheep flee from it, notice it, and feel its bark — and how far off the flock it stands to drive. |
+| ⚡ **Speed** | Top speed and acceleration, in both drive modes and at every notch of pace. The charge a bark needs scales with it, so a slow dog can still bark. |
+| 🫁 **Stamina** | How long it holds a sprint and how fast it gets its wind back. Run the pool dry and the dog is **blown** — top speed capped until it has breathed. |
+| 🧘 **Patience** | How long it holds a decision: sticking with a group, seeing a wear sweep out, waiting out a jam at the gate mouth, and how committed a charge must be before it barks. |
+
+Ratings run 0–1 and **0.5 is the baseline** — the dog the game shipped with.
+The two halves of each range map separately so a rating of exactly 0.5 lands on
+a multiplier of exactly 1.00×, which means a baseline dog plays bit-for-bit the
+game it always did and the ratings can be re-tuned without disturbing it.
+
+Stamina is the only one that moves during a level. Only real sprinting spends
+it — a drive, a creep and a steady flank are all free — and a bark costs a
+burst of its own. The HUD bar shows what's left, and the dog sweats when it's
+running short.
+
+These are the knobs a **training/growth mechanic** turns; nothing here decides
+how they'd be *earned*. Keeping the two apart means the progression can be
+designed and redesigned without re-tuning the dog.
+
+- Dev shortcut: the HUD 🦴 chip opens the **kennel** — live sliders for all
+  four, showing the rating and the raw multiplier it lands on. Changes apply on
+  the next frame, no restart.
+- Ratings persist in `localStorage` and ride in the URL as
+  `?dog-presence=0.9&dog-stamina=0.2` (prefixed, because bare `?speed=` is
+  already the sim-speed toggle). "Copy dog link" in the kennel builds one.
+
 ## Rules
 
 - Levels are zoomed out — the whole field fits on screen. Each level has a
@@ -123,6 +156,7 @@ the fill switched to `currentColor`.
 
 ## Roadmap ideas
 
+- Training the dog: a way to *earn* the four ratings above over a career
 - Sheepdog trial scoring: points for lines, penalties for scattering
 - Split gates / multi-pen levels ("shed five into the left pen")
 - Hazards: a stream with a bridge, mud that slows the flock
