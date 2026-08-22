@@ -1140,13 +1140,22 @@
   // pasture + slope shading + boundary fence, pre-warped onto one canvas
   // per level. The canvas carries a full off-screen margin of land on
   // every side, so no bare backdrop ever peeks out from behind the field.
-  const hillCanvas = document.createElement('canvas');
+  //
+  // Both bake stages are double-buffered: a chunked bake (level transition,
+  // camera switch) spans many frames, and render() keeps drawing landImg
+  // the whole time — so the bake must never clear or repaint the canvas
+  // landImg points at, or the field goes dark mid-transition. Each bake
+  // writes the pair the front image ISN'T in, and everything the renderer
+  // reads (landImg, land.ox/oy/bb) is committed in one shot when the bake
+  // completes.
+  const hillBufs = [document.createElement('canvas'), document.createElement('canvas')];
   // stage 2: tilt the hill-baked land into screen space, row by row.
-  // Each hillCanvas row j is the land at v = j − hill.top; it maps to a
+  // Each hill-canvas row j is the land at v = j − hill.top; it maps to a
   // horizontal band at Y(v) scaled by s(v) about the field's centerline.
-  const landCanvas = document.createElement('canvas');
+  const landBufs = [document.createElement('canvas'), document.createElement('canvas')];
+  let bufIdx = 0; // pair the front (displayed) image lives in; bakes write the other
   const land = { ox: 0, oy: 0, bb: { x0: 0, y0: 0, x1: 1, y1: 1 } };
-  let landImg = hillCanvas;
+  let landImg = hillBufs[1]; // first bake writes (and then fronts) pair 1
   // The whole land bake — repainting fieldCanvas's pasture texture (for a
   // new level), then bakeHill's per-column strip warp, then bakeLand's
   // per-row tilt — is written as one generator that yields after every
@@ -1184,6 +1193,13 @@
   function* bakeGen(decorData) {
     const { w, h } = state.world;
     const M = hill.m;
+    // back buffers for this bake; the front pair stays on screen untouched.
+    // An abandoned bake (a new one starting mid-chunk) never flipped bufIdx,
+    // so the replacement job picks the same back pair and overwrites it.
+    const hillCanvas = hillBufs[1 - bufIdx];
+    const landCanvas = landBufs[1 - bufIdx];
+    // staged results — committed to landImg/land in one shot at the end
+    let img, ox, oy;
     if (decorData) {
       // willReadFrequently: this generator now deliberately reads these
       // canvases back every yield (see the block comment above) to force
@@ -1343,9 +1359,9 @@
 
     if (cam.sFar === 1 && cam.sNear === 1) {
       // no tilt: the stage-1 bake is already the finished land
-      landImg = hillCanvas;
-      land.ox = hill.m;
-      land.oy = hill.top;
+      img = hillCanvas;
+      ox = hill.m;
+      oy = hill.top;
     } else {
       const s0 = cam.sFar, g = camG();
       const sClamp = (s) => clamp(s, 0.2, 1.6); // keep the far margin sane
@@ -1353,9 +1369,9 @@
       const vTop = -hill.top, vBot = hillCanvas.height - hill.top;
       const sMax = Math.max(sClamp(s0 + g * vTop), sClamp(s0 + g * vBot));
       const lcW = Math.ceil(W1 * sMax);
-      land.ox = Math.ceil((hill.m + w / 2) * sMax - w / 2);
-      land.oy = Math.ceil(-(s0 * vTop + g * vTop * vTop / 2));
-      const lcH = land.oy + Math.ceil(s0 * vBot + g * vBot * vBot / 2) + 2;
+      ox = Math.ceil((hill.m + w / 2) * sMax - w / 2);
+      oy = Math.ceil(-(s0 * vTop + g * vTop * vTop / 2));
+      const lcH = oy + Math.ceil(s0 * vBot + g * vBot * vBot / 2) + 2;
       // as with hillCanvas, only reallocate when the size actually changed
       // (it can, e.g. after a camera swap changes sMax) — and since each
       // scanline strip below is scaled by its own sv, a narrower row can
@@ -1376,7 +1392,7 @@
       // periodic horizontal lines across the whole land, strongest where
       // the far rows compress. The ≤0.5px of per-strip jitter the
       // rounding adds is invisible on pasture texture.
-      const rowY = (v) => Math.round(land.oy + s0 * v + g * v * v / 2);
+      const rowY = (v) => Math.round(oy + s0 * v + g * v * v / 2);
       for (let j = 0; j < hillCanvas.height; j += 2) {
         const v = j - hill.top;
         const sv = sClamp(s0 + g * v);
@@ -1384,12 +1400,12 @@
         // a far strip can compress to zero rows — its neighbors own the pixel
         if (yB <= yA) continue;
         lc.drawImage(hillCanvas, 0, j, W1, 2,
-          land.ox + (w / 2 - (hill.m + w / 2) * sv), yA,
+          ox + (w / 2 - (hill.m + w / 2) * sv), yA,
           W1 * sv, yB - yA);
         lc.getImageData(0, 0, 1, 1);
         yield; // one row-pair per slice — dominant cost under a tilted camera
       }
-      landImg = landCanvas;
+      img = landCanvas;
     }
     // screen-space bounding box of the FIELD (margins excluded) — viewFit
     // frames this, so every preset fills the viewport the same way
@@ -1403,7 +1419,14 @@
         if (p.y > y1) y1 = p.y;
       }
     }
+    // commit — the renderer's whole view of the land (image, offsets,
+    // bounding box) swaps atomically between two frames, and the pair the
+    // old front lived in becomes the next bake's back buffer
+    landImg = img;
+    land.ox = ox;
+    land.oy = oy;
     land.bb = { x0, y0, x1, y1 };
+    bufIdx = 1 - bufIdx;
   }
 
   // ---- incremental bake driver ----
@@ -4026,7 +4049,11 @@
   // frame()-level ramp/sub-step machinery, with multipliers beyond the
   // 1/2/4 the UI offers (instant, no ramp, for determinism).
   window.__sheepDev = {
-    state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas, landCanvas, bakeSyncFinish,
+    state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas, bakeSyncFinish,
+    // the land buffers are double-buffered — expose the CURRENT front image
+    // (what render() draws) and the front tilt buffer, not fixed canvases
+    get landImg() { return landImg; },
+    get landCanvas() { return landBufs[bufIdx]; },
     setSpeed: (mult) => { speedTarget = mult; speedCur = mult; },
     getSpeed: () => ({ target: speedTarget, current: speedCur }),
     get simSpeed() { return speedTarget; }, // name kept from the earlier dev toggle
