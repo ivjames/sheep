@@ -779,6 +779,18 @@
     const n = parseInt(urlParams.get('level'), 10);
     return Number.isFinite(n) && n >= 1 ? n : null;
   })();
+  // ?speed=N (dev, with an in-game key — see the X handler below) runs the
+  // simulation N× the wall clock. The frame loop takes N whole update()
+  // passes at the real dt instead of stretching dt itself, so every
+  // integrator keeps the step size it was tuned for — a stretched step
+  // tunnels sheep through fences and sails dogs past their turn points.
+  // Sim time (the level clock included) just runs N× faster, so a sped-up
+  // run's times still read as honest sim seconds.
+  const SIM_SPEEDS = [1, 2, 4];
+  let simSpeed = (() => {
+    const n = parseInt(urlParams.get('speed'), 10);
+    return SIM_SPEEDS.includes(n) ? n : 1;
+  })();
   // shareable link for a given level under the current run seed
   function seedShareUrl(n) {
     const u = new URL(location.href);
@@ -1642,6 +1654,11 @@
     if (!e.repeat && e.key.toLowerCase() === 'c') cycleCam();
     // dev: F projects the gate funnel as a heat map (speed ramp + rings)
     if (!e.repeat && e.key.toLowerCase() === 'f') state.funnelViz = !state.funnelViz;
+    // dev: X cycles sim speed (1×/2×/4× — see SIM_SPEEDS)
+    if (!e.repeat && e.key.toLowerCase() === 'x') {
+      simSpeed = SIM_SPEEDS[(SIM_SPEEDS.indexOf(simSpeed) + 1) % SIM_SPEEDS.length];
+      toast(simSpeed > 1 ? '⏩ ' + simSpeed + '× speed' : '▶️ 1× speed');
+    }
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
@@ -2865,8 +2882,16 @@
       const enter = state.wearSide || flock.r > gathered || stalled;
       if (state.wearT >= 0 && flock.n > 1 && enter && panic < 0.7) {
         // come by carries the dog clockwise round the mob and away runs it
-        // back the other way. Open the bout toward the side the dog already
-        // sits on rather than hauling it across the line.
+        // back the other way. Open the bout sweeping TOWARD the drive line —
+        // the arc whose pressure keeps folding the flock gate-ward, and the
+        // same opening the player-dog's cast picks. Opening outward (toward
+        // the side the dog already sat on) looked harmless, but WEAR_LEG_MIN
+        // holds a leg open: a bout that began out near the off-balance guard
+        // had its first leg carried on past the quarter, round onto the gate
+        // side of the mob, and that stretch of the sweep shoves the flock
+        // straight back off the gate. Toward the line, every leg stays
+        // inside ±turn of balance and the push never loses its gate-ward
+        // component.
         //
         // Turning: the decision tick is coarse next to the dog's orbit
         // speed — a small mob is a tight circle to run round, and the dog
@@ -2880,7 +2905,7 @@
         const step = paceSpeed(state.pace) / (flock.r + 85) * AUTO_TICK;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
         state.wearLegT += AUTO_TICK;
-        if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; state.stallT = 0; state.wearLegT = 0; }
+        if (!state.wearSide) { state.wearSide = dAng >= 0 ? -1 : 1; state.wearT = 0; state.stallT = 0; state.wearLegT = 0; }
         else if (dAng * state.wearSide > turn && state.wearLegT >= WEAR_LEG_MIN) { state.wearSide = -state.wearSide; state.wearLegT = 0; }
         d.cmd = state.wearSide > 0 ? 'aw' : 'cb';
         state.pace = Math.max(state.pace, PACE_START);
@@ -3811,7 +3836,7 @@
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
     pollGamepad();
-    update(dt);
+    for (let i = 0; i < simSpeed; i++) update(dt);
     stepBake();
     render(now);
     fpsTick(now);
@@ -3821,7 +3846,7 @@
 
   // dev hook: lets a headless harness drive the sim clock directly
   // (demo soak tests, balance sweeps) — not used by the game itself
-  window.__sheepDev = { state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas, landCanvas, bakeSyncFinish };
+  window.__sheepDev = { state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas, landCanvas, bakeSyncFinish, get simSpeed() { return simSpeed; } };
 
   // debug/test handle
   window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv, runSeed };
