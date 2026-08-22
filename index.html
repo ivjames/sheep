@@ -3462,6 +3462,24 @@
     return out;
   })();
 
+  // ---------- draw modes (dev) ----------
+  // A frame-cost probe you can run ON the device that's actually dropping
+  // frames, because which of these is fastest depends on the rasteriser and
+  // cannot be settled on a different machine. Canvas2D rasterises lazily, so
+  // timing sections of render() with performance.now() would measure command
+  // recording and miss the pixel cost entirely — the honest measurement is
+  // ablation: draw less, see what the frame rate does.
+  //
+  // Off unless ?perf=1, and then it's driven by tapping the fps chip, so it
+  // works on a tablet with no keyboard. A normal player never has a way in.
+  //   normal   — the shipping art: the fleece as nine antialiased fills
+  //   bake     — the fleece as one blit from the baked strip
+  //   nofleece — no fleece at all: the fleece's share of the frame
+  //   nosheep  — no sheep bodies: every sheep's share of the frame
+  const DRAW_MODES = ['normal', 'bake', 'nofleece', 'nosheep'];
+  const perfProbe = urlParams.get('perf') === '1';
+  let drawMode = DRAW_MODES.includes(urlParams.get('draw')) ? urlParams.get('draw') : 'normal';
+
   // fleece bump offsets as fractions of the barrel's radii. Deliberately
   // uneven and clustered toward the shoulder — evenly spaced bumps of one
   // radius read as scallops stuck on an ellipse. This is most of what sells
@@ -3570,6 +3588,7 @@
   }
 
   function drawSheepTop(x, y, size, dir, temper, bob, moving, alert) {
+    if (drawMode === 'nosheep') return; // ablation — see DRAW_MODES
     const u = size / 30;
     const ti = Math.max(0, Math.min(15, Math.round(temper * 15)));
     const pal = FLEECE[ti];
@@ -3686,15 +3705,43 @@
     ctx.fill();
     ctx.globalAlpha = 1;
 
-    // the wool barrel, its bumps and the tail puff, blitted from the bake
-    // above instead of filled — see the baked-fleece block for why this
-    // piece, and only this piece, reduces to a sprite
-    const strip = fleeceStrip(ti);
-    const di = clamp(Math.round((Math.asin(clamp(fy, -1, 1)) + Math.PI / 2)
-                                / Math.PI * (BODY_DIRS - 1)), 0, BODY_DIRS - 1);
-    ctx.drawImage(strip.c, di * strip.w, 0, strip.w, strip.h,
-                  FLEECE_BOX.x0 * u, FLEECE_BOX.y0 * u,
-                  (strip.w / BODY_BAKE) * u, (strip.h / BODY_BAKE) * u);
+    // The wool barrel, its bumps and the tail puff. Normally nine antialiased
+    // fills; under the `bake` draw mode, one blit from the strip baked above.
+    // Which is faster depends entirely on the device's rasteriser — a blit
+    // wins on a GPU-backed canvas and loses on a software one — so this is a
+    // switch to be measured per device, not a decision baked into the source.
+    if (drawMode === 'bake') {
+      const strip = fleeceStrip(ti);
+      const di = clamp(Math.round((Math.asin(clamp(fy, -1, 1)) + Math.PI / 2)
+                                  / Math.PI * (BODY_DIRS - 1)), 0, BODY_DIRS - 1);
+      ctx.drawImage(strip.c, di * strip.w, 0, strip.w, strip.h,
+                    FLEECE_BOX.x0 * u, FLEECE_BOX.y0 * u,
+                    (strip.w / BODY_BAKE) * u, (strip.h / BODY_BAKE) * u);
+    } else if (drawMode !== 'nofleece') {
+      // darker rim behind, lit fleece in front — the rim offset fades out
+      // approaching head/tail-on so a round cloud stays round instead of
+      // reading as a lopsided crescent
+      ctx.fillStyle = pal.shade;
+      ctx.beginPath();
+      ctx.ellipse(bodyCx - 0.7 * u * side, bodyCy, bodyRx, bodyRy, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = wool;
+      ctx.beginPath();
+      ctx.ellipse(bodyCx + 0.6 * u * side, bodyCy - 0.4 * u, bodyRx * 0.94, bodyRy * 0.9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      for (const [bx, by, br] of FLEECE_BUMPS) {
+        ctx.beginPath();
+        ctx.arc(bodyCx + bx * bodyRx, bodyCy + by * bodyRy, bodyRy * br, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // tail: a puff set clearly behind the rump so it reads from the back.
+      // The puff has to sit PAST the barrel's edge to break the silhouette —
+      // tucked inside it, all you see is its shaded core as a disc floating
+      // on the fleece, which reads as a smudge rather than a tail
+      ctx.beginPath();
+      ctx.arc(bodyCx - bodyRx * 1.04, bodyCy + bodyRy * 0.3, (2.9 + 1.2 * rear) * u, 0, Math.PI * 2);
+      ctx.fill();
+    }
     // no shaded core inside the puff: shade on wool is barely a value step,
     // so a concentric disc reads as a smudge on the fleece rather than a
     // tail. Now the puff clears the barrel's edge, the silhouette does it.
@@ -4739,6 +4786,31 @@
   // whenever the reading crosses a threshold in either direction
   const fpsChip = document.getElementById('fps-chip');
   const fpsVal = document.getElementById('fps-val');
+  // under ?perf=1 the fps chip becomes the probe's only control: tap it to
+  // step through the draw modes and read the frame rate off the same chip.
+  // The mode rides in the chip's own label so a screenshot of the HUD is a
+  // complete reading — which mode, and what it cost.
+  if (perfProbe) {
+    fpsChip.style.pointerEvents = 'auto';
+    fpsChip.style.cursor = 'pointer';
+    const showMode = () => {
+      let tag = fpsChip.querySelector('.draw-mode');
+      if (!tag) {
+        tag = document.createElement('span');
+        tag.className = 'draw-mode';
+        tag.style.cssText = 'opacity:0.75;font-size:11px;letter-spacing:0.04em';
+        fpsChip.appendChild(tag);
+      }
+      tag.textContent = ' ' + drawMode;
+    };
+    fpsChip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      drawMode = DRAW_MODES[(DRAW_MODES.indexOf(drawMode) + 1) % DRAW_MODES.length];
+      showMode();
+      toast('📊 Draw mode: ' + drawMode);
+    });
+    showMode();
+  }
   let fpsFrames = 0, fpsT0 = performance.now(), fpsTier = '';
   function fpsTick(now) {
     fpsFrames++;
