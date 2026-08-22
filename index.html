@@ -961,7 +961,7 @@
   // H is affine in y for a fixed x, so every vertical strip of the flat
   // field maps onto the hill with one translate + stretch (an exact warp,
   // baked once per level) and the pointer math inverts in closed form.
-  const hill = { amp: 0, m: 0, top: 0, ridge: () => 0 };
+  const hill = { amp: 0, m: 0, mMax: 0, top: 0, ridge: () => 0 };
 
   // ---------- camera ----------
   // Two stages, both exactly invertible. Stage 1 is the hillside lift
@@ -974,7 +974,14 @@
   // no tilt, and every formula below degenerates to the current behavior.
   const CAMS = {
     hillside:  { label: 'hillside',  hillK: 1, sFar: 1,    sNear: 1 },
-    spectator: { label: 'spectator', hillK: 1, sFar: 0.72, sNear: 1.15 },
+    // tilt strength is the RATIO sNear/sFar; their MEAN sets how much
+    // vertical room the field takes (total height is h·(sFar+sNear)/2), so
+    // holding the mean at 0.93 buys depth without changing the footprint.
+    // The ceiling is memory, not geometry: the land's off-field margin grows
+    // with the tilt, and fieldCanvas is sized for the worst-case preset, so
+    // every player pays the largest ratio in this table on every camera.
+    // 1.75 costs ~92MB; 2.5 costs ~264MB, which is iOS Safari's crash range.
+    spectator: { label: 'spectator', hillK: 1, sFar: 0.676, sNear: 1.184 },
     overhead:  { label: 'overhead',  hillK: 0, sFar: 1,    sNear: 1 },
   };
   const CAM_ORDER = ['hillside', 'spectator', 'overhead'];
@@ -1024,6 +1031,11 @@
     camKey = name;
     cam = CAMS[name];
     try { localStorage.setItem(CAM_KEY, name); } catch (err) { /* storage walled off */ }
+    // hill.mMax (the fieldCanvas/decor extent) is level-invariant and stays
+    // put, but hill.m — the CURRENT camera's own bake margin — has to be
+    // re-derived for the new preset before startBake() reads it, or the
+    // land bake would keep using whatever camera was active at level start.
+    hill.m = requiredHillMargin(cam);
     startBake();
     const el = document.getElementById('cam-name');
     if (el) el.textContent = cam.label;
@@ -1032,6 +1044,72 @@
     const i = CAM_ORDER.indexOf(camKey);
     setCamera(CAM_ORDER[(i + 1) % CAM_ORDER.length]);
     toast('🎥 Camera: ' + cam.label);
+  }
+  // The far row's own margin has to reach out to wherever viewFit()'s fit
+  // puts the field's own screen bbox (land.bb) — NOT a fraction of world
+  // size, and NOT simply w·sFar/2 either. Two corrections past the naive
+  // version, both found by testing this against the actual render, not
+  // just derived on paper:
+  //
+  // 1. The bbox viewFit() fits to is land.bb, i.e. bw = the FIELD's own
+  //    screen width (dominated by the near row, bw ≈ w·sNear) — not the
+  //    literal browser viewport. Sizing the margin off the full viewport
+  //    (accounting for whatever extra letterbox bars viewFit adds beyond
+  //    land.bb) was the first thing tried here; it blows up to tens of
+  //    thousands of world units at a hard tilt, because the letterbox
+  //    strip sits at a v deep enough in the margin that this camera's
+  //    row-scale has collapsed toward its 0.2 floor — a unit of margin
+  //    buys almost no reach out there. That's not a cost worth paying for
+  //    a cosmetic strip nobody's eye lands on; matching land.bb (the
+  //    field's own silhouette, where a gap actually reads as broken) is
+  //    the target that's both correct and affordable.
+  // 2. The row that ends up at the TOP of that bbox is not the v=0 row.
+  //    hillLift is unfaded at the far edge (y=0), so the ridge can push
+  //    v negative there, and camPt's Y is monotonic in v — so whichever x
+  //    crests the ridge hardest along y=0 supplies land.bb's y0, at some
+  //    v0 < 0 with a smaller row-scale than sFar. Using sFar outright
+  //    reproduced the sweep's r*≈1.8 threshold almost exactly (the ridge
+  //    term is small at that tilt) but silently under-shot at a harder
+  //    one — confirmed by testing this fix against a real ratio-2.5
+  //    render before trusting it (see hill-margin.md).
+  //
+  // So: trace land.bb's own construction (same loop as the end of
+  // bakeGen) to get bw and y0, invert the stage-2 quadratic (same math as
+  // camInv) to find v0, read that row's own clamped scale, and solve
+  // (hill.m + w/2)·svTop ≥ bw/2 for hill.m. Evaluated for an arbitrary
+  // camPreset (not just the currently-active `cam`) by swapping the
+  // module-level `cam` binding camPt()/hillLift() close over — this
+  // doubles as the per-camera margin (called with the live `cam` on every
+  // bake) and the level-wide max (called once per CAMS entry — see
+  // makeHill()). Depends only on world size + the preset, not the live
+  // viewport, so a plain window resize between bakes can't invalidate it
+  // (matching the old formula's behavior there — resize alone still
+  // doesn't trigger a rebake).
+  function requiredHillMargin(camPreset) {
+    const { w, h } = state.world;
+    const saved = cam;
+    cam = camPreset;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity;
+    for (const [ax, ay, bx, by] of [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]) {
+      for (let i = 0; i <= 16; i++) {
+        const p = camPt(ax + (bx - ax) * i / 16, ay + (by - ay) * i / 16);
+        if (p.x < x0) x0 = p.x;
+        if (p.x > x1) x1 = p.x;
+        if (p.y < y0) y0 = p.y;
+      }
+    }
+    cam = saved;
+    const bw = Math.max(1, x1 - x0);
+    const s0 = camPreset.sFar, g = (camPreset.sNear - camPreset.sFar) / h;
+    const v0 = Math.abs(g) < 1e-9 ? y0 / s0 : (-s0 + Math.sqrt(Math.max(0, s0 * s0 + 2 * g * y0))) / g;
+    const svTop = clamp(s0 + g * v0, 0.2, 1.6); // mirrors bakeGen's own sClamp
+    const need = bw / (2 * svTop) - w / 2;
+    // +8% and a flat +20 world units of headroom past the exact geometric
+    // requirement, for the 6px inset the corner check samples at and for
+    // the 16-subdivision trace above being an approximation of land.bb's
+    // true extent; floored so an untilted camera still gets some
+    // breathing room past the fence.
+    return Math.max(60, Math.ceil(need * 1.08) + 20);
   }
 
   // ---------- game speed ----------
@@ -1110,9 +1188,6 @@
   function makeHill() {
     const { w, h } = state.world;
     hill.amp = Math.min(w, h) * HILL_AMP;
-    // the land spreads this far past the field on every side, so letterbox
-    // bars and the command-pad strip sit over rolling pasture, not backdrop
-    hill.m = Math.round(0.4 * Math.max(w, h));
     // two sine rolls — one broad, one smaller riding on it — with random
     // phase and frequency, so every level gets its own skyline
     const a1 = rand(0, Math.PI * 2), a2 = rand(0, Math.PI * 2);
@@ -1122,6 +1197,13 @@
       const s = 0.62 * Math.sin(u * f1 + a1) + 0.38 * Math.sin(u * f2 + a2);
       return hill.amp * (0.5 + 0.5 * s);
     };
+    // hill.m is the ACTIVE camera's own margin (drives this bake's
+    // hillCanvas/landCanvas size); hill.mMax is the largest margin any
+    // CAMS preset could need this level, and sizes fieldCanvas/decor
+    // scatter once so a later camera switch (setCamera(), above) never has
+    // to repaint the pasture texture to grow into a harder tilt.
+    hill.mMax = CAM_ORDER.reduce((mx, k) => Math.max(mx, requiredHillMargin(CAMS[k])), 0);
+    hill.m = requiredHillMargin(cam);
   }
   // trace world-space points through the camera, subdividing runs so edges
   // bow with the ridge. Under the tilt only fixed-x runs stay straight and
@@ -1197,7 +1279,8 @@
   // can never diverge pixel-for-pixel.
   function* bakeGen(decorData) {
     const { w, h } = state.world;
-    const M = hill.m;
+    const M = hill.m;       // ACTIVE camera's margin — sizes this bake's hill/land buffers
+    const Mf = hill.mMax;   // fieldCanvas's actual paint offset (see makeDecor) — M ≤ Mf always
     // back buffers for this bake; the front pair stays on screen untouched.
     // An abandoned bake (a new one starting mid-chunk) never flipped bufIdx,
     // so the replacement job picks the same back pair and overwrites it.
@@ -1214,9 +1297,9 @@
       // through once the first readback happens
       const fc = fieldCanvas.getContext('2d', { willReadFrequently: true });
       fc.setTransform(1, 0, 0, 1, 0, 0);
-      fc.translate(M, M); // paint in world coords over [−M, w+M] × [−M, h+M]
+      fc.translate(Mf, Mf); // paint in world coords over [−Mf, w+Mf] × [−Mf, h+Mf]
       fc.fillStyle = '#7ec850';
-      fc.fillRect(-M, -M, w + 2 * M, h + 2 * M);
+      fc.fillRect(-Mf, -Mf, w + 2 * Mf, h + 2 * Mf);
       fc.getImageData(0, 0, 1, 1);
       yield;
       for (const p of decorData.patches) {
@@ -1293,7 +1376,9 @@
       const sw = Math.min(STRIP, w + M - x);
       const r = hill.ridge(x + sw / 2) * cam.hillK;
       const q = r * HILL_FLAT / h; // y′ = y·(1+q) − R, affine per column
-      hc.drawImage(fieldCanvas, x + M, 0, sw, h + 2 * M,
+      // fieldCanvas's own pixel origin is offset by Mf (its paint margin,
+      // see makeDecor), not M — read the M-wide sub-window centred on it
+      hc.drawImage(fieldCanvas, x + Mf, Mf - M, sw, h + 2 * M,
         x, -M * (1 + q) - r, sw, (h + 2 * M) * (1 + q));
       // slope shading sells the curvature: sun rakes in from the left, so
       // west-facing rises catch light and east-facing falls sit in shade
@@ -1375,7 +1460,24 @@
       const sMax = Math.max(sClamp(s0 + g * vTop), sClamp(s0 + g * vBot));
       const lcW = Math.ceil(W1 * sMax);
       ox = Math.ceil((hill.m + w / 2) * sMax - w / 2);
-      oy = Math.ceil(-(s0 * vTop + g * vTop * vTop / 2));
+      // Y(v) = s0·v + g·v²/2 (the row's screen position, before oy's offset)
+      // is a PARABOLA in v, not a monotonic ramp — minimized at the vertex
+      // v* = −s0/g. Every shipped preset kept vTop short of that vertex, but
+      // once hill.m tracks the camera a hard tilt pushes vTop PAST it, and
+      // Y(vTop) stops being the range's true minimum. Using it anyway
+      // under-shoots oy, and every row between the real minimum and Y(vTop)
+      // — comfortably including v=0, the field's own far edge — gets a
+      // negative destination row and is clipped off the top of the land
+      // buffer before it is ever drawn. Anchor on the actual minimum over
+      // [vTop, vBot]: the vertex when it falls inside that range and g > 0
+      // (for the opposite tilt the vertex is a maximum, irrelevant here),
+      // else whichever endpoint is lower.
+      const Yof = (v) => s0 * v + g * v * v / 2;
+      const vStar = Math.abs(g) < 1e-9 ? null : -s0 / g;
+      const yMin = (g > 0 && vStar > vTop && vStar < vBot)
+        ? Math.min(Yof(vTop), Yof(vBot), Yof(vStar))
+        : Math.min(Yof(vTop), Yof(vBot));
+      oy = Math.ceil(-yMin);
       const lcH = oy + Math.ceil(s0 * vBot + g * vBot * vBot / 2) + 2;
       // as with hillCanvas, only reallocate when the size actually changed
       // (it can, e.g. after a camera swap changes sMax) — and since each
@@ -1490,7 +1592,13 @@
   function makeDecor() {
     const { w, h } = state.world;
     makeHill();
-    const M = hill.m;
+    // fieldCanvas (and the decor scattered onto it) is painted once per
+    // level and reused across every later camera switch, so it has to run
+    // out to hill.mMax — the largest margin ANY camera preset could need —
+    // not just hill.m (the currently-active camera's own, possibly
+    // smaller, margin). Using hill.m here would leave an unpainted ring
+    // waiting to be exposed the moment the player switches to a harder tilt.
+    const M = hill.mMax;
     const k = ((w + 2 * M) * (h + 2 * M)) / FIELD_AREA;
     // pre-render the pasture once per level: flat green with soft-edged
     // patches of lighter and darker grass — pasture, not a mowed pitch.
@@ -1686,6 +1794,9 @@
         defiant: tempers[i], ...rollTemper(tempers[i]),
         panic: 0, fearT: 0, fright: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
+        // heads start up — the flock has just noticed you — then settle to
+        // grazing. Staggered timers so they don't lift and drop in unison.
+        alert: 1, lookT: rand(1, 9), lookHold: 0,
       });
     }
 
@@ -2445,9 +2556,9 @@
   }
   // sheep near the mouth of an open gate know what it's for and drift on
   // in. Strongest at early levels (training wheels) but never gone
-  // entirely — even a ram drags its feet at the mouth rather than
-  // ignoring the pen outright, so the funnel still works on the
-  // stubborn end instead of leaving every ram a one-sheep shoving match
+  // entirely — even a defiant sheep drags its feet at the mouth rather
+  // than ignoring the pen outright, so the funnel still works on the
+  // stubborn end instead of leaving each one a single-sheep shoving match
   function gateSuction(s) {
     const ease = 0.4 + 0.6 * clamp(1 - (state.level - 1) / 4, 0, 1);
     // a panicked sheep isn't reasoning about doorways — it's running.
@@ -2572,6 +2683,27 @@
     const pgrid = penGrid();
     for (const s of state.sheep) {
       s.bob += dt * (2 + s.panic * 9);
+
+      // Head carriage. A sheep grazes head-down and lifts to look; a flock
+      // that never lifts reads as scenery rather than as animals deciding
+      // whether you matter. Alert snaps UP and eases DOWN — a startle is
+      // instant, but wariness outlasts its cause, which is also what makes
+      // a worked flock look worked rather than merely pushed around.
+      {
+        const spd = Math.hypot(s.vx, s.vy);
+        const NOTICE = FLEE_RANGE + 120; // they clock the dog well before they flee
+        const dogD = Math.hypot(d.x - s.x, d.y - s.y);
+        let want = spd > 12 ? 1 : 0;     // you cannot graze and travel at once
+        want = Math.max(want, Math.min(1, s.panic * 1.6));
+        if (dogD < NOTICE) want = Math.max(want, 1 - dogD / NOTICE);
+        if (s.planted) want = 1;         // a planted sheep is staring you down
+        // idle look-around, so a settled flock still has heads moving
+        s.lookT -= dt;
+        if (s.lookT <= 0) { s.lookT = rand(5, 13); s.lookHold = rand(0.7, 2.4); }
+        if (s.lookHold > 0) { s.lookHold -= dt; want = Math.max(want, 0.7); }
+        if (s.penned && s.settle) want *= 0.3; // home and safe — back to the grass
+        s.alert += (want - s.alert) * Math.min(1, (want > s.alert ? 9 : 1.3) * dt);
+      }
       if (s.penned) {
         const P = state.pen;
         // fresh through the gate (or milled back near it): hustle to a
@@ -2867,9 +2999,9 @@
       s.vy += fy * dt;
       s.vx -= s.vx * 2.4 * dt;
       s.vy -= s.vy * 2.4 * dt;
-      // the bold term in the base gives rams a brisker trot at any
-      // fright level — bold used to pay off only at full panic, so a
-      // driven ram lagged the woollier sheep it was walking with
+      // the bold term in the base gives the defiant ones a brisker trot at
+      // any fright level — bold used to pay off only at full panic, so a
+      // driven stubborn sheep lagged the woollier ones it walked with
       let cap = s.planted ? 10 : 26 + 14 * s.bold + s.panic * (150 + 30 * s.bold);
       // the funnel is a GRADIENT: caught at the mouth a sheep moves at
       // a brisk walk, and the ramp accelerates it all the way through —
@@ -2957,7 +3089,7 @@
   // drives the dog through the same commands a player calls: WALK ON to
   // press, easing off when the flock heats up, leaning in when it
   // dawdles, standing off while the funnel drains, and pressing close
-  // (which auto-barks) when a ram digs in. Decisions tick on a measured
+  // (which auto-barks) when one digs in. Decisions tick on a measured
   // beat — AUTO_TICK — so each phase gets time to visibly play out and
   // the handling reads deliberate, not jittery.
   function autopilot(dt) {
@@ -3103,7 +3235,7 @@
     if (panic > 0.7) {
       state.pace = Math.max(PACE_MIN, state.pace - PACE_STEP); // easy — pushing a hot flock just scatters it
     } else if (planted && panic < 0.5) {
-      state.pace = Math.min(1, state.pace + PACE_STEP * 2); // charge the ram — the bark shakes it loose
+      state.pace = Math.min(1, state.pace + PACE_STEP * 2); // charge it — the bark shakes a planted sheep loose
     } else if (panic < 0.35) {
       state.pace = Math.min(0.7, state.pace + PACE_STEP); // calm and dawdling — lean in
     }
@@ -3293,164 +3425,586 @@
     ctx.restore();
   }
 
-  // ---------- top-down actor shapes ----------
-  // Sheep and dog are drawn as simple vector shapes instead of emoji:
-  // oblong bodies built nose-first along +x, then rotated to the smoothed
-  // heading (dir), so the flock visibly streams the way it's running.
-  // The sheep's ~13 path fills are painted once into baked sprites (below),
-  // not per frame: a late-game flock is 150+ head, and re-filling every
-  // body every frame is what ate the frame budget on big fields. Only the
-  // foot swing needs frames — everything else about a sheep's look is
-  // static per temper — so each temper bakes a strip of foot phases and
-  // the field draw is one rotated drawImage per sheep.
-  function paintSheep(g, u, ram, step) {
-    const wool = ram ? '#d9c6a8' : '#f6f1e6';
-    const shade = ram ? '#b8a284' : '#ddd3bf';
-    const skin = ram ? '#4a3b30' : '#3b3b46';
-    // trotting feet, diagonal pairs swinging in counter-phase
-    g.fillStyle = skin;
-    for (const [px, py, ph] of [[7, -8, 1], [-8, -8, -1], [7, 8, -1], [-8, 8, 1]]) {
-      g.beginPath();
-      g.arc(px * u + step * ph, py * u, 2.4 * u, 0, Math.PI * 2);
-      g.fill();
+  // ---------- actor shapes ----------
+  // Sheep and dog are upright 2.5D billboards, matching the trees and fence
+  // posts that already stand on the ground plane. Both are authored once as
+  // a right-facing profile and mirrored, never rotated: cos(dir) picks the
+  // screen facing and foreshortens the body toward a narrow head-on
+  // silhouette, sin(dir) crossfades between a face and a rump. Everything
+  // varies continuously, so turning through a full circle never pops.
+  // Sheep as an upright billboard: a woolly barrel that nearly sits on the
+  // ground, on four short thick dark legs, with a dark head carried low
+  // (grazing, not a dog's alert-up head). The pose is authored right-facing
+  // and mirrored, never rotated, so it reads correctly from every heading
+  // with no sprite-sheet popping.
+  // Fleece scales with temperament rather than flagging one category of sheep:
+  // a biddable ewe is cream, a stubborn one dun, and everything between reads
+  // as between. `temper` is the sheep's own `bold`, the same 0..1 that already
+  // sets how close the dog must press, how willing it is at the gate and how
+  // hard it is to panic — so the flock's colour is a readout of how much work
+  // each animal is going to be, visible before you touch it.
+  //
+  // bold is rolled once at spawn and never changes, so the palette is a table
+  // lookup rather than a mix per draw — this runs twenty-odd times a frame and
+  // has no business building colour strings in the draw path.
+  const FLEECE = (() => {
+    const mix = (a, b, t) => '#' + [0, 1, 2].map(i =>
+      Math.round(a[i] + (b[i] - a[i]) * t).toString(16).padStart(2, '0')).join('');
+    const out = [];
+    for (let i = 0; i < 16; i++) {
+      const t = i / 15;
+      out.push({
+        wool:  mix([0xf6, 0xf1, 0xe6], [0xd9, 0xc6, 0xa8], t),
+        shade: mix([0xdd, 0xd3, 0xbf], [0xb8, 0xa2, 0x84], t),
+        skin:  mix([0x3b, 0x3b, 0x46], [0x4a, 0x3b, 0x30], t),
+      });
     }
-    // oblong wool body with a darker rim
-    g.fillStyle = shade;
-    g.beginPath();
-    g.ellipse(-0.5 * u, 0, 14 * u, 9.5 * u, 0, 0, Math.PI * 2);
-    g.fill();
-    g.fillStyle = wool;
-    g.beginPath();
-    g.ellipse(0.5 * u, 0, 12.5 * u, 8.5 * u, 0, 0, Math.PI * 2);
-    g.fill();
-    // tail puff
-    g.beginPath();
-    g.arc(-14 * u, 0, 3.2 * u, 0, Math.PI * 2);
-    g.fill();
-    // head out front, ears to the sides
-    g.fillStyle = skin;
-    g.beginPath();
-    g.ellipse(14 * u, 0, 6 * u, 4.2 * u, 0, 0, Math.PI * 2);
-    g.fill();
-    g.beginPath();
-    g.ellipse(11 * u, -5.5 * u, 3.8 * u, 1.8 * u, -0.5, 0, Math.PI * 2);
-    g.ellipse(11 * u, 5.5 * u, 3.8 * u, 1.8 * u, 0.5, 0, Math.PI * 2);
-    g.fill();
-    // wool cap on the crown
-    g.fillStyle = wool;
-    g.beginPath();
-    g.arc(10.5 * u, 0, 4 * u, 0, Math.PI * 2);
-    g.fill();
-    if (ram) { // horns curling beside the head
-      g.strokeStyle = '#e0d3b8';
-      g.lineCap = 'round';
-      g.lineWidth = 2.6 * u;
-      g.beginPath();
-      g.arc(11 * u, -6.5 * u, 3.6 * u, 2.7, 5.8);
-      g.stroke();
-      g.beginPath();
-      g.arc(11 * u, 6.5 * u, 3.6 * u, 0.5, 3.6);
-      g.stroke();
-    }
-  }
-  // baked at 2x — crisp at the dpr-2 cap, and the depth scale only ever
-  // hovers around 1. The trot quantizes sin(bob*2) to the nearest baked
-  // phase; an odd count keeps an exact feet-square frame for standing.
-  // The heading is NOT quantized — rotation happens at draw time, where
-  // a rotated drawImage costs no more than an axis-aligned one.
-  const SHEEP_BAKE = 2;
-  const SHEEP_PHASES = 9;
-  // sprite half-extents in world px at u=1, hugged to the drawing (nose
-  // sits at +20, horns reach ±11.4): every blank sprite pixel is still a
-  // pixel blended per sheep per frame, so the cell stays tight
-  const SHEEP_HX = 21, SHEEP_HY = 12.5;
-  const sheepSprites = { ewe: [], ram: [] };
-  // one soft ground shadow shared by the whole flock (rx 15, ry 5 at u=1)
-  const sheepShadow = document.createElement('canvas');
-  function bakeSheepSprites() {
-    for (const ram of [false, true]) {
-      const u = (ram ? 32 : 30) / 30;
-      const hx = Math.ceil(SHEEP_HX * u * SHEEP_BAKE), hy = Math.ceil(SHEEP_HY * u * SHEEP_BAKE);
-      const cells = sheepSprites[ram ? 'ram' : 'ewe'];
-      for (let ph = 0; ph < SHEEP_PHASES; ph++) {
-        const c = document.createElement('canvas');
-        c.width = hx * 2;
-        c.height = hy * 2;
-        const g = c.getContext('2d');
-        g.translate(hx, hy);
-        g.scale(SHEEP_BAKE, SHEEP_BAKE);
-        paintSheep(g, u, ram, ((ph / (SHEEP_PHASES - 1)) * 2 - 1) * 3.5 * u);
-        cells.push(c);
-      }
-    }
-    sheepShadow.width = 30 * SHEEP_BAKE + 2;
-    sheepShadow.height = 10 * SHEEP_BAKE + 2;
-    const g = sheepShadow.getContext('2d');
-    g.fillStyle = 'rgba(0,0,0,0.14)';
-    g.beginPath();
-    g.ellipse(sheepShadow.width / 2, sheepShadow.height / 2, 15 * SHEEP_BAKE, 5 * SHEEP_BAKE, 0, 0, Math.PI * 2);
-    g.fill();
-  }
-  bakeSheepSprites();
+    return out;
+  })();
 
-  // `gait` is 0 (standing) → 1 (flat out): the trot, the tail swish and
-  // the bounce all scale off it so a creeping dog eases into its stride
-  function drawDogTop(x, y, size, dir, bob, gait) {
-    const u = size / 34;
-    const coat = '#26262e', white = '#f4efe4';
+  function drawSheepTop(x, y, size, dir, temper, bob, moving, alert) {
+    const u = size / 30;
+    const pal = FLEECE[Math.max(0, Math.min(15, Math.round(temper * 15)))];
+    const wool = pal.wool, shade = pal.shade, skin = pal.skin;
+    const eyeCol = '#fff8ec';
+
+    const fx = Math.cos(dir), fy = Math.sin(dir);
+    const side = Math.abs(fx);           // 1 = full profile, 0 = head/tail-on
+    const sx = fx >= 0 ? 1 : -1;
+    const face = Math.max(0, fy);        // crossfade weight: coming at you
+    const rear = Math.max(0, -fy);       // crossfade weight: going away
+
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(dir);
-    ctx.lineCap = 'round';
-    // tail streams out behind, swishing wider at a run
-    const wag = Math.sin(bob * 1.6) * (2 + 2 * gait) * u;
-    ctx.strokeStyle = coat;
-    ctx.lineWidth = 4.5 * u;
-    ctx.beginPath();
-    ctx.moveTo(-12 * u, 0);
-    ctx.quadraticCurveTo(-19 * u, wag * 0.6, -23 * u, wag);
-    ctx.stroke();
-    ctx.fillStyle = white; // tail tip
-    ctx.beginPath();
-    ctx.arc(-23 * u, wag, 2.6 * u, 0, Math.PI * 2);
-    ctx.fill();
-    // paws, diagonal pairs
-    ctx.fillStyle = coat;
-    const step = Math.sin(bob * 2) * 4 * u * gait;
-    for (const [px, py, ph] of [[8, -7, 1], [-8, -7, -1], [8, 7, -1], [-8, 7, 1]]) {
+    ctx.scale(sx, 1);
+    // grazing sheep barely rock when idle; a trot supplies its own motion,
+    // so the standing sway is a faint remnant of the old top-down waddle
+    if (!moving) ctx.translate(Math.sin(bob * 0.6) * 0.5 * u, 0);
+
+    const footY = 12 * u;
+    const bellyY = 7.4 * u;                           // short legs — the barrel nearly sits on the ground
+    const bodyRy = (8.8 + 1 * (1 - side)) * u;        // rounder cloud head/tail-on
+    const bodyRx = (6.2 + 5.6 * side) * u;            // stays inside the shadow's footprint
+    const bodyCx = 0.4 * u;
+    const bodyCy = bellyY - bodyRy - 0.3 * u;
+
+    // Shoulder and hip are NOT at the same height, and the difference is
+    // what makes a quadruped stand like one. The hip joint is high — it sits
+    // in the pelvis, which is fused to the spine at the sacrum — so the hind
+    // leg is the longer of the two and swings from up near the topline. The
+    // shoulder joint hangs low at the point of shoulder, well down the chest:
+    // the foreleg has no bony attachment to the spine at all, it is slung
+    // against the ribcage in muscle, and the scapula rising to the withers is
+    // a blade lying on the ribs, not the joint.
+    //
+    // Both still sit inside the barrel and every leg draws before the fleece,
+    // so what shows is the stretch below the wool line — the near pair a
+    // touch lower and wider than the far pair, which is what carries the
+    // depth now that overlap no longer can.
+    const shoulderY = bodyCy + bodyRy * 0.38;
+    const hipY = bodyCy + bodyRy * 0.02;
+    const frontHipX = bodyCx + (1.4 + 3.2 * side) * u;
+    const rearHipX = bodyCx - (1.6 + 3.6 * side) * u;
+    const pairSpread = (1 - side) * 1.5 * u;
+    // fore-aft swing only reads from the side, so its x-component fades out
+    // approaching head/tail-on; there it becomes a small vertical lift
+    // instead, so a squared-up trot still has some life without the legs'
+    // stride crossing into an X where the hips have converged together
+    const strideX = moving ? Math.sin(bob * 2) * 2 * u * side : 0;
+    const strideY = moving ? Math.sin(bob * 2) * 1 * u * (1 - side) : 0;
+
+    function leg(hx, hyy, fxx, fyy) {
+      ctx.strokeStyle = skin;
+      ctx.lineWidth = (2.1 + 0.5 * side) * u;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.arc(px * u + step * ph, py * u, 2.2 * u, 0, Math.PI * 2);
+      ctx.moveTo(hx, hyy);
+      ctx.lineTo(fxx, fyy);
+      ctx.stroke();
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.ellipse(fxx, fyy + 0.3 * u, 1.5 * u, 1.05 * u, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    // oblong body
+
+    // all four under the fleece: far pair tucked up and in, near pair a
+    // touch lower and wider
+    leg(frontHipX, shoulderY - pairSpread * 0.5, frontHipX - strideX, footY - pairSpread - strideY);
+    leg(rearHipX, hipY - pairSpread * 0.5, rearHipX + strideX, footY - pairSpread + strideY);
+    leg(frontHipX, shoulderY + pairSpread * 0.5, frontHipX + strideX, footY + pairSpread + strideY);
+    leg(rearHipX, hipY + pairSpread * 0.5, rearHipX - strideX, footY + pairSpread - strideY);
+
+    // Head anchors are computed up here because the NECK draws under the
+    // fleece, for the same reason the legs do: run it over the wool and a
+    // raised head drags a dark blade across the barrel. Under it, only the
+    // stretch between the skull and the wool line shows, which is all of a
+    // sheep's neck you ever actually see.
+    //
+    // The head goes up AND forward with `alert` — the barrel is long, so a
+    // head that only rises ends up sitting in the fleece like a mask on the
+    // shoulder. Lifting it to the front edge keeps it clear, with neck between.
+    const headX = bodyCx + (7 + 3.2 * alert) * u * side;
+    const headY = ((6.6 - 0.4 * side) - 12.5 * alert) * u;
+    // Going away, the head is either solidly there or it isn't — a half-lit
+    // skull reads as a grey smudge on the fleece, the same way the old rump
+    // patch did. Grazing, it tucks out of sight past the wool; head up, it
+    // stays fully opaque above the shoulders, which is where it would be.
+    const headAlpha = 1 - rear * 0.94 * (1 - alert);
+    // the FACE still turns away even when the skull doesn't — eyes belong to
+    // the front of the head and have no business showing from behind it
+    const faceShow = Math.max(0, 1 - rear * 1.5);
+    // Ears, horns and the crown tuft all splay SIDEWAYS as the sheep squares
+    // up, and fold back onto the skull in profile — the same collapse the
+    // eyes and muzzle make. Spreading them vertically instead put one ear
+    // above the head and one below it, which is not a pair of ears from any
+    // angle. In profile the far ear is behind the skull and doesn't read.
+    const splay = 1 - side;
+    const earLat = 3.2 * u * splay;           // sideways reach, squared up
+    const earBackX = headX - 2.6 * u * side;  // tucked behind the skull in profile
+    const farEar = Math.min(1, splay * 2.2);
+
+    // neck, under the fleece: rooted at the withers and widening into the
+    // shoulder rather than tapering to a point, so what emerges reads as a
+    // neck rather than a spike
+    const neckTop = -0.30 - 0.16 * alert, neckBot = 0.34 - 0.20 * alert;
+    ctx.globalAlpha = headAlpha;
+    ctx.fillStyle = skin;
     ctx.beginPath();
-    ctx.ellipse(-1 * u, 0, 13.5 * u, 7 * u, 0, 0, Math.PI * 2);
+    ctx.moveTo(bodyCx + bodyRx * 0.34, bodyCy + bodyRy * neckTop);
+    ctx.lineTo(headX - 0.6 * u, headY - 2.6 * u);
+    ctx.lineTo(headX - 3.2 * u, headY + 1.6 * u);
+    ctx.lineTo(bodyCx + bodyRx * 0.1, bodyCy + bodyRy * neckBot);
+    ctx.closePath();
     ctx.fill();
-    // white shoulder band
+    ctx.globalAlpha = 1;
+
+    // wool barrel: darker rim behind, lit fleece in front — the rim offset
+    // fades out approaching head/tail-on so a round cloud stays round
+    // instead of reading as a lopsided crescent
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.ellipse(bodyCx - 0.7 * u * side, bodyCy, bodyRx, bodyRy, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = wool;
+    ctx.beginPath();
+    ctx.ellipse(bodyCx + 0.6 * u * side, bodyCy - 0.4 * u, bodyRx * 0.94, bodyRy * 0.9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // fleece bumps break the perfect-ellipse outline — this is most of what
+    // sells wool instead of an egg at 30px, so it has to survive small
+    // sizes deliberately uneven and clustered toward the shoulder — evenly
+    // spaced bumps of one radius read as scallops stuck on an ellipse
+    for (const [bx, by, br] of [[-0.86, -0.4, 0.36], [-0.5, -0.72, 0.5],
+                                 [0.0, -0.8, 0.41], [0.46, -0.66, 0.47],
+                                 [0.82, -0.34, 0.32], [0.88, 0.18, 0.25]]) {
+      ctx.beginPath();
+      ctx.arc(bodyCx + bx * bodyRx, bodyCy + by * bodyRy, bodyRy * br, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // tail: a puff set clearly behind the rump so it reads from the back
+    // the puff has to sit PAST the barrel's edge to break the silhouette —
+    // tucked inside it, all you see is its shaded core as a disc floating
+    // on the fleece, which reads as a smudge rather than a tail
+    ctx.fillStyle = wool;
+    ctx.beginPath();
+    ctx.arc(bodyCx - bodyRx * 1.04, bodyCy + bodyRy * 0.3, (2.9 + 1.2 * rear) * u, 0, Math.PI * 2);
+    ctx.fill();
+    // no shaded core inside the puff: shade on wool is barely a value step,
+    // so a concentric disc reads as a smudge on the fleece rather than a
+    // tail. Now the puff clears the barrel's edge, the silhouette does it.
+    // No painted-on rump patch here. Skin at partial alpha over cream fleece
+    // composites to a flat mid-grey, which read as a smudge on the fleece
+    // rather than as anatomy — at game size it was noise, and blown up for
+    // the UI it looked like a rendering fault. The rear view is carried by
+    // the tail breaking the outline and the hind legs beneath it.
+
+
+    ctx.globalAlpha = headAlpha * farEar;
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(earBackX - earLat, headY - (0.6 * side + 0.5 * splay) * u,
+                (2.4 - 0.2 * splay) * u, 1.25 * u, -0.5 * side - 0.3 * splay, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = headAlpha;
+
+    // wool fringe on the poll, UNDER the skull: drawn over it, it read as a
+    // pale cap painted onto the face. Beneath, only the fringe above the head
+    // shows — wool the head pokes out of, which is what it actually is.
+    ctx.fillStyle = wool;
+    ctx.beginPath();
+    ctx.ellipse(headX - 2.8 * u * side, headY - (2.3 - 0.5 * face) * u,
+                (2.1 + 0.9 * splay) * u, 2.1 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // head + muzzle. In profile the skull is long and the muzzle juts
+    // forward; squared up to the camera both collapse onto the centreline.
+    // The muzzle's offset rides on `side` so it reaches zero head-on —
+    // otherwise a sheep looking straight at you keeps its nose stuck out
+    // sideways and reads as still being in profile.
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(headX, headY, (4.6 - 2.2 * face) * u, (3.4 + 1.1 * face) * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(headX + 3.3 * u * side * (0.35 + 0.65 * side), headY + (0.7 + 0.9 * face) * u,
+                (2.5 - 0.5 * face) * u, (1.9 - 0.3 * face) * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // near ear, over the head
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(earBackX + earLat, headY + (0.6 * side - 0.5 * splay) * u,
+                (2.4 - 0.2 * splay) * u, 1.25 * u, 0.5 * side + 0.3 * splay, 0, Math.PI * 2);
+    ctx.fill();
+
+    // eyes: one in profile, a symmetric PAIR once the sheep squares up. They
+    // separate SIDEWAYS as `face` rises rather than stacking one above the
+    // other — a second eye below the first just reads as a profile head that
+    // has grown a spare, not as a face looking back at you. Drawn as separate
+    // fills so the profile eye's alpha never rides the far eye's crossfade.
+    const eyeY = headY - (1.3 - 0.5 * face) * u;
+    ctx.globalAlpha = headAlpha * faceShow;
+    ctx.fillStyle = eyeCol;
+    ctx.beginPath();
+    ctx.arc(headX + (1.3 + 0.6 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
+    ctx.fill();
+    if (face > 0.04) {
+      ctx.globalAlpha = headAlpha * faceShow * Math.min(1, face * 2.2);
+      ctx.beginPath();
+      ctx.arc(headX + (1.3 - 3.2 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.restore();
+  }
+
+  // Dog as an upright billboard: a black-and-white working collie whose
+  // *pose*, not just its animation speed, tells you the gait. gait 0 is the
+  // breed's signature stalk — the whole dog drops, rump above lowered
+  // shoulders, head thrust out level with the back on a long flat neck.
+  // gait 1 is flat out: taller, daylight under the belly, head carried up
+  // on a raised neck, tail streaming. Proportions are deliberately square —
+  // body length ~ leg height — because a collie gets low by folding its
+  // legs, not by being built long. Authored right-facing and mirrored,
+  // never rotated, so it billboards cleanly through every heading.
+  function drawDogTop(x, y, size, dir, bob, gait) {
+    const u = size / 34;
+    const g = Math.max(0, Math.min(1, gait));
+    const coat = '#26262e', coatLit = '#383844', white = '#f4efe4', nose = '#111116';
+
+    const fx = Math.cos(dir), fy = Math.sin(dir);
+    const side = Math.abs(fx);          // 1 = full profile, 0 = head/tail-on
+    const sx = fx >= 0 ? 1 : -1;
+    const face = Math.max(0, fy);       // crossfade weight: coming at you
+    const rear = Math.max(0, -fy);      // crossfade weight: going away
+    const lerp = (a, b, t) => a + (b - a) * t;
+
+    // closed silhouette through a ring of points, rounded off by curving
+    // through the midpoints — a soft dog-shaped outline without hand-tuned
+    // bezier handles
+    function blob(pts) {
+      const n = pts.length;
+      ctx.beginPath();
+      ctx.moveTo((pts[n - 1][0] + pts[0][0]) / 2, (pts[n - 1][1] + pts[0][1]) / 2);
+      for (let i = 0; i < n; i++) {
+        const nx = pts[(i + 1) % n][0], ny = pts[(i + 1) % n][1];
+        ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + nx) / 2, (pts[i][1] + ny) / 2);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(sx, 1);
+    ctx.lineCap = 'round';
+
+    const footY = 13 * u;
+
+    // pose skeleton. bellyY/withersY carry the crouch: the body drops ~4u
+    // and the croup rises past the withers, so even at 34px the stalk reads
+    // as weight-back and coiled rather than merely shorter
+    // head- or tail-on the belly drops a little: shorter visible legs and a
+    // wider chest keep the front view stocky instead of stilt-legged
+    const bellyY = (lerp(8.4, 6.6, g) + (1 - side) * 0.9) * u;
+    const withersY = lerp(1.8, -2.6, g) * u;
+    const croupY = withersY + lerp(-1.1, 0.9, g) * u;
+    const tuckY = bellyY - lerp(1.4, 2.6, g) * u;
+
+    // half-lengths, collapsing to chest width when head/tail-on. The run
+    // stretches the body horizontally — speed reads as reach, not height
+    const Lf = lerp(5.3, lerp(6.0, 7.6, g), side) * u;
+    const Lr = lerp(5.3, lerp(6.4, 8.2, g), side) * u;
+
+    // legs: fore/aft columns converge under the body as side -> 0 while the
+    // near/far pairs open sideways, so a head-on dog stands on two visible
+    // front legs instead of a single smeared column
+    const fHipX = lerp(0, 4.6 + 1.0 * g, side) * u;
+    const rHipX = -lerp(0, 5.2 + 1.4 * g, side) * u;
+    const splay = (1 - side) * 1.45 * u;
+    // Shoulder and hip are NOT level. The hip joint is high, up in the pelvis
+    // — which is fused to the spine at the sacrum — so the hind leg is longer
+    // and drives from near the topline. The shoulder joint hangs low at the
+    // point of shoulder, well down the chest: a dog's foreleg has no bony
+    // attachment to the spine at all, it is slung against the ribcage in
+    // muscle, and the scapula climbing to the withers is a blade on the ribs
+    // rather than the joint. Both sit inside the body, so the legs still read
+    // as emerging from under the dog rather than pinned to its outline.
+    const shoulderY = withersY + (bellyY - withersY) * 0.62;
+    const hipY = croupY + (bellyY - croupY) * 0.26;
+    const legW = (2.5 + 0.3 * side) * u;
+    const ph = Math.sin(bob * 2);
+    const strideAmt = (1.4 + 4.0 * g) * u * side;
+    // lift keeps the stride legible when stride-x collapses head/tail-on
+    const liftAmt = (0.8 + 1.8 * g) * u * (1 - 0.35 * side);
+    // legs fold at low gait — the crouch is coiled because the legs visibly
+    // bend, not because the body squashes
+    const bendF = (0.3 + 1.6 * (1 - g)) * u * side;
+    const bendR = bendF * 1.5;
+
+    // leg + sock as one continuous quadratic, split De Casteljau-style so
+    // the white is literally the lower stretch of the same stroke, capped
+    // by a small dark toe planted on the ground line
+    function leg(hx, topY, footX, fY, bend) {
+      const cx = (hx + footX) / 2 - bend, cy = (topY + fY) / 2;
+      ctx.strokeStyle = coat;
+      ctx.lineWidth = legW;
+      ctx.beginPath();
+      ctx.moveTo(hx, topY);
+      ctx.quadraticCurveTo(cx, cy, footX, fY);
+      ctx.stroke();
+      const t = 0.6, it = 1 - t;
+      const px = it * it * hx + 2 * it * t * cx + t * t * footX;
+      const py = it * it * topY + 2 * it * t * cy + t * t * fY;
+      ctx.strokeStyle = white;
+      ctx.lineWidth = legW * 0.92;
+      ctx.beginPath();
+      ctx.moveTo(px, py);
+      ctx.quadraticCurveTo(lerp(cx, footX, t), lerp(cy, fY, t), footX, fY);
+      ctx.stroke();
+      ctx.fillStyle = coat;
+      ctx.beginPath();
+      ctx.ellipse(footX + 0.4 * u, fY + 0.2 * u, legW * 0.4, legW * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // tail: hangs low behind a stalking dog, streams level at a run. The
+    // reach shortens head/tail-on (it points along the view axis) and the
+    // wag rotates from vertical (profile) to side-to-side (rear) so a dog
+    // running away still shows a moving tail
+    const wag = Math.sin(bob * 1.6) * (1 + 1.5 * g) * u;
+    // The root stays put on the croup at every heading. Sliding it down the
+    // rump as the dog turned away made the tail look unhitched — it read as
+    // dropping off the animal rather than as a tail seen end-on. Turning
+    // away it keeps its anchor and only loses sideways reach, with just
+    // enough extra droop for the tip to clear the body's lower edge so a dog
+    // running dead away doesn't read as a rabbit.
+    const tBx = -Lr * 0.95 * side;
+    const tBy = croupY + 1.0 * u;
+    const reach = lerp(3.2, 8.0, g) * u * lerp(0.4, 1, side);
+    const droop = (lerp(6.2, 1.0, g) + (1 - side) * 1.2 + rear * (1 - side) * lerp(0.4, 1.6, g)) * u;
+    const tTx = tBx - reach + wag * (1 - side) * 0.9;
+    const tTy = tBy + droop + wag * side;
+    // the control point swings OPPOSITE the tip, so the tail bends into an S
+    // through the wag instead of swinging rigidly from the root like a stick
+    const bend = -wag * 0.55;
+    const tCx = tBx - reach * 0.55 + bend * (1 - side) * 0.9;
+    const tCy = tBy + lerp(2.2, 1.8, g) * u + bend * side;
+    // the white is a flash on the last stretch of the tail, not half of it
+    const TIP = 0.76, IT = 1 - TIP;
+    const spX = IT * IT * tBx + 2 * IT * TIP * tCx + TIP * TIP * tTx;
+    const spY = IT * IT * tBy + 2 * IT * TIP * tCy + TIP * TIP * tTy;
+    ctx.strokeStyle = coat;
+    ctx.lineWidth = 3.4 * u;
+    ctx.beginPath();
+    ctx.moveTo(tBx, tBy);
+    ctx.quadraticCurveTo(lerp(tBx, tCx, TIP), lerp(tBy, tCy, TIP), spX, spY);
+    ctx.stroke();
+    ctx.strokeStyle = white;
+    ctx.lineWidth = 3.0 * u;
+    ctx.beginPath();
+    ctx.moveTo(spX, spY);
+    ctx.quadraticCurveTo(lerp(tCx, tTx, TIP), lerp(tCy, tTy, TIP), tTx, tTy);
+    ctx.stroke();
+
+    // far pair first: feet a touch higher (further away), hidden by the body
+    leg(fHipX - splay, shoulderY, fHipX - splay - ph * strideAmt, footY - 0.9 * u - Math.max(0, -ph) * liftAmt, bendF);
+    leg(rHipX - splay * 0.7, hipY, rHipX - splay * 0.7 + ph * strideAmt, footY - 0.9 * u - Math.max(0, ph) * liftAmt, bendR);
+
+    // body: deep chest, level back, tucked waist, round haunch — the ring
+    // runs brisket -> chest front -> shoulder -> withers -> back -> croup ->
+    // buttock -> waist tuck -> belly
+    ctx.fillStyle = coat;
+    blob([
+      [Lf * 0.8, bellyY],
+      [Lf * 1.02, lerp(bellyY, withersY, 0.5)],
+      [Lf * 0.62, withersY + 0.3 * u],
+      [Lf * 0.1, withersY],
+      [-Lr * 0.5, lerp(withersY, croupY, 0.6)],
+      [-Lr, croupY],
+      [-Lr * 1.02, lerp(croupY, tuckY, 0.75)],
+      [-Lr * 0.55, tuckY],
+      [Lf * 0.1, bellyY + 0.15 * u],
+    ]);
+    ctx.fillStyle = coatLit;
+    ctx.beginPath();
+    ctx.ellipse(0, withersY + 1.6 * u, (Lf + Lr) * 0.34, 1.3 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // rump lightens as the dog turns away — a black silhouette otherwise
+    // goes flat from directly behind
+    if (rear > 0.02) {
+      ctx.fillStyle = white;
+      ctx.globalAlpha = rear * 0.1;
+      ctx.beginPath();
+      ctx.ellipse(-Lr * 0.5, lerp(croupY, bellyY, 0.6), Lr * 0.3, (bellyY - croupY) * 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // white collar-and-bib as one vertical band across the front of the
+    // body — in profile a shoulder band right behind the head, head-on the
+    // whole chest, faded out from behind where the chest is occluded
+    const bibX = Lf * 0.7 * side, bibY = lerp(bellyY, withersY, 0.42);
+    const bibW = lerp(3.0, 1.9, side) * u;
     ctx.fillStyle = white;
+    ctx.globalAlpha = 1 - Math.min(1, rear * 1.3);
     ctx.beginPath();
-    ctx.ellipse(5.5 * u, 0, 4 * u, 6.2 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(bibX, bibY, bibW, (bellyY - withersY) * lerp(0.24, 0.38, side), 0, 0, Math.PI * 2);
     ctx.fill();
-    // head with pricked ears
+    ctx.globalAlpha = 1;
+
+    // near pair over the body
+    leg(fHipX + splay, shoulderY, fHipX + splay + ph * strideAmt, footY - Math.max(0, ph) * liftAmt, bendF);
+    leg(rHipX + splay * 0.7, hipY, rHipX + splay * 0.7 - ph * strideAmt, footY - Math.max(0, -ph) * liftAmt, bendR);
+
+    // head: the anchor of the silhouette. In the stalk it thrusts ahead of
+    // the chest, level with the topline; at a run the carriage is extended
+    // rather than lifted — a galloping collie keeps its head roughly level
+    // with its back, reaching.
+    //
+    // It is placed relative to the neck's own root rather than in body
+    // coordinates, so NECK scales the whole neck without disturbing the
+    // direction the pose is reaching in, or needing every head offset
+    // re-tuned to match.
+    const neckSx = Lf * 0.5 * side, neckSy = withersY + 1.1 * u;
+    const NECK = 0.75;
+    const headX = neckSx + NECK * (lerp(0, lerp(7.2, 10.6, g), side) * u - neckSx);
+    const headY = neckSy + NECK * (withersY + lerp(1.5, -3.2, g) * u - neckSy);
+    const headRx = (3.3 + 0.5 * (1 - side)) * u, headRy = 3.0 * u;
+    // how much of the *face side* of the head the camera sees; kills the
+    // snout, blaze and nose from dead behind without a pop
+    const fv = Math.min(1, (side + face) * 1.4);
+
+    const neckEx = headX - 1.4 * u * side, neckEy = headY + 1.6 * u;
+    const nw = lerp(3.4, 3.1, g) * u;
+    ctx.strokeStyle = coat;
+    ctx.lineWidth = nw;
+    ctx.beginPath();
+    ctx.moveTo(neckSx, neckSy);
+    ctx.lineTo(neckEx, neckEy);
+    ctx.stroke();
+
+    // white throat running from the bib up the underside of the neck to the
+    // jaw — the markings must read as one continuous patch, never blobs
+    // parked near each other
+    ctx.strokeStyle = white;
+    ctx.lineWidth = nw * lerp(0.32, 0.5, side);
+    ctx.globalAlpha = 1 - Math.min(1, rear * 1.3);
+    ctx.beginPath();
+    ctx.moveTo(bibX + 0.2 * u, bibY - (bellyY - withersY) * 0.2);
+    ctx.lineTo(lerp(neckSx, neckEx, 0.75), lerp(neckSy, neckEy, 0.75) + nw * 0.28);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    // from behind, what remains of all that white is the collar ring
+    // showing over the shoulders below the ears
+    if (rear > 0.05) {
+      ctx.fillStyle = white;
+      ctx.globalAlpha = Math.min(1, rear * 1.6) * (1 - side * 0.5);
+      ctx.beginPath();
+      ctx.ellipse(neckSx, neckSy - 0.4 * u, nw * 0.62, 0.9 * u, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // ears: the collie semi-prick — an erect base with the top third folded
+    // forward. In profile the pair nearly overlaps at the top-back of the
+    // skull; head-on they spread and tip outward. Drawn as a shaped flap,
+    // not a nub, so a scaled-up dog still has ears worth looking at
+    const earLen = 2.6 * u;
+    ctx.fillStyle = coat;
+    for (let s = -1; s <= 1; s += 2) {
+      if (s === 1) { // skull between the two: far ear behind, near in front
+        ctx.beginPath();
+        ctx.ellipse(headX, headY, headRx, headRy, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.save();
+      ctx.translate(
+        headX - 0.9 * u * side + s * (0.4 * u * side + 2.1 * u * (1 - side)),
+        headY - 2.5 * u - 0.4 * u * (1 - side));
+      ctx.rotate(-0.2 * side + s * 0.5 * (1 - side));
+      ctx.beginPath();
+      ctx.moveTo(-1.0 * u, 0.6 * u);
+      ctx.quadraticCurveTo(-0.95 * u, -earLen * 0.55, -0.45 * u, -earLen * 0.8);
+      // folded tip leans forward off the erect base
+      ctx.quadraticCurveTo(0.15 * u, -earLen - 0.2 * u, 0.75 * u, -earLen * 0.72);
+      ctx.quadraticCurveTo(0.55 * u, -earLen * 0.4, 1.0 * u, 0.6 * u);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // muzzle: a real tapered wedge with a slight stop in profile, its reach
+    // shrinking into the skull as the head turns to (or away from) camera —
+    // a head-on collie keeps a short centred snout, a rear one shows none
+    const snout = side * fv;
+    const tipX = headX + lerp(1.0, 5.3, snout) * u;
     ctx.fillStyle = coat;
     ctx.beginPath();
-    ctx.ellipse(13 * u, 0, 7 * u, 5.2 * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(9 * u, -4 * u); ctx.lineTo(6 * u, -9.5 * u); ctx.lineTo(13 * u, -6.5 * u);
-    ctx.closePath();
-    ctx.moveTo(9 * u, 4 * u); ctx.lineTo(6 * u, 9.5 * u); ctx.lineTo(13 * u, 6.5 * u);
+    ctx.moveTo(headX + 0.4 * u, headY - 2.0 * u);
+    ctx.quadraticCurveTo(headX + lerp(0.8, 3.6, snout) * u, headY - 1.5 * u, tipX, headY - 0.7 * u);
+    ctx.lineTo(tipX, headY + 0.7 * u);
+    ctx.quadraticCurveTo(headX + lerp(0.8, 3.0, snout) * u, headY + 1.7 * u, headX + 0.4 * u, headY + 2.2 * u);
     ctx.closePath();
     ctx.fill();
-    // blaze down the muzzle, wet nose out front
+    // white chin along the underside of the jaw, continuous with the throat
+    ctx.globalAlpha = fv;
     ctx.fillStyle = white;
+    ctx.save();
+    ctx.translate(headX + lerp(0, 2.7, snout) * u, headY + lerp(1.6, 1.05, snout) * u);
+    ctx.rotate(0.3 * snout);
     ctx.beginPath();
-    ctx.ellipse(17 * u, 0, 3.6 * u, 1.9 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, 0, lerp(1.2, 1.6, snout) * u, lerp(1.0, 0.62, snout) * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#111116';
+    ctx.restore();
+    // forehead blaze fades in with the face turning to camera
+    ctx.globalAlpha = Math.min(1, face * 1.8) * fv;
     ctx.beginPath();
-    ctx.arc(20 * u, 0, 1.8 * u, 0, Math.PI * 2);
+    ctx.ellipse(headX + 0.5 * u * snout, headY - 1.0 * u, 0.6 * u, 1.9 * u, 0, 0, Math.PI * 2);
     ctx.fill();
+    ctx.globalAlpha = fv;
+    ctx.fillStyle = nose;
+    ctx.beginPath();
+    ctx.arc(headX + lerp(0, 4.9, snout) * u, headY + lerp(1.2, 0, snout) * u, 0.9 * u, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // eyes: a pair when facing the camera collapsing to one in profile,
+    // gone from behind — never a stray dot on the back of the head
+    const eyeVis = Math.min(1, Math.max(0, face * 1.6 + side * 0.9 - rear * 1.2));
+    if (eyeVis > 0.03) {
+      ctx.globalAlpha = eyeVis;
+      ctx.fillStyle = nose;
+      const eCx = headX + 1.5 * u * side;
+      const eSp = (0.3 + 1.6 * (1 - side)) * u;
+      ctx.beginPath();
+      ctx.arc(eCx - eSp, headY - 0.7 * u, 0.55 * u, 0, Math.PI * 2);
+      ctx.arc(eCx + eSp, headY - 0.7 * u, 0.55 * u, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
     ctx.restore();
   }
 
@@ -3586,31 +4140,42 @@
       }
     }
 
-    // dog influence ring (a faint pressure aura helps read the herding range)
+    // dog influence ring (a faint pressure aura helps read the herding range) —
+    // a ground circle, not a screen one: sample it in world space and run each
+    // point through camPt so it bows with the ridge and tilts like the turf under it
     if (state.mode === 'playing') {
-      const dg = state.dog;
-      const dp = camPt(dg.x, dg.y), dk = camScale(dg.x, dg.y);
-      ctx.fillStyle = 'rgba(255, 246, 232, 0.05)';
+      const dg = state.dog, dk = camScale(dg.x, dg.y);
+      const RING_N = 48; // drawn every frame — smooth without being wasteful
       ctx.beginPath();
-      ctx.arc(dp.x, dp.y, FLEE_RANGE * dk, 0, Math.PI * 2);
+      for (let i = 0; i <= RING_N; i++) {
+        const a = Math.PI * 2 * i / RING_N;
+        const p = camPt(dg.x + Math.cos(a) * FLEE_RANGE, dg.y + Math.sin(a) * FLEE_RANGE);
+        i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255, 246, 232, 0.05)';
       ctx.fill();
       ctx.strokeStyle = 'rgba(255, 246, 232, 0.14)';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * dk; // a ring far up the field reads thinner, same as its radius does
       ctx.setLineDash([10, 14]);
-      ctx.beginPath();
-      ctx.arc(dp.x, dp.y, FLEE_RANGE * dk, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // bark shockwaves
+    // bark shockwaves — same ground-circle treatment as the influence ring above
     for (const b of state.barks) {
       const k = b.t / 0.6;
-      const bp = camPt(b.x, b.y), bk = camScale(b.x, b.y);
-      ctx.strokeStyle = `rgba(127, 212, 255, ${0.6 * (1 - k)})`;
-      ctx.lineWidth = 5 * (1 - k) + 1;
+      const bk = camScale(b.x, b.y);
+      const r = BARK_RANGE * (0.25 + 0.75 * k);
+      const RING_N = 40; // a handful of these on screen at once — a touch leaner than the ring
       ctx.beginPath();
-      ctx.arc(bp.x, bp.y, BARK_RANGE * (0.25 + 0.75 * k) * bk, 0, Math.PI * 2);
+      for (let i = 0; i <= RING_N; i++) {
+        const a = Math.PI * 2 * i / RING_N;
+        const p = camPt(b.x + Math.cos(a) * r, b.y + Math.sin(a) * r);
+        i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+      }
+      ctx.strokeStyle = `rgba(127, 212, 255, ${0.6 * (1 - k)})`;
+      ctx.lineWidth = (5 * (1 - k) + 1) * bk;
       ctx.stroke();
     }
 
@@ -3633,46 +4198,27 @@
     };
 
     const drawSheep = (s, p) => {
+      // the projection was computed for the depth sort — reuse it rather
+      // than running camPt/camScale a second time for every sheep
       const k = p.k;
-      const hop = s.panic > 0.25 ? Math.abs(Math.sin(s.bob)) * 5 : Math.sin(s.bob) * 1.2;
-      // ground shadow: axis-aligned, so no transform needed at all
-      ctx.drawImage(sheepShadow, p.x - 15 * k, p.y + 8 * k, 30 * k, 10 * k);
-      if (s.defiant && !s.penned) {
-        ctx.fillStyle = `rgba(60, 44, 28, ${0.2 + 0.1 * Math.abs(Math.sin(t * 4 + s.bob))})`;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y - hop * k, 21 * k, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // body: one baked sprite, rotated to the live heading. The trot
-      // snaps to the nearest baked foot phase; the waddle stays smooth
-      // because it rides the rotation, not the bake.
-      const moving = hyp(s.vx, s.vy) > 12;
-      const cells = sheepSprites[s.defiant ? 'ram' : 'ewe'];
-      const phase = moving
-        ? clamp(Math.round((Math.sin(s.bob * 2) + 1) * 0.5 * (SHEEP_PHASES - 1)), 0, SHEEP_PHASES - 1)
-        : (SHEEP_PHASES - 1) / 2;
-      const img = cells[phase];
-      const hw = (img.width / (2 * SHEEP_BAKE)) * k;
-      const hh = (img.height / (2 * SHEEP_BAKE)) * k;
       ctx.save();
-      ctx.translate(p.x, p.y - hop * k);
-      ctx.rotate(s.dir + Math.sin(s.bob) * 0.05); // slight waddle
-      ctx.drawImage(img, -hw, -hh, hw * 2, hh * 2);
-      ctx.restore();
-      // status doodles are rare, so only they pay for a full transform
-      if (s.planted || (!s.penned && s.panic > 0.75) || (s.penned && Math.sin(t * 2 + s.bob) > 0.965)) {
-        ctx.save();
-        ctx.translate(p.x - s.x * k, p.y - s.y * k);
-        ctx.scale(k, k);
-        if (s.planted) {
-          drawDoodle('huff', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
-        } else if (!s.penned && s.panic > 0.75) {
-          drawDoodle('sweat', s.x + 13, s.y - 24 - hop, 12);
-        } else {
-          drawDoodle('note', s.x + 12, s.y - 26, 12);
-        }
-        ctx.restore();
+      ctx.translate(p.x - s.x * k, p.y - s.y * k);
+      ctx.scale(k, k);
+      const hop = s.panic > 0.25 ? Math.abs(Math.sin(s.bob)) * 5 : Math.sin(s.bob) * 1.2;
+      ctx.fillStyle = 'rgba(0,0,0,0.14)';
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y + 13, 15, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      drawSheepTop(s.x, s.y - hop, 29.4 + 2.6 * s.bold, s.dir, s.bold, s.bob,
+        hyp(s.vx, s.vy) > 12, s.alert);
+      if (s.planted) {
+        drawDoodle('huff', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
+      } else if (!s.penned && s.panic > 0.75) {
+        drawDoodle('sweat', s.x + 13, s.y - 24 - hop, 12);
+      } else if (s.penned && Math.sin(t * 2 + s.bob) > 0.965) {
+        drawDoodle('note', s.x + 12, s.y - 26, 12);
       }
+      ctx.restore();
     };
 
     const drawDog = () => {
@@ -3700,60 +4246,73 @@
     };
 
     // depth-sort by on-screen (camera) y so overlap order matches the land.
+    // The pen fence used to draw as one pass after every actor, so it always
+    // won the overlap no matter which one the camera actually had closer.
+    // It's cut into short spans below instead, each entered into this same
+    // list under its own ground depth, so a far sheep sorts behind a rail
+    // and a near sheep sorts in front of it — span by span, not wall by wall.
     // Obstacles and sheep are held back with the dog/pen while a bake is
     // in flight — see the inGame comment above.
-    // the camPt for the sort is kept and reused by the draw — projecting
-    // every actor a second time was pure repeat work on a big flock
+    // Each actor's camPt is computed once here and handed to its draw, so
+    // the projection isn't run a second time per actor inside the callback.
     const ents = [];
     if (!state.bakePending) {
-      for (const o of state.obstacles) ents.push({ p: camPt(o.x, o.y), o, sheep: false });
-      for (const s of state.sheep) ents.push({ p: camPt(s.x, s.y), o: s, sheep: true });
+      for (const o of state.obstacles) {
+        const p = camPt(o.x, o.y);
+        ents.push({ y: p.y, draw: () => drawObstacle(o, p) });
+      }
+      for (const s of state.sheep) {
+        const p = camPt(s.x, s.y);
+        ents.push({ y: p.y, draw: () => drawSheep(s, p) });
+      }
     }
-    ents.sort((a, b) => a.p.y - b.p.y);
-    const dogY = inGame ? camPt(state.dog.x, state.dog.y).y : Infinity;
-    let dogDrawn = !inGame;
-    for (const e of ents) {
-      if (!dogDrawn && e.p.y > dogY) { drawDog(); dogDrawn = true; }
-      if (e.sheep) drawSheep(e.o, e.p); else drawObstacle(e.o, e.p);
-    }
-    if (!dogDrawn) drawDog();
+    if (inGame) ents.push({ y: camPt(state.dog.x, state.dog.y).y, draw: drawDog });
 
-    // pen fence on top: vertical posts with two cross rails strung
-    // between them, matching the boundary fence's build
+    // pen fence: vertical posts with two cross rails strung between them,
+    // matching the boundary fence's build. These callbacks now fire mid-sort,
+    // interleaved with arbitrary actor draws, so — unlike the old single
+    // pass — each one sets every piece of canvas state it depends on itself
+    // instead of trusting something set once up front.
     if (inGame) {
       const P = state.pen;
       const FP_H = 16; // post height
-      ctx.lineCap = 'round';
       // sample a fence line every ~52px, each sample lifted into screen
       // space off its own ground point so the fence rides the camera warp
       const fencePts = (x1, y1, x2, y2) => {
         const np = Math.max(1, Math.round(Math.hypot(x2 - x1, y2 - y1) / 52));
         const pts = [];
         for (let i = 0; i <= np; i++) {
-          const px = x1 + (x2 - x1) * (i / np), py = y1 + (y2 - y1) * (i / np);
-          const p = camPt(px, py);
-          pts.push({ x: p.x, y: p.y, k: camScale(px, py) });
+          const wx = x1 + (x2 - x1) * (i / np), wy = y1 + (y2 - y1) * (i / np);
+          const p = camPt(wx, wy);
+          pts.push({ x: p.x, y: p.y, k: camScale(wx, wy), wx, wy });
         }
         return pts;
       };
-      const drawRails = (pts) => {
+      // one span's rails, stroked on their own between two adjacent samples.
+      // Square caps, not round: round only ever did anything at the two
+      // ends of the old single continuous path, and both of those ends
+      // already sit under a post (every sample gets one, endpoints
+      // included) — squaring off here just means neighboring spans butt
+      // together invisibly instead of stacking a second round cap on the
+      // first at every join.
+      const drawRailSpan = (a, b) => {
+        ctx.lineCap = 'butt';
         ctx.strokeStyle = 'rgba(30, 22, 12, 0.25)'; // ground line
         ctx.lineWidth = 3;
         ctx.beginPath();
-        pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
         ctx.stroke();
         for (const [ry, lw, col] of [[0.8, 4, '#8a5f3c'], [0.42, 3, '#a97e50']]) {
           ctx.strokeStyle = col;
           ctx.lineWidth = lw;
           ctx.beginPath();
-          pts.forEach((p, i) => {
-            const y = p.y - FP_H * ry * p.k;
-            i ? ctx.lineTo(p.x, y) : ctx.moveTo(p.x, y);
-          });
+          ctx.moveTo(a.x, a.y - FP_H * ry * a.k);
+          ctx.lineTo(b.x, b.y - FP_H * ry * b.k);
           ctx.stroke();
         }
       };
       const drawPost = (p) => {
+        ctx.lineCap = 'butt';
         ctx.strokeStyle = '#6e4a2c';
         ctx.lineWidth = 5 * p.k;
         ctx.beginPath();
@@ -3765,27 +4324,46 @@
         ctx.arc(p.x, p.y - FP_H * p.k, 2.6 * p.k, 0, Math.PI * 2);
         ctx.fill();
       };
+      // a span's depth is its ground midpoint, not either endpoint. The
+      // spans most likely to disagree with a single-point actor are the
+      // ones running toward the camera, where the two ends of one 52px
+      // sample can already sit a fair way apart in depth; keying off the
+      // near or the far end biases every wrong call the same way (the
+      // fence wins the whole span, or loses it), while the midpoint only
+      // ever bounds the worst case to half the span's own depth spread,
+      // whichever side the actor turns out to be on
+      const pushSpan = (a, b) => {
+        const y = camPt((a.wx + b.wx) / 2, (a.wy + b.wy) / 2).y;
+        ents.push({ y, draw: () => drawRailSpan(a, b) });
+      };
       for (const sgm of P.segs) {
         const pts = fencePts(sgm.x1, sgm.y1, sgm.x2, sgm.y2);
-        drawRails(pts);
-        for (const p of pts) drawPost(p);
+        for (let i = 0; i < pts.length - 1; i++) pushSpan(pts[i], pts[i + 1]);
+        for (const p of pts) ents.push({ y: p.y, draw: () => drawPost(p) });
       }
       // the gate itself, sliding shut once every sheep is home: a light
       // hurdle — rails only — swinging from the hinge post, its leading
-      // post travelling with the free end
+      // post travelling with the free end. Same span treatment; the hinge
+      // end reuses the wall's own permanent post, so only the leading edge
+      // needs one of its own.
       if (state.gateT > 0) {
         const g = P.gate;
         const gx2 = g.x1 + (g.x2 - g.x1) * state.gateT;
         const gy2 = g.y1 + (g.y2 - g.y1) * state.gateT;
-        const pts = [g.x1, gx2].map((x, i) => {
-          const y = i ? gy2 : g.y1;
-          const p = camPt(x, y);
-          return { x: p.x, y: p.y, k: camScale(x, y) };
-        });
-        drawRails(pts);
-        drawPost(pts[1]);
+        const pts = fencePts(g.x1, g.y1, gx2, gy2);
+        for (let i = 0; i < pts.length - 1; i++) pushSpan(pts[i], pts[i + 1]);
+        const tip = pts[pts.length - 1];
+        ents.push({ y: tip.y, draw: () => drawPost(tip) });
       }
-      // gate flags
+    }
+
+    ents.sort((a, b) => a.y - b.y);
+    for (const e of ents) e.draw();
+
+    // gate flags: small and high off the ground at the two fixed gate-frame
+    // corners, not worth depth-sorting against the flock — left on top
+    if (inGame) {
+      const P = state.pen;
       for (const [fx, fy] of [[P.gate.x1, P.gate.y1], [P.gate.x2, P.gate.y2]]) {
         const fp = camPt(fx, fy), fk = camScale(fx, fy);
         ctx.save();
