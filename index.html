@@ -2385,9 +2385,9 @@
   }
   // sheep near the mouth of an open gate know what it's for and drift on
   // in. Strongest at early levels (training wheels) but never gone
-  // entirely — even a ram drags its feet at the mouth rather than
-  // ignoring the pen outright, so the funnel still works on the
-  // stubborn end instead of leaving every ram a one-sheep shoving match
+  // entirely — even a defiant sheep drags its feet at the mouth rather
+  // than ignoring the pen outright, so the funnel still works on the
+  // stubborn end instead of leaving each one a single-sheep shoving match
   function gateSuction(s) {
     const ease = 0.4 + 0.6 * clamp(1 - (state.level - 1) / 4, 0, 1);
     // a panicked sheep isn't reasoning about doorways — it's running.
@@ -2822,9 +2822,9 @@
       s.vy += fy * dt;
       s.vx -= s.vx * 2.4 * dt;
       s.vy -= s.vy * 2.4 * dt;
-      // the bold term in the base gives rams a brisker trot at any
-      // fright level — bold used to pay off only at full panic, so a
-      // driven ram lagged the woollier sheep it was walking with
+      // the bold term in the base gives the defiant ones a brisker trot at
+      // any fright level — bold used to pay off only at full panic, so a
+      // driven stubborn sheep lagged the woollier ones it walked with
       let cap = s.planted ? 10 : 26 + 14 * s.bold + s.panic * (150 + 30 * s.bold);
       // the funnel is a GRADIENT: caught at the mouth a sheep moves at
       // a brisk walk, and the ramp accelerates it all the way through —
@@ -2907,7 +2907,7 @@
   // drives the dog through the same commands a player calls: WALK ON to
   // press, easing off when the flock heats up, leaning in when it
   // dawdles, standing off while the funnel drains, and pressing close
-  // (which auto-barks) when a ram digs in. Decisions tick on a measured
+  // (which auto-barks) when one digs in. Decisions tick on a measured
   // beat — AUTO_TICK — so each phase gets time to visibly play out and
   // the handling reads deliberate, not jittery.
   function autopilot(dt) {
@@ -3053,7 +3053,7 @@
     if (panic > 0.7) {
       state.pace = Math.max(PACE_MIN, state.pace - PACE_STEP); // easy — pushing a hot flock just scatters it
     } else if (planted && panic < 0.5) {
-      state.pace = Math.min(1, state.pace + PACE_STEP * 2); // charge the ram — the bark shakes it loose
+      state.pace = Math.min(1, state.pace + PACE_STEP * 2); // charge it — the bark shakes a planted sheep loose
     } else if (panic < 0.35) {
       state.pace = Math.min(0.7, state.pace + PACE_STEP); // calm and dawdling — lean in
     }
@@ -3254,12 +3254,16 @@
   // (grazing, not a dog's alert-up head). The pose is authored right-facing
   // and mirrored, never rotated, so it reads correctly from every heading
   // with no sprite-sheet popping.
-  function drawSheepTop(x, y, size, dir, ram, bob, moving, alert) {
+  // `defiant` is the stubborn temperament, not a different animal. It used to
+  // be drawn as a horned ram, which was wrong husbandry — rams aren't run with
+  // the ewes outside tupping — so a defiant sheep is now simply an older,
+  // scruffier ewe: heavier through the body, fleece gone dun rather than
+  // cream. The pulsing aura its caller draws is what actually flags it.
+  function drawSheepTop(x, y, size, dir, defiant, bob, moving, alert) {
     const u = size / 30;
-    const wool = ram ? '#d9c6a8' : '#f6f1e6';
-    const shade = ram ? '#b8a284' : '#ddd3bf';
-    const skin = ram ? '#4a3b30' : '#3b3b46';
-    const hornCol = '#e0d3b8';
+    const wool = defiant ? '#d9c6a8' : '#f6f1e6';
+    const shade = defiant ? '#b8a284' : '#ddd3bf';
+    const skin = defiant ? '#4a3b30' : '#3b3b46';
     const eyeCol = '#fff8ec';
 
     const fx = Math.cos(dir), fy = Math.sin(dir);
@@ -3405,21 +3409,6 @@
     // the tail breaking the outline and the hind legs beneath it.
 
 
-    // far horn — curling behind the skull. Horns stay bold from every
-    // heading (only a slight rear fade) so the ram reads from behind too
-    if (ram) {
-      ctx.globalAlpha = 1 - rear * 0.15;
-      const hnFarX = headX - 2.4 * u * side - 3.2 * u * splay;
-      const hnFar = headY - (2.4 * side - 0.4 * splay) * u;
-      ctx.strokeStyle = hornCol;
-      ctx.lineCap = 'round';
-      ctx.lineWidth = 3 * u;
-      ctx.beginPath();
-      ctx.arc(hnFarX, hnFar, 3.2 * u, 2.7, 5.8);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-    }
-
     ctx.globalAlpha = headAlpha * farEar;
     ctx.fillStyle = skin;
     ctx.beginPath();
@@ -3474,21 +3463,6 @@
       ctx.beginPath();
       ctx.arc(headX + (1.3 - 3.2 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
       ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-
-    // near horn, over the head — reads as a spiral in profile, a flanking
-    // curl once the sheep squares up to face-on or away
-    if (ram) {
-      ctx.globalAlpha = 1 - rear * 0.15;
-      const hnNearX = headX - 2.4 * u * side + 3.2 * u * splay;
-      const hnNear = headY + (2.4 * side + 0.4 * splay) * u;
-      ctx.strokeStyle = hornCol;
-      ctx.lineCap = 'round';
-      ctx.lineWidth = 3 * u;
-      ctx.beginPath();
-      ctx.arc(hnNearX, hnNear, 3.2 * u, 0.5, 3.6);
-      ctx.stroke();
       ctx.globalAlpha = 1;
     }
 
