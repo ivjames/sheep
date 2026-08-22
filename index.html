@@ -198,6 +198,24 @@
     box-shadow: 0 4px 0 #c99b13;
   }
   .cmd-btn.active .key-hint { background: rgba(49,32,74,0.14); opacity: 0.7; }
+  /* the dog's own pick under autopilot — a cool glow reading as "watch,
+     don't press", kept visually apart from the warm solid .active a
+     player's own call gets. Pulses gently to draw the eye; parked on the
+     bright end of the pulse when motion is off. */
+  .cmd-btn.auto-active {
+    background: var(--plum-soft);
+    color: var(--cream);
+    box-shadow: 0 4px 0 rgba(0,0,0,0.28), 0 0 0 3px rgba(127,212,255,0.6), 0 0 16px 3px rgba(127,212,255,0.55);
+    animation: auto-cmd-pulse 1.7s ease-in-out infinite;
+  }
+  .cmd-btn.auto-active .key-hint { background: rgba(127,212,255,0.22); opacity: 0.85; }
+  @keyframes auto-cmd-pulse {
+    0%, 100% { box-shadow: 0 4px 0 rgba(0,0,0,0.28), 0 0 0 2px rgba(127,212,255,0.35), 0 0 9px 1px rgba(127,212,255,0.35); }
+    50% { box-shadow: 0 4px 0 rgba(0,0,0,0.28), 0 0 0 4px rgba(127,212,255,0.75), 0 0 20px 5px rgba(127,212,255,0.7); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cmd-btn.auto-active { animation: none; }
+  }
   /* ---------- Overlays ---------- */
   .overlay {
     position: fixed;
@@ -2622,6 +2640,9 @@
       setAuto(false);
     }
     if (demo || state.auto) autopilot(dt);
+    // reflect the dog's current pick on the pad; updateCmdButtons no-ops
+    // once it already matches, so this is cheap even at 60fps
+    if (state.auto) updateCmdButtons();
     if (!demo && !state.gateClosing) state.levelTime += dt; // the clock stops at the last sheep
     updateDog(dt);
     updateSheep(dt);
@@ -3288,20 +3309,37 @@
   }
 
   const cmdBtns = [...cmdUi.querySelectorAll('.cmd-btn')];
+  // dedupes the DOM sync against [cmd, auto] so the per-frame autopilot
+  // poll (below) is a no-op once the pad already reflects reality
+  let lastShownCmd = null;
   function updateCmdButtons() {
+    const key = state.dog.cmd + '|' + state.auto;
+    if (key === lastShownCmd) return;
+    lastShownCmd = key;
     for (const b of cmdBtns) {
-      const c = b.dataset.cmd;
-      b.classList.toggle('active', state.dog.cmd === c);
+      const on = state.dog.cmd === b.dataset.cmd;
+      // a player's own call gets the solid pressed look; the autopilot's
+      // pick gets the separate pulsing auto-active treatment — never both
+      b.classList.toggle('active', on && !state.auto);
+      b.classList.toggle('auto-active', on && state.auto);
     }
   }
   for (const b of cmdBtns) {
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); issueCommand(b.dataset.cmd); });
   }
 
-  function applyInputMode() {
+  // shows the pad whenever there's something to read off it: the player's
+  // own command mode, or the autopilot thinking out loud (any input mode) —
+  // kept separate from applyInputMode's other side effects (below) so
+  // toggling autopilot can re-run just this without resetting state.dog.cmd
+  function updateCmdVisibility() {
     if (state.mode === 'playing') {
-      cmdUi.style.display = state.input === 'cmd' ? 'grid' : 'none';
+      cmdUi.style.display = (state.input === 'cmd' || state.auto) ? 'grid' : 'none';
     }
+  }
+
+  function applyInputMode() {
+    updateCmdVisibility();
     document.body.classList.toggle('cmd-mode', state.input === 'cmd');
     if (state.input === 'cmd') {
       state.dog.cmd = 'lie';
@@ -3342,6 +3380,7 @@
     autoBtn.innerHTML = on
       ? '🦮<span class="wide-only"> auto on</span>'
       : '🐕<span class="wide-only"> auto</span>';
+    updateCmdVisibility(); // pad appears/disappears immediately, any input mode
     updateCmdButtons();
   }
   autoBtn.addEventListener('click', () => {
