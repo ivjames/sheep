@@ -437,7 +437,11 @@
   // that with slack; the dog keeps sweeping until it's back under WEAR_TIGHT
   // of it, and each sweep runs this far off the drive line before it turns.
   const WEAR_SPREAD = 45, WEAR_TIGHT = 0.82, WEAR_ARC = 0.6;
-  const WEAR_BOUT = 3.6, WEAR_REST = 1.8; // seconds of wearing, then of driving
+  const WEAR_BOUT = 4.5, WEAR_REST = 3.0; // seconds of wearing, then of driving
+  // the autopilot re-decides on this beat, and once it commits to a group
+  // it stays on it (or what's left of it) at least this long — an unhurried
+  // handler who lets each phase play out rather than flip-flopping
+  const AUTO_TICK = 0.6, WORK_HOLD = 5;
   // a drive counts as stalled once the dog has been under STALL_SLOW of its
   // own pace for STALL_HOLD seconds — long enough that an ordinary slow
   // press isn't mistaken for having stopped
@@ -449,8 +453,10 @@
   const CAST_BUSY = 0.55, CAST_GAIN = 0.55, CAST_ARC = 0.3;
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
-  const FEAR_HOLD = 0.5;          // seconds a startle pins panic at FULL — flat, not pressure-scaled
+  const FEAR_HOLD = 0.5;          // seconds a first-hand startle pins panic at FULL (caught frights hold less)
   const STARTLE_K = 0.4;          // how deep into flee range the dog must press to startle (0 = edge, 1 = on top)
+  const PANIC_DECAY = 0.8;        // each contagion hop hands on this fraction of the fright...
+  const PANIC_FLOOR = 0.35;       // ...and below this it no longer takes, so a startle dies out in ~5 rings
   const MERGE_REACH = 520;        // a stray feels the pull of the NEAREST sheep out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
@@ -788,6 +794,7 @@
     wearSide: 0,   // autopilot wear sweep: +1 away-side, -1 come-by side, 0 not wearing
     wearT: 0,      // seconds into a wear bout; negative = driving before the next one
     stallT: 0,     // seconds the drive has been stopped with sheep still out
+    workHold: 0,   // seconds left on the dog's commitment to its picked group
   };
 
   // ---------- hillside ----------
@@ -939,26 +946,47 @@
     hc.rect(-M, -hill.top, hillCanvas.width, hillCanvas.height);
     camTrace(hc, fence, true, s1);
     hc.fill('evenodd');
-    // the boundary fence marks the playing field, built like the pen's
+    // the boundary fence marks the playing field, built like the pen's:
+    // posts standing up out of the ground with two cross rails strung
+    // post to post, so it reads as a real timber fence rather than a
+    // painted line. "Up" is up the screen, same as the trees and flags.
     hc.lineCap = 'round';
-    hc.strokeStyle = '#8a5f3c';
-    hc.lineWidth = 7;
-    hc.beginPath();
-    camTrace(hc, fence, true, s1);
-    hc.stroke();
-    hc.strokeStyle = '#b98a5a';
-    hc.lineWidth = 3;
-    hc.beginPath();
-    camTrace(hc, fence, true, s1);
-    hc.stroke();
-    hc.fillStyle = '#6e4a2c';
+    const FP_H = 16; // post height
     for (let i = 0; i < 4; i++) {
       const [ax, ay] = fence[i], [bx, by] = fence[(i + 1) % 4];
       const np = Math.max(1, Math.round(Math.hypot(bx - ax, by - ay) / 52));
-      for (let j = 0; j < np; j++) { // each edge owns its starting corner post
+      const post = (j) => {
         const px = ax + (bx - ax) * j / np, py = ay + (by - ay) * j / np;
+        return { x: px, y: hillY(px, py) };
+      };
+      // ground line the posts sit on, then the rails, then the posts
+      // themselves so their faces cap the rails
+      hc.strokeStyle = 'rgba(30, 22, 12, 0.25)';
+      hc.lineWidth = 3;
+      hc.beginPath();
+      for (let j = 0; j <= np; j++) { const p = post(j); j ? hc.lineTo(p.x, p.y) : hc.moveTo(p.x, p.y); }
+      hc.stroke();
+      for (const [ry, lw, col] of [[0.8, 4, '#8a5f3c'], [0.42, 3, '#a97e50']]) {
+        hc.strokeStyle = col;
+        hc.lineWidth = lw;
         hc.beginPath();
-        hc.arc(px, hillY(px, py), 5, 0, Math.PI * 2);
+        for (let j = 0; j <= np; j++) {
+          const p = post(j);
+          j ? hc.lineTo(p.x, p.y - FP_H * ry) : hc.moveTo(p.x, p.y - FP_H * ry);
+        }
+        hc.stroke();
+      }
+      for (let j = 0; j < np; j++) { // each edge owns its starting corner post
+        const p = post(j);
+        hc.strokeStyle = '#6e4a2c';
+        hc.lineWidth = 5;
+        hc.beginPath();
+        hc.moveTo(p.x, p.y);
+        hc.lineTo(p.x, p.y - FP_H);
+        hc.stroke();
+        hc.fillStyle = '#5c3d22'; // post cap
+        hc.beginPath();
+        hc.arc(p.x, p.y - FP_H, 2.6, 0, Math.PI * 2);
         hc.fill();
       }
     }
@@ -1081,41 +1109,44 @@
   }
 
   // ---------- level generation ----------
-  function makePen(count) {
+  function makePen() {
     const { w, h } = state.world;
+    // The pen is a full strip across one end of the field, wall running
+    // corner to corner: its side and back fences ARE the field boundary,
+    // so there's no alcove between pen wall and hedge for a fleeing
+    // sheep to wedge into — the only free-standing fence is the front
+    // wall with the gate in it. Depth takes roughly a third of the
+    // playable field; the other two thirds stay open pasture.
     const side = randInt(0, 3); // 0 top, 1 right, 2 bottom, 3 left
     const horiz = side === 0 || side === 2;
     const along = horiz ? w : h;
-    const W = clamp(210 + count * 9, 250, along - 360);
-    const D = clamp(150 + count * 5, 170, 340);
-    const c = rand(HEDGE + 110 + W / 2, along - HEDGE - 110 - W / 2);
+    const deep = horiz ? h : w;
+    const D = Math.round((deep - 2 * HEDGE) / 3);
     // the gate narrows level by level — late-game pens take real precision
     const gw = clamp(GATE_W - (state.level - 1) * 4, GATE_MIN, GATE_W);
+    // the gate lands anywhere along the wall, clear of the corners
+    const c = rand(HEDGE + 150 + gw / 2, along - HEDGE - 150 - gw / 2);
     const ga = c - gw / 2, gb = c + gw / 2;
     const seg = (x1, y1, x2, y2) => ({ x1, y1, x2, y2 });
     let rect, segs, gate, out; // out = unit normal from gate into the field
     if (side === 0) {
-      rect = { x0: c - W / 2, y0: HEDGE, x1: c + W / 2, y1: HEDGE + D };
-      segs = [seg(rect.x0, rect.y0, rect.x0, rect.y1), seg(rect.x1, rect.y0, rect.x1, rect.y1),
-              seg(rect.x0, rect.y1, ga, rect.y1), seg(gb, rect.y1, rect.x1, rect.y1)];
+      rect = { x0: HEDGE, y0: HEDGE, x1: w - HEDGE, y1: HEDGE + D };
+      segs = [seg(rect.x0, rect.y1, ga, rect.y1), seg(gb, rect.y1, rect.x1, rect.y1)];
       gate = { x1: ga, y1: rect.y1, x2: gb, y2: rect.y1 };
       out = { x: 0, y: 1 };
     } else if (side === 2) {
-      rect = { x0: c - W / 2, y0: h - HEDGE - D, x1: c + W / 2, y1: h - HEDGE };
-      segs = [seg(rect.x0, rect.y0, rect.x0, rect.y1), seg(rect.x1, rect.y0, rect.x1, rect.y1),
-              seg(rect.x0, rect.y0, ga, rect.y0), seg(gb, rect.y0, rect.x1, rect.y0)];
+      rect = { x0: HEDGE, y0: h - HEDGE - D, x1: w - HEDGE, y1: h - HEDGE };
+      segs = [seg(rect.x0, rect.y0, ga, rect.y0), seg(gb, rect.y0, rect.x1, rect.y0)];
       gate = { x1: ga, y1: rect.y0, x2: gb, y2: rect.y0 };
       out = { x: 0, y: -1 };
     } else if (side === 3) {
-      rect = { x0: HEDGE, y0: c - W / 2, x1: HEDGE + D, y1: c + W / 2 };
-      segs = [seg(rect.x0, rect.y0, rect.x1, rect.y0), seg(rect.x0, rect.y1, rect.x1, rect.y1),
-              seg(rect.x1, rect.y0, rect.x1, ga), seg(rect.x1, gb, rect.x1, rect.y1)];
+      rect = { x0: HEDGE, y0: HEDGE, x1: HEDGE + D, y1: h - HEDGE };
+      segs = [seg(rect.x1, rect.y0, rect.x1, ga), seg(rect.x1, gb, rect.x1, rect.y1)];
       gate = { x1: rect.x1, y1: ga, x2: rect.x1, y2: gb };
       out = { x: 1, y: 0 };
     } else {
-      rect = { x0: w - HEDGE - D, y0: c - W / 2, x1: w - HEDGE, y1: c + W / 2 };
-      segs = [seg(rect.x0, rect.y0, rect.x1, rect.y0), seg(rect.x0, rect.y1, rect.x1, rect.y1),
-              seg(rect.x0, rect.y0, rect.x0, ga), seg(rect.x0, gb, rect.x0, rect.y1)];
+      rect = { x0: w - HEDGE - D, y0: HEDGE, x1: w - HEDGE, y1: h - HEDGE };
+      segs = [seg(rect.x0, rect.y0, rect.x0, ga), seg(rect.x0, gb, rect.x0, rect.y1)];
       gate = { x1: rect.x0, y1: ga, x2: rect.x0, y2: gb };
       out = { x: -1, y: 0 };
     }
@@ -1156,7 +1187,7 @@
     state.world.w = Math.round(Math.sqrt(FIELD_AREA * ar));
     state.world.h = Math.round(state.world.w / ar);
     makeDecor();
-    makePen(count);
+    makePen();
     const { w, h } = state.world;
     const P = state.pen;
 
@@ -1200,10 +1231,21 @@
         y = clamp(fcy + Math.sin(a) * rr, HEDGE + 40, h - HEDGE - 40);
         if (penClear(x, y, 60) && state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + 30) ** 2)) break;
       }
+      // a big flock's scatter can outsize the open pasture and leave a
+      // sheep stuck inside the strip-pen after its tries run out — that
+      // sheep would start the level pre-penned. Shove it back out past
+      // the front wall instead of gifting the delivery.
+      if (!penClear(x, y, 30)) {
+        const pr = P.rect, bump = 40 + rand(0, 140);
+        if (P.side === 0) y = Math.min(pr.y1 + bump, h - HEDGE - 40);
+        else if (P.side === 2) y = Math.max(pr.y0 - bump, HEDGE + 40);
+        else if (P.side === 3) x = Math.min(pr.x1 + bump, w - HEDGE - 40);
+        else x = Math.max(pr.x0 - bump, HEDGE + 40);
+      }
       state.sheep.push({
         x, y, vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false, settle: null,
         defiant: tempers[i], ...rollTemper(tempers[i]),
-        panic: 0, fearT: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
+        panic: 0, fearT: 0, fright: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
       });
     }
@@ -1219,7 +1261,7 @@
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
     state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
-    state.wearSide = 0; state.wearT = 0; state.stallT = 0;
+    state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.workHold = 0;
     state.pace = PACE_START;
     state.barks = [];
     state.floaties = [];
@@ -1539,20 +1581,28 @@
     const d = state.dog;
     let pick = null;
     if (clusters.length > 1) {
-      // stay on the group we were working if it still exists nearby...
+      // stay on the group we were working if it still exists nearby —
+      // and for WORK_HOLD after committing, follow the nearest remnant
+      // of it wherever it drifted: a mob splitting under pressure jumps
+      // its centroid past any radius test, and re-shopping the whole
+      // field at that moment is what had the dog sprinting back and
+      // forth between groups until someone rescued it by hand
       if (d.workX !== undefined) {
-        let best = Infinity;
+        let best = Infinity, near = null;
         for (const c of clusters) {
           const dd = dist2(c.cx, c.cy, d.workX, d.workY);
-          if (dd < best) { best = dd; if (dd < 220 * 220) pick = c; }
+          if (dd < best) { best = dd; near = c; }
         }
+        if (best < 300 * 300 || state.workHold > 0) pick = near;
       }
-      // ...otherwise commit to the group farthest from the gate
+      // ...otherwise commit to the group farthest from the gate, and
+      // give the commitment time to be worked before it can be re-judged
       if (!pick) {
         const P = state.pen;
         for (const c of clusters) {
           if (!pick || dist2(c.cx, c.cy, P.gx, P.gy) > dist2(pick.cx, pick.cy, P.gx, P.gy)) pick = c;
         }
+        state.workHold = WORK_HOLD;
       }
     } else {
       pick = clusters[0];
@@ -1915,17 +1965,22 @@
     }
     return { x: clamp(P.cx, iz.x0 + 8, iz.x1 - 8), y: clamp(P.cy, iz.y0 + 8, iz.y1 - 8) };
   }
-  // fear spreads as STARTLES, not a mood: a neighbour in full flight
-  // startles this sheep outright — panic snaps to FULL, the fear timer
-  // arms, and the sheep bolts the way that neighbour is already
-  // running, handing the same heading to the next ring out. One
-  // startle rolls through the mob as a stampede all going one way.
+  // fear spreads as STARTLES, not a mood: an actively frightened
+  // neighbour startles this sheep outright — panic snaps up, the fear
+  // timer arms, and the sheep bolts the way that neighbour is already
+  // running, handing the same heading to the next ring out. But the
+  // infection DECAYS: each hop passes on only PANIC_DECAY of the
+  // fright, and under PANIC_FLOOR it no longer takes, so one startled
+  // sheep sets off a local scurry a few rings wide — not a whole
+  // 300-head field bolting in one direction. Second-hand fright is
+  // also shallower fright: the caught sheep runs slower, less far, and
+  // for less time than the one the dog actually pressed.
   // The under-0.5 gate is the refractory: a sheep already frightened
   // isn't re-kicked every frame, and once a wave's timers run down
   // together nobody recovers fast enough to re-light a neighbour whose
   // own fright is fading — a stampede with the pressure gone burns out
   // instead of ping-ponging forever
-  function catchPanic(s, nearPanic, npvx, npvy) {
+  function catchPanic(s, nearFright, npvx, npvy) {
     // contagCd is the loop-breaker: with a short fear hold, a pack's
     // recovery windows overlap — one sheep dips calm enough to catch
     // just as a neighbour spikes back to full, and the fright chains
@@ -1933,10 +1988,12 @@
     // HAND fright for a few seconds after: the first wave crosses the
     // pack untouched, direct dog pressure still bites at full
     // strength, but a wave can't re-light itself off its own embers
-    if (nearPanic < 0.95 || s.panic >= 0.5 || s.contagCd > 0) return;
+    const f = nearFright * PANIC_DECAY;
+    if (f < PANIC_FLOOR || s.panic >= 0.5 || s.contagCd > 0) return;
     const caught = 1 - s.panic;
-    s.panic = 1;
-    s.fearT = FEAR_HOLD;
+    s.fright = f;
+    s.panic = Math.max(s.panic, f);
+    s.fearT = FEAR_HOLD * f;
     s.contagCd = 3;
     // the bolt is keyed to how hard the neighbour is actually running:
     // a frightened sheep standing its ground startles the mob without
@@ -1945,8 +2002,8 @@
     const nspd = Math.hypot(npvx, npvy);
     const nk = clamp((nspd - 30) / 90, 0, 1);
     if (nk > 0) {
-      s.vx += (npvx / nspd) * caught * 170 * nk;
-      s.vy += (npvy / nspd) * caught * 170 * nk;
+      s.vx += (npvx / nspd) * caught * 170 * nk * f;
+      s.vy += (npvy / nspd) * caught * 170 * nk * f;
     }
   }
   // neighbour lookup: loose sheep bucketed into COH_RANGE-sized cells so
@@ -2059,7 +2116,7 @@
       // holding polite spacing — that's how a mob pours through a gap
       const sepPush = 320 * (gs ? 1 - 0.75 * gs.k : 1);
       // --- flocking: separation, cohesion, alignment ---
-      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearPanic = 0, npvx = 0, npvy = 0, nd = Infinity;
+      let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearFright = 0, npvx = 0, npvy = 0, nd = Infinity;
       const gx = Math.floor(s.x / COH_RANGE), gy = Math.floor(s.y / COH_RANGE);
       for (let ci = -1; ci <= 1; ci++) {
         for (let cj = -1; cj <= 1; cj++) {
@@ -2077,7 +2134,10 @@
             }
             if (dd < COH_RANGE * COH_RANGE) {
               cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy;
-              if (o.panic > nearPanic) { nearPanic = o.panic; npvx = o.vx; npvy = o.vy; }
+              // only an ACTIVELY frightened neighbour (fear clock still
+              // running) is contagious, and what it passes on is the
+              // strength of its own fright, not its panic reading
+              if (o.fearT > 0 && o.fright > nearFright) { nearFright = o.fright; npvx = o.vx; npvy = o.vy; }
               if (dd < nd * nd) nd = Math.sqrt(dd);
             }
           }
@@ -2104,14 +2164,15 @@
         const aw = (0.5 + 1.4 * s.flocky) * (1 + 1.6 * s.panic);
         fx += (avx / cn - s.vx) * aw;
         fy += (avy / cn - s.vy) * aw;
-        catchPanic(s, nearPanic, npvx, npvy);
+        catchPanic(s, nearFright, npvx, npvy);
       }
-      // fear is a TIMER, not a gradient: any startle pins panic at
-      // full for FEAR_HOLD seconds flat — never scaled by how hard the
-      // pressure was — and every frame of continued pressure rearms
-      // the whole clock. Once it runs dry the fright tapers over two
-      // seconds, full sprint easing down to a grazing meander
-      if (s.fearT > 0) { s.fearT -= dt; s.panic = 1; }
+      // fear is a TIMER, not a gradient: a startle pins panic at the
+      // fright's own strength (FULL for direct dog pressure, decayed
+      // for second-hand fright) while the clock runs, and every frame
+      // of continued pressure rearms the whole clock. Once it runs dry
+      // the fright tapers over two seconds, full sprint easing down to
+      // a grazing meander
+      if (s.fearT > 0) { s.fearT -= dt; s.panic = Math.max(s.panic, s.fright); }
       else s.panic = Math.max(0, s.panic - dt * 0.45);
       // any neighbor within COH_RANGE means mergePull would decline
       // anyway (that's cohesion's range) — skip the search entirely
@@ -2155,6 +2216,7 @@
                 s.vx += (ddx / dd) * 230 * mult;
                 s.vy += (ddy / dd) * 230 * mult;
               }
+              s.fright = 1; // first-hand fright — contagion decays from here
               s.fearT = Math.max(s.fearT, FEAR_HOLD * (k - STARTLE_K) / (1 - STARTLE_K));
             }
             s.panic = Math.max(s.panic, Math.min(1, k * 1.15));
@@ -2180,6 +2242,7 @@
           fx += (bdx / bd) * k * 1500;
           fy += (bdy / bd) * k * 1500;
           s.panic = 1;
+          s.fright = 1;
           s.fearT = FEAR_HOLD;
         }
       }
@@ -2315,6 +2378,7 @@
     s.vx += Math.cos(a) * 220;
     s.vy += Math.sin(a) * 220;
     s.panic = 1;
+    s.fright = 1;
     s.fearT = FEAR_HOLD;
     state.floaties.push({ x: s.x, y: s.y - 26, vy: -55, t: 0, life: 0.8, d: 'bang', s: 18 });
   }
@@ -2338,12 +2402,13 @@
   // drives the dog through the same commands a player calls: WALK ON to
   // press, easing off when the flock heats up, leaning in when it
   // dawdles, standing off while the funnel drains, and pressing close
-  // (which auto-barks) when a ram digs in. Decisions tick a couple of
-  // times a second so the handling reads deliberate, not jittery.
+  // (which auto-barks) when a ram digs in. Decisions tick on a measured
+  // beat — AUTO_TICK — so each phase gets time to visibly play out and
+  // the handling reads deliberate, not jittery.
   function autopilot(dt) {
     state.demoT -= dt;
     if (state.demoT > 0) return;
-    state.demoT = 0.45;
+    state.demoT = AUTO_TICK;
     const d = state.dog;
     const P = state.pen;
     let n = 0, panic = 0, mouth = 0, planted = false;
@@ -2359,7 +2424,7 @@
     if (mouth >= n * 0.7) {
       // most of what's left is in the funnel — stand off and let the
       // gate's own pull drain it; if it jams, walk back in gently
-      state.demoStallT += 0.45;
+      state.demoStallT += AUTO_TICK;
       state.wearSide = 0; state.wearT = 0;
       if (state.demoStallT < 5) {
         if (d.cmd !== 'lie') { d.cmd = 'lie'; state.pace = 0; }
@@ -2423,9 +2488,9 @@
       // line, and then has to be flanked back onto balance — measured at
       // half the deliveries for a tighter, undelivered flock.
       state.stallT = Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
-        ? state.stallT + 0.45 : 0;
+        ? state.stallT + AUTO_TICK : 0;
       const stalled = state.stallT >= STALL_HOLD;
-      state.wearT += 0.45;
+      state.wearT += AUTO_TICK;
       if (state.wearSide && state.wearT > WEAR_BOUT) {
         state.wearSide = 0;
         state.wearT = -WEAR_REST; // drive at least this long before the next bout
@@ -2446,7 +2511,7 @@
         // the arc gives way to the ground the dog is about to cover, down
         // to a floor that keeps a fast orbit sweeping a real width rather
         // than dithering on the line.
-        const step = paceSpeed(state.pace) / (flock.r + 85) * 0.45;
+        const step = paceSpeed(state.pace) / (flock.r + 85) * AUTO_TICK;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
         if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; state.stallT = 0; }
         else if (dAng * state.wearSide > turn) state.wearSide = -state.wearSide;
@@ -2476,6 +2541,7 @@
       return;
     }
     if (state.mode !== 'playing' && !demo) return;
+    state.workHold = Math.max(0, state.workHold - dt);
     // hands-on input takes the whistle back from the in-game autopilot
     if (state.auto && !demo && (guide.has ||
         keys['a'] || keys['d'] || keys['w'] || keys['s'] ||
@@ -2816,7 +2882,9 @@
     // pen: trodden dirt + gate glow (fence rails draw above the actors)
     if (inGame) {
       const P = state.pen;
-      ctx.fillStyle = 'rgba(146, 106, 60, 0.30)';
+      // lighter tread than the old hut-sized pen: this one is a third of
+      // the field, and full-strength dirt would swallow the pasture
+      ctx.fillStyle = 'rgba(146, 106, 60, 0.16)';
       ctx.beginPath();
       camTrace(ctx, [[P.rect.x0, P.rect.y0], [P.rect.x1, P.rect.y0],
                      [P.rect.x1, P.rect.y1], [P.rect.x0, P.rect.y1]], true);
@@ -2948,55 +3016,72 @@
     ents.sort((a, b) => a.y - b.y);
     for (const e of ents) e.draw();
 
-    // pen fence rails on top (thin, top-down)
+    // pen fence on top: vertical posts with two cross rails strung
+    // between them, matching the boundary fence's build
     if (inGame) {
       const P = state.pen;
-      for (const sgm of P.segs) {
-        ctx.strokeStyle = '#8a5f3c';
-        ctx.lineWidth = 7;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        camTrace(ctx, [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]], false);
-        ctx.stroke();
-        ctx.strokeStyle = '#b98a5a';
+      const FP_H = 16; // post height
+      ctx.lineCap = 'round';
+      // sample a fence line every ~52px, each sample lifted into screen
+      // space off its own ground point so the fence rides the camera warp
+      const fencePts = (x1, y1, x2, y2) => {
+        const np = Math.max(1, Math.round(Math.hypot(x2 - x1, y2 - y1) / 52));
+        const pts = [];
+        for (let i = 0; i <= np; i++) {
+          const px = x1 + (x2 - x1) * (i / np), py = y1 + (y2 - y1) * (i / np);
+          const p = camPt(px, py);
+          pts.push({ x: p.x, y: p.y, k: camScale(px, py) });
+        }
+        return pts;
+      };
+      const drawRails = (pts) => {
+        ctx.strokeStyle = 'rgba(30, 22, 12, 0.25)'; // ground line
         ctx.lineWidth = 3;
         ctx.beginPath();
-        camTrace(ctx, [[sgm.x1, sgm.y1], [sgm.x2, sgm.y2]], false);
+        pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
         ctx.stroke();
-        // posts
-        const sl = Math.hypot(sgm.x2 - sgm.x1, sgm.y2 - sgm.y1);
-        const np = Math.max(1, Math.round(sl / 52));
-        for (let i = 0; i <= np; i++) {
-          const px = sgm.x1 + (sgm.x2 - sgm.x1) * (i / np);
-          const py = sgm.y1 + (sgm.y2 - sgm.y1) * (i / np);
-          const pp = camPt(px, py);
-          ctx.fillStyle = '#6e4a2c';
+        for (const [ry, lw, col] of [[0.8, 4, '#8a5f3c'], [0.42, 3, '#a97e50']]) {
+          ctx.strokeStyle = col;
+          ctx.lineWidth = lw;
           ctx.beginPath();
-          ctx.arc(pp.x, pp.y, 5 * camScale(px, py), 0, Math.PI * 2);
-          ctx.fill();
+          pts.forEach((p, i) => {
+            const y = p.y - FP_H * ry * p.k;
+            i ? ctx.lineTo(p.x, y) : ctx.moveTo(p.x, y);
+          });
+          ctx.stroke();
         }
+      };
+      const drawPost = (p) => {
+        ctx.strokeStyle = '#6e4a2c';
+        ctx.lineWidth = 5 * p.k;
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        ctx.lineTo(p.x, p.y - FP_H * p.k);
+        ctx.stroke();
+        ctx.fillStyle = '#5c3d22'; // post cap
+        ctx.beginPath();
+        ctx.arc(p.x, p.y - FP_H * p.k, 2.6 * p.k, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      for (const sgm of P.segs) {
+        const pts = fencePts(sgm.x1, sgm.y1, sgm.x2, sgm.y2);
+        drawRails(pts);
+        for (const p of pts) drawPost(p);
       }
-      // the gate itself, sliding shut once every sheep is home
+      // the gate itself, sliding shut once every sheep is home: a light
+      // hurdle — rails only — swinging from the hinge post, its leading
+      // post travelling with the free end
       if (state.gateT > 0) {
         const g = P.gate;
         const gx2 = g.x1 + (g.x2 - g.x1) * state.gateT;
         const gy2 = g.y1 + (g.y2 - g.y1) * state.gateT;
-        ctx.strokeStyle = '#8a5f3c';
-        ctx.lineWidth = 7;
-        ctx.lineCap = 'round';
-        ctx.beginPath();
-        camTrace(ctx, [[g.x1, g.y1], [gx2, gy2]], false);
-        ctx.stroke();
-        ctx.strokeStyle = '#b98a5a';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        camTrace(ctx, [[g.x1, g.y1], [gx2, gy2]], false);
-        ctx.stroke();
-        const gp = camPt(gx2, gy2);
-        ctx.fillStyle = '#6e4a2c'; // leading post
-        ctx.beginPath();
-        ctx.arc(gp.x, gp.y, 5 * camScale(gx2, gy2), 0, Math.PI * 2);
-        ctx.fill();
+        const pts = [g.x1, gx2].map((x, i) => {
+          const y = i ? gy2 : g.y1;
+          const p = camPt(x, y);
+          return { x: p.x, y: p.y, k: camScale(x, y) };
+        });
+        drawRails(pts);
+        drawPost(pts[1]);
       }
       // gate flags
       for (const [fx, fy] of [[P.gate.x1, P.gate.y1], [P.gate.x2, P.gate.y2]]) {
@@ -3135,7 +3220,7 @@
       state.pace = Math.max(state.pace, 0.4);
       state.demoT = 0;
       state.demoStallT = 0;
-      state.wearSide = 0; state.wearT = 0;
+      state.wearSide = 0; state.wearT = 0; state.workHold = 0;
     } else {
       state.dog.cmd = 'lie'; // hands back a standing dog awaiting your call
       state.pace = state.input === 'cmd' ? 0 : state.pace;
