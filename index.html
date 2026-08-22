@@ -816,6 +816,9 @@
   }
   const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  // Math.hypot for the hot loops: V8's hypot pays for overflow-proof
+  // accuracy this sim never needs, and it shows up at 150+ sheep
+  const hyp = (x, y) => Math.sqrt(x * x + y * y);
   // rotate angle a toward target by at most rate, taking the short way round
   function turnToward(a, target, rate) {
     const d = ((target - a + Math.PI) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
@@ -1001,9 +1004,11 @@
     const w = state.world.w;
     const v = y - hillLift(x, y);
     const s0 = cam.sFar, g = camG();
+    const k = s0 + g * v; // the row's depth scale — same value camScale returns
     return {
-      x: w / 2 + (x - w / 2) * (s0 + g * v),
+      x: w / 2 + (x - w / 2) * k,
       y: s0 * v + g * v * v / 2, // ∫₀^v s, so Y(0) pins the field's far edge
+      k,
     };
   }
   // sprite depth scale under the tilt (1 in the untilted presets)
@@ -2159,23 +2164,39 @@
   // cluster into the dog's working target) and LOOK BACK (which just
   // needs to know where the OTHER lot is), so the two never disagree
   // about what counts as "a group".
+  // Linking rides the same COH_RANGE grid as flocking (cells are wider
+  // than LINK, so any linkable pair sits in adjacent cells): the old
+  // every-sheep-vs-every-sheep sweep was the sim's only O(n²) pass, run
+  // every sub-step under command/auto, and it showed by the big
+  // late-game mobs. Positions only move in updateSheep, so the result is
+  // also cached per sub-step — updateDog and the autopilot both ask.
+  let simStep = 0; // counts update() sub-steps — see update()
+  const clusterCache = { step: -1, clusters: [] };
   function clusterLoose() {
-    const loose = state.sheep.filter(s => !s.penned);
+    if (clusterCache.step === simStep) return clusterCache.clusters;
     const LINK = 170; // sheep this close hang together as one group
-    const seen = new Array(loose.length).fill(false);
+    const grid = sheepGrid();
+    const seen = new Set();
     const clusters = [];
-    for (let i = 0; i < loose.length; i++) {
-      if (seen[i]) continue;
-      const q = [i];
-      seen[i] = true;
+    for (const s0 of state.sheep) {
+      if (s0.penned || seen.has(s0)) continue;
+      seen.add(s0);
+      const q = [s0];
       const members = [];
       while (q.length) {
         const a = q.pop();
-        members.push(loose[a]);
-        for (let j = 0; j < loose.length; j++) {
-          if (!seen[j] && dist2(loose[a].x, loose[a].y, loose[j].x, loose[j].y) < LINK * LINK) {
-            seen[j] = true;
-            q.push(j);
+        members.push(a);
+        const gx = Math.floor(a.x / COH_RANGE), gy = Math.floor(a.y / COH_RANGE);
+        for (let ci = -1; ci <= 1; ci++) {
+          for (let cj = -1; cj <= 1; cj++) {
+            const cell = grid.get(gridKey(gx + ci, gy + cj));
+            if (!cell) continue;
+            for (const o of cell) {
+              if (!seen.has(o) && dist2(a.x, a.y, o.x, o.y) < LINK * LINK) {
+                seen.add(o);
+                q.push(o);
+              }
+            }
           }
         }
       }
@@ -2183,7 +2204,7 @@
       for (const s of members) { cx += s.x; cy += s.y; }
       cx /= members.length; cy /= members.length;
       let r = 0;
-      for (const s of members) r = Math.max(r, Math.hypot(s.x - cx, s.y - cy));
+      for (const s of members) r = Math.max(r, hyp(s.x - cx, s.y - cy));
       // members ride along so the dog's positioning (contact ring,
       // swing widening, flank clearance) reads ONLY the group it
       // committed to — with the pick stable but the geometry still
@@ -2191,6 +2212,8 @@
       // the dog's arcs toward it and the dog dithered between targets
       clusters.push({ n: members.length, cx, cy, r, members });
     }
+    clusterCache.step = simStep;
+    clusterCache.clusters = clusters;
     return clusters;
   }
 
@@ -2322,7 +2345,7 @@
           // and STEADY gentles it off.
           let near = Infinity;
           for (const s of flock.members) {
-            near = Math.min(near, Math.hypot(s.x - d.x, s.y - d.y));
+            near = Math.min(near, hyp(s.x - d.x, s.y - d.y));
           }
           const pressFrac = clamp(Math.min(near - 115, rr - (hold + 20)) / 60, -0.4, 1);
           let vx = ux * (along - pressFrac * pace), vy = uy * (along - pressFrac * pace);
@@ -2376,7 +2399,7 @@
             let da = (Math.atan2(s.y - flock.cy, s.x - flock.cx) - aDog) * sd;
             da = ((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
             if (da < 1.25 || da > Math.PI * 2 - 0.45) {
-              Rw = Math.max(Rw, Math.hypot(s.x - flock.cx, s.y - flock.cy) + 70);
+              Rw = Math.max(Rw, hyp(s.x - flock.cx, s.y - flock.cy) + 70);
             }
           }
           const m = HEDGE + 20;
@@ -2405,7 +2428,7 @@
           // ahead of the sweep (~72°), plus a little behind so the dog
           // doesn't cut in right on top of a sheep it just passed
           if (da < 1.25 || da > Math.PI * 2 - 0.45) {
-            need = Math.max(need, Math.hypot(s.x - flock.cx, s.y - flock.cy));
+            need = Math.max(need, hyp(s.x - flock.cx, s.y - flock.cy));
           }
         }
         // ease toward the needed radius: with a big scattered flock,
@@ -2512,7 +2535,7 @@
     let bx = 0, by = 0, best = Infinity;
     for (let ci = -R; ci <= R; ci++) {
       for (let cj = -R; cj <= R; cj++) {
-        const cell = grid.get((gx + ci) + ',' + (gy + cj));
+        const cell = grid.get(gridKey(gx + ci, gy + cj));
         if (!cell) continue;
         for (const o of cell) {
           if (o === s) continue;
@@ -2550,7 +2573,7 @@
     if ((s.x - P.gx) * P.out.x + (s.y - P.gy) * P.out.y < -4) return null;
     // aim a little inside the gate so the pull carries sheep over the line
     const tx = P.gx - P.out.x * 34 - s.x, ty = P.gy - P.out.y * 34 - s.y;
-    const tl = Math.hypot(tx, ty);
+    const tl = hyp(tx, ty);
     const reach = GATE_PULL;
     if (tl < 0.01 || tl > reach) return null;
     const k = 1 - tl / reach;
@@ -2609,7 +2632,7 @@
     // a frightened sheep standing its ground startles the mob without
     // launching it anywhere in particular — the flight thrust picks up
     // the direction from there
-    const nspd = Math.hypot(npvx, npvy);
+    const nspd = hyp(npvx, npvy);
     const nk = clamp((nspd - 30) / 90, 0, 1);
     if (nk > 0) {
       s.vx += (npvx / nspd) * caught * 170 * nk * f;
@@ -2620,11 +2643,17 @@
   // flocking only tests the 3x3 cells that can hold a sheep in range,
   // instead of the whole flock. Rebuilt once per frame — a big field is
   // only a few dozen cells
+  // grid keys are packed integers, not "x,y" strings: the lookups run
+  // 9+ times per sheep per sub-step, and the string build was the single
+  // biggest allocation in the whole sim. Coordinates are always on-field
+  // (so cell indices are ≥ 0 and far below 1024), and the ±3 cells a
+  // neighbor probe can reach past an edge can't collide with a real cell.
+  const gridKey = (cx, cy) => cx * 1024 + cy;
   function sheepGrid() {
     const g = new Map();
     for (const s of state.sheep) {
       if (s.penned) continue;
-      const key = Math.floor(s.x / COH_RANGE) + ',' + Math.floor(s.y / COH_RANGE);
+      const key = gridKey(Math.floor(s.x / COH_RANGE), Math.floor(s.y / COH_RANGE));
       const cell = g.get(key);
       if (cell) cell.push(s); else g.set(key, [s]);
     }
@@ -2638,7 +2667,7 @@
     const g = new Map();
     for (const s of state.sheep) {
       if (!s.penned) continue;
-      const key = Math.floor(s.x / PEN_SEP) + ',' + Math.floor(s.y / PEN_SEP);
+      const key = gridKey(Math.floor(s.x / PEN_SEP), Math.floor(s.y / PEN_SEP));
       const cell = g.get(key);
       if (cell) cell.push(s); else g.set(key, [s]);
     }
@@ -2682,7 +2711,7 @@
         if (!s.settle && dist2(s.x, s.y, P.gx, P.gy) < (P.gw / 2 + 50) ** 2) s.settle = penSpot();
         if (s.settle) {
           const tx = s.settle.x - s.x, ty = s.settle.y - s.y;
-          const td = Math.hypot(tx, ty);
+          const td = hyp(tx, ty);
           if (td < 14) s.settle = null;
           else {
             const sp = Math.min(130, 34 + td * 1.5);
@@ -2702,7 +2731,7 @@
         const pgx = Math.floor(s.x / PEN_SEP), pgy = Math.floor(s.y / PEN_SEP);
         for (let ci = -1; ci <= 1; ci++) {
           for (let cj = -1; cj <= 1; cj++) {
-            const cell = pgrid.get((pgx + ci) + ',' + (pgy + cj));
+            const cell = pgrid.get(gridKey(pgx + ci, pgy + cj));
             if (!cell) continue;
             for (const o of cell) {
               if (o === s) continue;
@@ -2733,7 +2762,7 @@
         s.x = clamp(s.x + s.vx * dt, bx0, bx1);
         s.y = clamp(s.y + s.vy * dt, by0, by1);
         if (Math.abs(s.vx) > 4) s.facing = s.vx > 0 ? 1 : -1;
-        if (Math.hypot(s.vx, s.vy) > 4) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), 5 * dt);
+        if (hyp(s.vx, s.vy) > 4) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), 5 * dt);
         continue;
       }
       s.plantCd = Math.max(0, s.plantCd - dt);
@@ -2751,7 +2780,7 @@
       const gx = Math.floor(s.x / COH_RANGE), gy = Math.floor(s.y / COH_RANGE);
       for (let ci = -1; ci <= 1; ci++) {
         for (let cj = -1; cj <= 1; cj++) {
-          const cell = grid.get((gx + ci) + ',' + (gy + cj));
+          const cell = grid.get(gridKey(gx + ci, gy + cj));
           if (!cell) continue;
           for (const o of cell) {
             if (o === s || o.penned) continue;
@@ -2785,7 +2814,7 @@
         if (nd > COMFORT) {
           const cw = cohesionWeight(s) * (gs ? 1 - gs.k : 1);
           const tx = cx / cn - s.x, ty = cy / cn - s.y;
-          const tl = Math.hypot(tx, ty);
+          const tl = hyp(tx, ty);
           if (tl > 0.01) { fx += (tx / tl) * cw; fy += (ty / tl) * cw; }
         }
         // match the mob's heading — sheep steer off each other
@@ -2822,7 +2851,7 @@
         // flank startled sheep it hadn't reached and bent their flee
         // direction away from a spot the dog was never going to be
         const ddx = s.x - d.x, ddy = s.y - d.y;
-        const dd = Math.hypot(ddx, ddy);
+        const dd = hyp(ddx, ddy);
         if (dd < range && dd > 0.01) {
           const k = 1 - dd / range;
           const mult = 1 - 0.45 * s.bold;
@@ -2866,7 +2895,7 @@
       // --- bark pulses ---
       for (const b of state.barks) {
         const bdx = s.x - b.x, bdy = s.y - b.y;
-        const bd = Math.hypot(bdx, bdy);
+        const bd = hyp(bdx, bdy);
         if (bd < BARK_RANGE && bd > 0.01 && b.t < BARK_LIFE) {
           const k = (1 - b.t / BARK_LIFE) * (1 - bd / BARK_RANGE);
           if (s.planted) unplant(s, bdx / bd, bdy / bd);
@@ -2886,7 +2915,7 @@
       // above the DOG_AWARE edginess cap so merely noticing the dog
       // unsettles a sheep without sending it anywhere
       if (s.panic > 0.45 && !s.planted) {
-        const rs = Math.hypot(s.vx, s.vy);
+        const rs = hyp(s.vx, s.vy);
         const ra = rs > 20 ? Math.atan2(s.vy, s.vx) : s.dir;
         fx += Math.cos(ra) * 380 * s.panic;
         fy += Math.sin(ra) * 380 * s.panic;
@@ -2908,7 +2937,7 @@
         // contests, firmly in the throat where the sheep is committed
         const grip = Math.min(1, gs.w * 3) * (0.8 + 3.2 * gs.d) * dt;
         if (grip > 0.01) {
-          const gl = Math.hypot(gs.x, gs.y) || 1;
+          const gl = hyp(gs.x, gs.y) || 1;
           const want = 60 + 150 * gs.d;
           const a = Math.min(1, grip);
           s.vx += (gs.x / gl * want - s.vx) * a;
@@ -2920,7 +2949,7 @@
         // straight past the funnel. Speed is kept, the line curves,
         // and the bend scales with the suction — which is calm-scaled,
         // so a stampede still blows past while a driven sheep turns in
-        const rspd = Math.hypot(s.vx, s.vy);
+        const rspd = hyp(s.vx, s.vy);
         if (rspd > 40) {
           const bent = turnToward(Math.atan2(s.vy, s.vx), Math.atan2(gs.y, gs.x), (2 + 6 * gs.k) * dt);
           s.vx = Math.cos(bent) * rspd;
@@ -2951,7 +2980,7 @@
         const len2 = abx * abx + aby * aby || 1;
         const t = clamp(((s.x - seg.x1) * abx + (s.y - seg.y1) * aby) / len2, 0, 1);
         const dx = s.x - (seg.x1 + abx * t), dy = s.y - (seg.y1 + aby * t);
-        const dl = Math.hypot(dx, dy);
+        const dl = hyp(dx, dy);
         if (dl > 0.01 && dl < 55) {
           const f = (1 - dl / 55) * 100 * (1 + 1.8 * s.panic);
           fx += (dx / dl) * f;
@@ -2980,7 +3009,7 @@
       // to raw depth (not willingness-scaled gs.k) so every sheep runs
       // the same ramp once caught; a crowd behind hurries it further
       if (gs) cap = Math.max(cap, (60 + 150 * gs.d + 60 * Math.min(cn, 6) / 6) * (1 + 0.45 * s.panic));
-      const spd = Math.hypot(s.vx, s.vy);
+      const spd = hyp(s.vx, s.vy);
       if (spd > cap) { s.vx *= cap / spd; s.vy *= cap / spd; }
       s.x = clamp(s.x + s.vx * dt, HEDGE + 14, w - HEDGE - 14);
       s.y = clamp(s.y + s.vy * dt, HEDGE + 14, h - HEDGE - 14);
@@ -2991,7 +3020,7 @@
       // spooked sheep whip about faster than grazing ones. Sheep are
       // quick on their feet: even a calm one snaps round smartly, and
       // a panicked one turns as fast as the dog does
-      const run = Math.hypot(s.vx, s.vy);
+      const run = hyp(s.vx, s.vy);
       if (run > 6) s.dir = turnToward(s.dir, Math.atan2(s.vy, s.vx), (7 + s.panic * 9) * dt);
 
       if (s.planted) {
@@ -3213,6 +3242,7 @@
   }
 
   function update(dt) {
+    simStep++; // invalidates per-sub-step caches (clusterLoose)
     const demo = state.mode === 'title' && state.demo;
     // under the autopilot the interstitials don't wait for a click: the
     // Ready pause and the level-clear card each hold for a beat or two,
@@ -4153,8 +4183,8 @@
     // each actor draws in flat coords inside a transform that puts its feet
     // on the camera's ground and scales it for depth, so shadows and
     // doodles ride along (the scale is 1 in the untilted presets)
-    const drawObstacle = (o) => {
-      const p = camPt(o.x, o.y), k = camScale(o.x, o.y);
+    const drawObstacle = (o, p) => {
+      const k = p.k;
       ctx.save();
       ctx.translate(p.x - o.x * k, p.y - o.y * k);
       ctx.scale(k, k);
@@ -4167,8 +4197,10 @@
       ctx.restore();
     };
 
-    const drawSheep = (s) => {
-      const p = camPt(s.x, s.y), k = camScale(s.x, s.y);
+    const drawSheep = (s, p) => {
+      // the projection was computed for the depth sort — reuse it rather
+      // than running camPt/camScale a second time for every sheep
+      const k = p.k;
       ctx.save();
       ctx.translate(p.x - s.x * k, p.y - s.y * k);
       ctx.scale(k, k);
@@ -4178,7 +4210,7 @@
       ctx.ellipse(s.x, s.y + 13, 15, 5, 0, 0, Math.PI * 2);
       ctx.fill();
       drawSheepTop(s.x, s.y - hop, 29.4 + 2.6 * s.bold, s.dir, s.bold, s.bob,
-        Math.hypot(s.vx, s.vy) > 12, s.alert);
+        hyp(s.vx, s.vy) > 12, s.alert);
       if (s.planted) {
         drawDoodle('huff', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
       } else if (!s.penned && s.panic > 0.75) {
@@ -4221,10 +4253,18 @@
     // and a near sheep sorts in front of it — span by span, not wall by wall.
     // Obstacles and sheep are held back with the dog/pen while a bake is
     // in flight — see the inGame comment above.
+    // Each actor's camPt is computed once here and handed to its draw, so
+    // the projection isn't run a second time per actor inside the callback.
     const ents = [];
     if (!state.bakePending) {
-      for (const o of state.obstacles) ents.push({ y: camPt(o.x, o.y).y, draw: () => drawObstacle(o) });
-      for (const s of state.sheep) ents.push({ y: camPt(s.x, s.y).y, draw: () => drawSheep(s) });
+      for (const o of state.obstacles) {
+        const p = camPt(o.x, o.y);
+        ents.push({ y: p.y, draw: () => drawObstacle(o, p) });
+      }
+      for (const s of state.sheep) {
+        const p = camPt(s.x, s.y);
+        ents.push({ y: p.y, draw: () => drawSheep(s, p) });
+      }
     }
     if (inGame) ents.push({ y: camPt(state.dog.x, state.dog.y).y, draw: drawDog });
 
