@@ -1907,7 +1907,9 @@
   addEventListener('keydown', (e) => {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     keys[e.key.toLowerCase()] = true;
-    if (!e.repeat && CMD_KEYS[e.key] && state.input === 'cmd') issueCommand(CMD_KEYS[e.key]);
+    // under the autopilot the pad is live in any input mode (LOOK BACK
+    // steers the run) — issueCommand itself gates the rest per input mode
+    if (!e.repeat && CMD_KEYS[e.key] && (state.input === 'cmd' || state.auto)) issueCommand(CMD_KEYS[e.key]);
     // C swaps the camera angle — works in either input mode
     if (!e.repeat && e.key.toLowerCase() === 'c') cycleCam();
     // F toggles the flock overlay (group bounds, heat map, centroids, gate
@@ -2029,7 +2031,7 @@
     if (down[13]) pad.y += 1;
     const hit = (i) => down[i] && !pad.prev[i];
     if (state.mode === 'playing') {
-      if (state.input === 'cmd') {
+      if (state.input === 'cmd' || state.auto) {
         if (hit(5)) issueCommand('cb');                   // R1
         if (hit(4)) issueCommand('aw');                   // L1
         if (hit(2)) issueCommand('walk');                 // X
@@ -2084,11 +2086,19 @@
     back:   { label: 'look back', whistle: 'whistle_tome' },
   };
   function issueCommand(cmd) {
-    if (state.mode !== 'playing' || state.input !== 'cmd') return;
+    if (state.mode !== 'playing') return;
     // LOOK BACK is a one-shot retarget, not a steady-state call like the
     // rest of the pad — it never becomes state.dog.cmd, so it's handled
-    // entirely on its own and never falls into the pace/floatie code below
-    if (cmd === 'back') { issueLookBack(); return; }
+    // entirely on its own and never falls into the pace/floatie code below.
+    // It also answers under the autopilot from EITHER input mode: the pad
+    // is on screen whenever auto is (updateCmdVisibility), and in guide
+    // mode the old input gate below dropped the press on the floor — the
+    // button flashed live but the whistle never blew.
+    if (cmd === 'back') {
+      if (state.input === 'cmd' || state.auto) issueLookBack();
+      return;
+    }
+    if (state.input !== 'cmd') return;
     if (state.auto) setAuto(false); // your call takes the whistle back
     ensureAudio();
     // pace is a gradient: WALK ON taps push it up, STEADY taps ease it
@@ -2128,7 +2138,9 @@
   // that's the lot most likely left behind. Committing it is just handing
   // flockInfo() a new workX/workY and a fresh WORK_HOLD: its own
   // stickiness then keeps the dog on the new group same as any other
-  // pick, so there's no parallel targeting machinery to keep in sync.
+  // pick, so there's no parallel targeting machinery to keep in sync —
+  // and it works the same whether the player or the autopilot holds the
+  // whistle, since both read the flock through flockInfo().
   function issueLookBack() {
     const clusters = clusterLoose();
     if (clusters.length < 2) {
@@ -2151,17 +2163,29 @@
       if (!target || dist2(c.cx, c.cy, P.gx, P.gy) > dist2(target.cx, target.cy, P.gx, P.gy)) target = c;
     }
     if (!target) target = clusters[0]; // current somehow matched every cluster — don't strand the call
-    if (state.auto) setAuto(false); // hands back a halted dog (pace 0)
     ensureAudio();
     d.workX = target.cx;
     d.workY = target.cy;
     state.workHold = WORK_HOLD;
-    d.cmd = 'walk';
+    if (state.auto) {
+      // under the autopilot the call STEERS the run rather than taking the
+      // whistle back — the old setAuto(false) here parked the dog and, in
+      // guide mode, left no way to send it anywhere at all. The new lot is
+      // already committed above; clear the brain's decision state — the
+      // wear bout, the stall clocks, the tick timer — so the very next
+      // tick judges fresh against the new target instead of playing out a
+      // sweep it had planned around the old one.
+      state.demoT = 0;
+      state.demoStallT = 0;
+      state.wearSide = 0; state.wearT = 0; state.stallT = 0;
+    } else {
+      d.cmd = 'walk';
+    }
     // the retarget skips issueCommand's pace handling, so restore a
-    // working pace here or a dog parked by LIE DOWN (pace 0) — or by the
-    // setAuto(false) above — takes the whistle, flashes the button, and
-    // then never moves: every walk-mode velocity term scales by
-    // paceSpeed(state.pace), and paceSpeed(0) is a halt
+    // working pace here or a dog parked by LIE DOWN (pace 0) takes the
+    // whistle, flashes the button, and then never moves: every walk-mode
+    // velocity term scales by paceSpeed(state.pace), and paceSpeed(0) is
+    // a halt
     state.pace = Math.max(state.pace, PACE_START);
     sfx.whistle_tome();
     state.floaties.push({
@@ -3136,31 +3160,43 @@
     state.demoT = AUTO_TICK;
     const d = state.dog;
     const P = state.pen;
-    let n = 0, panic = 0, mouth = 0, planted = false;
+    let n = 0, panic = 0, planted = false;
     for (const s of state.sheep) {
       if (s.penned) continue;
       n++;
       panic += s.panic;
       planted = planted || s.planted;
-      if (dist2(s.x, s.y, P.gx, P.gy) < GATE_PULL * GATE_PULL) mouth++;
     }
     if (!n) return;
     panic /= n;
-    if (mouth >= n * 0.7) {
-      // most of what's left is in the funnel — stand off and let the
-      // gate's own pull drain it; if it jams, walk back in gently
-      state.demoStallT += AUTO_TICK;
-      state.wearSide = 0; state.wearT = 0;
-      if (state.demoStallT < 5) {
-        if (d.cmd !== 'lie') { d.cmd = 'lie'; state.pace = 0; }
-      } else {
-        d.cmd = 'walk';
-        state.pace = Math.max(state.pace, 0.3);
+    const flock = flockInfo();
+    // Stand off while the funnel drains — judged against the lot the dog
+    // is WORKING, not the whole field. Counted field-wide, a mob draining
+    // at the mouth held the dog parked at the gate while stragglers sat
+    // out in the grass, and it swallowed LOOK BACK outright: the retarget
+    // landed in workX, then this branch returned before ever consulting
+    // it. Per-lot, a dog sent back for the leftovers keeps working them
+    // while the mouth crowd files in on its own.
+    if (flock) {
+      let mouth = 0;
+      for (const m of flock.members) {
+        if (dist2(m.x, m.y, P.gx, P.gy) < GATE_PULL * GATE_PULL) mouth++;
       }
-      return;
+      if (mouth >= flock.n * 0.7) {
+        // most of the worked lot is in the funnel — stand off and let the
+        // gate's own pull drain it; if it jams, walk back in gently
+        state.demoStallT += AUTO_TICK;
+        state.wearSide = 0; state.wearT = 0;
+        if (state.demoStallT < 5) {
+          if (d.cmd !== 'lie') { d.cmd = 'lie'; state.pace = 0; }
+        } else {
+          d.cmd = 'walk';
+          state.pace = Math.max(state.pace, 0.3);
+        }
+        return;
+      }
     }
     state.demoStallT = 0;
-    const flock = flockInfo();
     if (flock) {
       // repositioning is a CALLED FLANK, not walk-on's cautious swing:
       // far off the balance line the drive creeps its way round, but a
@@ -3721,11 +3757,16 @@
     // shoulder. Lifting it to the front edge keeps it clear, with neck between.
     const headX = bodyCx + (7 + 3.2 * alert) * u * side;
     const headY = ((6.6 - 0.4 * side) - 12.5 * alert) * u;
-    // Going away, the head is either solidly there or it isn't — a half-lit
-    // skull reads as a grey smudge on the fleece, the same way the old rump
-    // patch did. Grazing, it tucks out of sight past the wool; head up, it
-    // stays fully opaque above the shoulders, which is where it would be.
-    const headAlpha = 1 - rear * 0.94 * (1 - alert);
+    // Going away, there is no head: skull, ears and eyes all belong to the
+    // front of the animal, and from this camera a retreating sheep is its
+    // fleece, tail and hind legs. The old rule kept an ALERT head lit from
+    // behind (it is up above the wool, after all) — but a travelling sheep
+    // is always alert, so every fleeing sheep dragged a dark skull across
+    // its own rump and the flock read as staring back at the player. The
+    // head now rides the heading alone: full in profile and coming on, cut
+    // on a fast ramp once the sheep quarters away — a ramp, not a linear
+    // fade, because a half-lit skull is a grey smudge on the fleece.
+    const headAlpha = clamp((0.45 - rear) / 0.21, 0, 1);
     // the FACE still turns away even when the skull doesn't — eyes belong to
     // the front of the head and have no business showing from behind it
     const faceShow = Math.max(0, 1 - rear * 1.5);
@@ -3743,16 +3784,18 @@
     // shoulder rather than tapering to a point, so what emerges reads as a
     // neck rather than a spike
     const neckTop = -0.30 - 0.16 * alert, neckBot = 0.34 - 0.20 * alert;
-    ctx.globalAlpha = headAlpha;
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    ctx.moveTo(bodyCx + bodyRx * 0.34, bodyCy + bodyRy * neckTop);
-    ctx.lineTo(headX - 0.6 * u, headY - 2.6 * u);
-    ctx.lineTo(headX - 3.2 * u, headY + 1.6 * u);
-    ctx.lineTo(bodyCx + bodyRx * 0.1, bodyCy + bodyRy * neckBot);
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    if (headAlpha > 0.01) {
+      ctx.globalAlpha = headAlpha;
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.moveTo(bodyCx + bodyRx * 0.34, bodyCy + bodyRy * neckTop);
+      ctx.lineTo(headX - 0.6 * u, headY - 2.6 * u);
+      ctx.lineTo(headX - 3.2 * u, headY + 1.6 * u);
+      ctx.lineTo(bodyCx + bodyRx * 0.1, bodyCy + bodyRy * neckBot);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
 
     // The wool barrel, its bumps and the tail puff. Normally nine antialiased
     // fills; under the `bake` draw mode, one blit from the strip baked above.
@@ -3803,61 +3846,63 @@
     // the tail breaking the outline and the hind legs beneath it.
 
 
-    ctx.globalAlpha = headAlpha * farEar;
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    ctx.ellipse(earBackX - earLat, headY - (0.6 * side + 0.5 * splay) * u,
-                (2.4 - 0.2 * splay) * u, 1.25 * u, -0.5 * side - 0.3 * splay, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = headAlpha;
-
-    // wool fringe on the poll, UNDER the skull: drawn over it, it read as a
-    // pale cap painted onto the face. Beneath, only the fringe above the head
-    // shows — wool the head pokes out of, which is what it actually is.
-    ctx.fillStyle = wool;
-    ctx.beginPath();
-    ctx.ellipse(headX - 2.8 * u * side, headY - (2.3 - 0.5 * face) * u,
-                (2.1 + 0.9 * splay) * u, 2.1 * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // head + muzzle. In profile the skull is long and the muzzle juts
-    // forward; squared up to the camera both collapse onto the centreline.
-    // The muzzle's offset rides on `side` so it reaches zero head-on —
-    // otherwise a sheep looking straight at you keeps its nose stuck out
-    // sideways and reads as still being in profile.
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    ctx.ellipse(headX, headY, (4.6 - 2.2 * face) * u, (3.4 + 1.1 * face) * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(headX + 3.3 * u * side * (0.35 + 0.65 * side), headY + (0.7 + 0.9 * face) * u,
-                (2.5 - 0.5 * face) * u, (1.9 - 0.3 * face) * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // near ear, over the head
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    ctx.ellipse(earBackX + earLat, headY + (0.6 * side - 0.5 * splay) * u,
-                (2.4 - 0.2 * splay) * u, 1.25 * u, 0.5 * side + 0.3 * splay, 0, Math.PI * 2);
-    ctx.fill();
-
-    // eyes: one in profile, a symmetric PAIR once the sheep squares up. They
-    // separate SIDEWAYS as `face` rises rather than stacking one above the
-    // other — a second eye below the first just reads as a profile head that
-    // has grown a spare, not as a face looking back at you. Drawn as separate
-    // fills so the profile eye's alpha never rides the far eye's crossfade.
-    const eyeY = headY - (1.3 - 0.5 * face) * u;
-    ctx.globalAlpha = headAlpha * faceShow;
-    ctx.fillStyle = eyeCol;
-    ctx.beginPath();
-    ctx.arc(headX + (1.3 + 0.6 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
-    ctx.fill();
-    if (face > 0.04) {
-      ctx.globalAlpha = headAlpha * faceShow * Math.min(1, face * 2.2);
+    if (headAlpha > 0.01) {
+      ctx.globalAlpha = headAlpha * farEar;
+      ctx.fillStyle = skin;
       ctx.beginPath();
-      ctx.arc(headX + (1.3 - 3.2 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
+      ctx.ellipse(earBackX - earLat, headY - (0.6 * side + 0.5 * splay) * u,
+                  (2.4 - 0.2 * splay) * u, 1.25 * u, -0.5 * side - 0.3 * splay, 0, Math.PI * 2);
       ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = headAlpha;
+
+      // wool fringe on the poll, UNDER the skull: drawn over it, it read as a
+      // pale cap painted onto the face. Beneath, only the fringe above the head
+      // shows — wool the head pokes out of, which is what it actually is.
+      ctx.fillStyle = wool;
+      ctx.beginPath();
+      ctx.ellipse(headX - 2.8 * u * side, headY - (2.3 - 0.5 * face) * u,
+                  (2.1 + 0.9 * splay) * u, 2.1 * u, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // head + muzzle. In profile the skull is long and the muzzle juts
+      // forward; squared up to the camera both collapse onto the centreline.
+      // The muzzle's offset rides on `side` so it reaches zero head-on —
+      // otherwise a sheep looking straight at you keeps its nose stuck out
+      // sideways and reads as still being in profile.
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.ellipse(headX, headY, (4.6 - 2.2 * face) * u, (3.4 + 1.1 * face) * u, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(headX + 3.3 * u * side * (0.35 + 0.65 * side), headY + (0.7 + 0.9 * face) * u,
+                  (2.5 - 0.5 * face) * u, (1.9 - 0.3 * face) * u, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // near ear, over the head
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.ellipse(earBackX + earLat, headY + (0.6 * side - 0.5 * splay) * u,
+                  (2.4 - 0.2 * splay) * u, 1.25 * u, 0.5 * side + 0.3 * splay, 0, Math.PI * 2);
+      ctx.fill();
+
+      // eyes: one in profile, a symmetric PAIR once the sheep squares up. They
+      // separate SIDEWAYS as `face` rises rather than stacking one above the
+      // other — a second eye below the first just reads as a profile head that
+      // has grown a spare, not as a face looking back at you. Drawn as separate
+      // fills so the profile eye's alpha never rides the far eye's crossfade.
+      const eyeY = headY - (1.3 - 0.5 * face) * u;
+      ctx.globalAlpha = headAlpha * faceShow;
+      ctx.fillStyle = eyeCol;
+      ctx.beginPath();
+      ctx.arc(headX + (1.3 + 0.6 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
+      ctx.fill();
+      if (face > 0.04) {
+        ctx.globalAlpha = headAlpha * faceShow * Math.min(1, face * 2.2);
+        ctx.beginPath();
+        ctx.arc(headX + (1.3 - 3.2 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
     }
 
     ctx.restore();
