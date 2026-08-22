@@ -3507,7 +3507,8 @@
   //   normal   — the shipping art: the fleece as nine antialiased fills
   //   bake     — the fleece as one blit from the baked strip
   //   nofleece — no fleece at all: the fleece's share of the frame
-  //   nosheep  — no sheep bodies: every sheep's share of the frame
+  //   nosheep  — no flock at all: every sheep's whole share of the frame,
+  //              projection and depth sort and shadow included
   //   auto     — blit where the blit is also the sharper choice (default)
   const DRAW_MODES = ['auto', 'normal', 'bake', 'nofleece', 'nosheep'];
   const perfProbe = urlParams.get('perf') === '1';
@@ -3631,7 +3632,6 @@
   }
 
   function drawSheepTop(x, y, size, dir, temper, bob, moving, alert) {
-    if (drawMode === 'nosheep') return; // ablation — see DRAW_MODES
     const u = size / 30;
     const ti = Math.max(0, Math.min(15, Math.round(temper * 15)));
     const pal = FLEECE[ti];
@@ -4444,9 +4444,16 @@
         const p = camPt(o.x, o.y);
         ents.push({ y: p.y, draw: () => drawObstacle(o, p) });
       }
-      for (const s of state.sheep) {
-        const p = camPt(s.x, s.y);
-        ents.push({ y: p.y, draw: () => drawSheep(s, p) });
+      // the `nosheep` ablation drops the flock HERE rather than inside the
+      // sheep's own draw, so the measurement covers everything a sheep costs
+      // the frame — its projection, its place in the depth sort, its ground
+      // shadow and any status doodle — not just its body. Skipping only the
+      // body left the shadow and doodles drawing and understated the flock.
+      if (drawMode !== 'nosheep') {
+        for (const s of state.sheep) {
+          const p = camPt(s.x, s.y);
+          ents.push({ y: p.y, draw: () => drawSheep(s, p) });
+        }
       }
     }
     if (inGame) ents.push({ y: camPt(state.dog.x, state.dog.y).y, draw: drawDog });
