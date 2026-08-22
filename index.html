@@ -3299,19 +3299,27 @@
     if (!moving) ctx.translate(Math.sin(bob * 0.6) * 0.5 * u, 0);
 
     const footY = 12 * u;
-    const hipY = 7.4 * u;                             // short legs — the barrel nearly sits on the ground
+    const bellyY = 7.4 * u;                           // short legs — the barrel nearly sits on the ground
     const bodyRy = (8.8 + 1 * (1 - side)) * u;        // rounder cloud head/tail-on
     const bodyRx = (6.2 + 5.6 * side) * u;            // stays inside the shadow's footprint
     const bodyCx = 0.4 * u;
-    const bodyCy = hipY - bodyRy - 0.3 * u;
+    const bodyCy = bellyY - bodyRy - 0.3 * u;
 
-    // Hips and shoulders sit well up INSIDE the barrel, not on its lower
-    // edge, and every leg is drawn before the fleece — so what shows is the
-    // stretch below the wool line, the way a real sheep's legs appear to
-    // start halfway up the animal. The near pair still sits a touch lower
-    // and wider than the far pair, which is what carries the depth now that
-    // overlap no longer can.
-    const legTopY = hipY - 3.4 * u;
+    // Shoulder and hip are NOT at the same height, and the difference is
+    // what makes a quadruped stand like one. The hip joint is high — it sits
+    // in the pelvis, which is fused to the spine at the sacrum — so the hind
+    // leg is the longer of the two and swings from up near the topline. The
+    // shoulder joint hangs low at the point of shoulder, well down the chest:
+    // the foreleg has no bony attachment to the spine at all, it is slung
+    // against the ribcage in muscle, and the scapula rising to the withers is
+    // a blade lying on the ribs, not the joint.
+    //
+    // Both still sit inside the barrel and every leg draws before the fleece,
+    // so what shows is the stretch below the wool line — the near pair a
+    // touch lower and wider than the far pair, which is what carries the
+    // depth now that overlap no longer can.
+    const shoulderY = bodyCy + bodyRy * 0.38;
+    const hipY = bodyCy + bodyRy * 0.02;
     const frontHipX = bodyCx + (1.4 + 3.2 * side) * u;
     const rearHipX = bodyCx - (1.6 + 3.6 * side) * u;
     const pairSpread = (1 - side) * 1.5 * u;
@@ -3338,10 +3346,10 @@
 
     // all four under the fleece: far pair tucked up and in, near pair a
     // touch lower and wider
-    leg(frontHipX, legTopY - pairSpread * 0.5, frontHipX - strideX, footY - pairSpread - strideY);
-    leg(rearHipX, legTopY - pairSpread * 0.5, rearHipX + strideX, footY - pairSpread + strideY);
-    leg(frontHipX, legTopY + pairSpread * 0.5, frontHipX + strideX, footY + pairSpread + strideY);
-    leg(rearHipX, legTopY + pairSpread * 0.5, rearHipX - strideX, footY + pairSpread - strideY);
+    leg(frontHipX, shoulderY - pairSpread * 0.5, frontHipX - strideX, footY - pairSpread - strideY);
+    leg(rearHipX, hipY - pairSpread * 0.5, rearHipX + strideX, footY - pairSpread + strideY);
+    leg(frontHipX, shoulderY + pairSpread * 0.5, frontHipX + strideX, footY + pairSpread + strideY);
+    leg(rearHipX, hipY + pairSpread * 0.5, rearHipX - strideX, footY + pairSpread - strideY);
 
     // Head anchors are computed up here because the NECK draws under the
     // fleece, for the same reason the legs do: run it over the wool and a
@@ -3552,9 +3560,16 @@
     const fHipX = lerp(0, 4.6 + 1.0 * g, side) * u;
     const rHipX = -lerp(0, 5.2 + 1.4 * g, side) * u;
     const splay = (1 - side) * 1.45 * u;
-    // shoulders and hips ride up inside the ribcage rather than sitting on
-    // the belly line, so the legs read as emerging from under the dog
-    const hipY = bellyY - 3.1 * u;
+    // Shoulder and hip are NOT level. The hip joint is high, up in the pelvis
+    // — which is fused to the spine at the sacrum — so the hind leg is longer
+    // and drives from near the topline. The shoulder joint hangs low at the
+    // point of shoulder, well down the chest: a dog's foreleg has no bony
+    // attachment to the spine at all, it is slung against the ribcage in
+    // muscle, and the scapula climbing to the withers is a blade on the ribs
+    // rather than the joint. Both sit inside the body, so the legs still read
+    // as emerging from under the dog rather than pinned to its outline.
+    const shoulderY = withersY + (bellyY - withersY) * 0.62;
+    const hipY = croupY + (bellyY - croupY) * 0.26;
     const legW = (2.5 + 0.3 * side) * u;
     const ph = Math.sin(bob * 2);
     const strideAmt = (1.4 + 4.0 * g) * u * side;
@@ -3568,17 +3583,17 @@
     // leg + sock as one continuous quadratic, split De Casteljau-style so
     // the white is literally the lower stretch of the same stroke, capped
     // by a small dark toe planted on the ground line
-    function leg(hx, footX, fY, bend) {
-      const cx = (hx + footX) / 2 - bend, cy = (hipY + fY) / 2;
+    function leg(hx, topY, footX, fY, bend) {
+      const cx = (hx + footX) / 2 - bend, cy = (topY + fY) / 2;
       ctx.strokeStyle = coat;
       ctx.lineWidth = legW;
       ctx.beginPath();
-      ctx.moveTo(hx, hipY);
+      ctx.moveTo(hx, topY);
       ctx.quadraticCurveTo(cx, cy, footX, fY);
       ctx.stroke();
       const t = 0.6, it = 1 - t;
       const px = it * it * hx + 2 * it * t * cx + t * t * footX;
-      const py = it * it * hipY + 2 * it * t * cy + t * t * fY;
+      const py = it * it * topY + 2 * it * t * cy + t * t * fY;
       ctx.strokeStyle = white;
       ctx.lineWidth = legW * 0.92;
       ctx.beginPath();
@@ -3631,8 +3646,8 @@
     ctx.stroke();
 
     // far pair first: feet a touch higher (further away), hidden by the body
-    leg(fHipX - splay, fHipX - splay - ph * strideAmt, footY - 0.9 * u - Math.max(0, -ph) * liftAmt, bendF);
-    leg(rHipX - splay * 0.7, rHipX - splay * 0.7 + ph * strideAmt, footY - 0.9 * u - Math.max(0, ph) * liftAmt, bendR);
+    leg(fHipX - splay, shoulderY, fHipX - splay - ph * strideAmt, footY - 0.9 * u - Math.max(0, -ph) * liftAmt, bendF);
+    leg(rHipX - splay * 0.7, hipY, rHipX - splay * 0.7 + ph * strideAmt, footY - 0.9 * u - Math.max(0, ph) * liftAmt, bendR);
 
     // body: deep chest, level back, tucked waist, round haunch — the ring
     // runs brisket -> chest front -> shoulder -> withers -> back -> croup ->
@@ -3677,8 +3692,8 @@
     ctx.globalAlpha = 1;
 
     // near pair over the body
-    leg(fHipX + splay, fHipX + splay + ph * strideAmt, footY - Math.max(0, ph) * liftAmt, bendF);
-    leg(rHipX + splay * 0.7, rHipX + splay * 0.7 - ph * strideAmt, footY - Math.max(0, -ph) * liftAmt, bendR);
+    leg(fHipX + splay, shoulderY, fHipX + splay + ph * strideAmt, footY - Math.max(0, ph) * liftAmt, bendF);
+    leg(rHipX + splay * 0.7, hipY, rHipX + splay * 0.7 - ph * strideAmt, footY - Math.max(0, -ph) * liftAmt, bendR);
 
     // head: the anchor of the silhouette. In the stalk it thrusts far ahead
     // of the chest, level with the topline; at a run it lifts clear of the
