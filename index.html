@@ -3331,16 +3331,21 @@
     // shoulder. Lifting it to the front edge keeps it clear, with neck between.
     const headX = bodyCx + (7 + 3.2 * alert) * u * side;
     const headY = ((6.6 - 0.4 * side) - 12.5 * alert) * u;
-    // the face hides from behind only while the head is down and tucked past
-    // the fleece; a raised head stays visible over the rump
-    const headAlpha = 1 - rear * (0.94 - 0.5 * alert);
+    // Going away, the head is either solidly there or it isn't — a half-lit
+    // skull reads as a grey smudge on the fleece, the same way the old rump
+    // patch did. Grazing, it tucks out of sight past the wool; head up, it
+    // stays fully opaque above the shoulders, which is where it would be.
+    const headAlpha = 1 - rear * 0.94 * (1 - alert);
+    // the FACE still turns away even when the skull doesn't — eyes belong to
+    // the front of the head and have no business showing from behind it
+    const faceShow = Math.max(0, 1 - rear * 1.5);
     // Ears, horns and the crown tuft all splay SIDEWAYS as the sheep squares
     // up, and fold back onto the skull in profile — the same collapse the
     // eyes and muzzle make. Spreading them vertically instead put one ear
     // above the head and one below it, which is not a pair of ears from any
     // angle. In profile the far ear is behind the skull and doesn't read.
     const splay = 1 - side;
-    const earLat = 2.9 * u * splay;           // sideways reach, squared up
+    const earLat = 3.2 * u * splay;           // sideways reach, squared up
     const earBackX = headX - 2.6 * u * side;  // tucked behind the skull in profile
     const farEar = Math.min(1, splay * 2.2);
 
@@ -3419,9 +3424,18 @@
     ctx.fillStyle = skin;
     ctx.beginPath();
     ctx.ellipse(earBackX - earLat, headY - (0.6 * side + 0.5 * splay) * u,
-                (2.4 + 0.8 * splay) * u, 1.3 * u, -0.5 * side - 0.3 * splay, 0, Math.PI * 2);
+                (2.4 - 0.2 * splay) * u, 1.25 * u, -0.5 * side - 0.3 * splay, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = headAlpha;
+
+    // wool fringe on the poll, UNDER the skull: drawn over it, it read as a
+    // pale cap painted onto the face. Beneath, only the fringe above the head
+    // shows — wool the head pokes out of, which is what it actually is.
+    ctx.fillStyle = wool;
+    ctx.beginPath();
+    ctx.ellipse(headX - 2.8 * u * side, headY - (2.3 - 0.5 * face) * u,
+                (2.1 + 0.9 * splay) * u, 2.1 * u, 0, 0, Math.PI * 2);
+    ctx.fill();
 
     // head + muzzle. In profile the skull is long and the muzzle juts
     // forward; squared up to the camera both collapse onto the centreline.
@@ -3430,25 +3444,18 @@
     // sideways and reads as still being in profile.
     ctx.fillStyle = skin;
     ctx.beginPath();
-    ctx.ellipse(headX, headY, (4.6 - 1.1 * face) * u, (3.4 + 0.3 * face) * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(headX, headY, (4.6 - 2.2 * face) * u, (3.4 + 1.1 * face) * u, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
     ctx.ellipse(headX + 3.3 * u * side * (0.35 + 0.65 * side), headY + (0.7 + 0.9 * face) * u,
                 (2.5 - 0.5 * face) * u, (1.9 - 0.3 * face) * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // wool fringe on the crown so the head reads as poking out of the fleece —
-    // it slides to sit square on top of the skull as the sheep turns to face you
-    ctx.fillStyle = wool;
-    ctx.beginPath();
-    ctx.ellipse(headX - 2.8 * u * side, headY - 2.3 * u,
-                (2.1 + 1.4 * splay) * u, 2.1 * u, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // near ear, over the head
     ctx.fillStyle = skin;
     ctx.beginPath();
     ctx.ellipse(earBackX + earLat, headY + (0.6 * side - 0.5 * splay) * u,
-                (2.4 + 0.8 * splay) * u, 1.3 * u, 0.5 * side + 0.3 * splay, 0, Math.PI * 2);
+                (2.4 - 0.2 * splay) * u, 1.25 * u, 0.5 * side + 0.3 * splay, 0, Math.PI * 2);
     ctx.fill();
 
     // eyes: one in profile, a symmetric PAIR once the sheep squares up. They
@@ -3457,12 +3464,13 @@
     // has grown a spare, not as a face looking back at you. Drawn as separate
     // fills so the profile eye's alpha never rides the far eye's crossfade.
     const eyeY = headY - (1.3 - 0.5 * face) * u;
+    ctx.globalAlpha = headAlpha * faceShow;
     ctx.fillStyle = eyeCol;
     ctx.beginPath();
     ctx.arc(headX + (1.3 + 0.6 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
     ctx.fill();
     if (face > 0.04) {
-      ctx.globalAlpha = headAlpha * Math.min(1, face * 2.2);
+      ctx.globalAlpha = headAlpha * faceShow * Math.min(1, face * 2.2);
       ctx.beginPath();
       ctx.arc(headX + (1.3 - 3.2 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
       ctx.fill();
