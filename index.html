@@ -103,7 +103,7 @@
     35% { transform: scale(1.25); }
     100% { transform: scale(1); }
   }
-  #level-chip, #auto-btn, #mode-btn, #cam-btn, #mute-btn {
+  #level-chip, #auto-btn, #mode-btn, #cam-btn, #speed-btn, #mute-btn {
     pointer-events: auto;
     cursor: pointer;
     border: 0;
@@ -384,6 +384,7 @@
   <button class="hud-chip" id="auto-btn" aria-label="Toggle autopilot">🐕<span class="wide-only"> auto</span></button>
   <button class="hud-chip" id="mode-btn" aria-label="Switch input mode">🎯<span class="wide-only"> guide</span></button>
   <button class="hud-chip" id="cam-btn" aria-label="Switch camera angle">🎥<span class="wide-only"> <span id="cam-name">hillside</span></span></button>
+  <button class="hud-chip" id="speed-btn" aria-label="Cycle game speed">⏩<span class="wide-only"> 1x</span></button>
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
 </div>
 
@@ -414,7 +415,7 @@
       <button class="big-btn" id="start-drag-btn"><span class="btn-label"><svg viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M311.133 257.95a15.074 15.074 0 0 1-12.845 17.026l-147.248 20.61-21.33 32.522-82.637 11.57 21.33-32.568-24.547 3.44c-.278 0-.555.12-.843.165a15.218 15.218 0 0 1-2.108.144 15.074 15.074 0 0 1-2.074-30.016c.29 0 .567 0 .855-.078l24.547-3.438-29.45-25.512 82.582-11.547 29.45 25.51 147.26-20.608a15.196 15.196 0 0 1 2.107-.145 15.085 15.085 0 0 1 14.953 12.923zm-36.704-38.546a32.4 32.4 0 0 1 10.847-10.326 23.427 23.427 0 0 1 13.422-3.04 27.875 27.875 0 0 1 13.542 5.047 44.557 44.557 0 0 1 11.924 12.59 66.342 66.342 0 0 1 8.386 19.134 77.48 77.48 0 0 1 2.562 21.995 67.895 67.895 0 0 1-3.494 19.966 46.132 46.132 0 0 1-8.54 15.352 28.163 28.163 0 0 1-12.402 8.552 23.382 23.382 0 0 1-13.765.255 32.012 32.012 0 0 1-12.512-7.122 45.478 45.478 0 0 1-5.734-6.2l-32.278 4.514a131.154 131.154 0 0 0 7.1 15.973 104.566 104.566 0 0 0 18.656 25.512 69.016 69.016 0 0 0 23.893 15.806 48.373 48.373 0 0 0 27.597 2.22 53.43 53.43 0 0 0 26.31-14.876c7.898-7.853 14.42-18.258 19.112-30.514a131.997 131.997 0 0 0 8.32-41.995 153.26 153.26 0 0 0-5.48-46.92 128.758 128.758 0 0 0-18.49-39.932c-7.6-10.726-16.417-18.946-25.78-24.403a52.998 52.998 0 0 0-27.962-7.62 48.573 48.573 0 0 0-26.278 8.718 69.88 69.88 0 0 0-20.165 21.897 107.505 107.505 0 0 0-11.99 29.516A137.144 137.144 0 0 0 237.68 235l31.192-4.37a49.172 49.172 0 0 1 5.557-11.226zm198.305-34.984c-10.926-35.274-27.287-64.757-46.842-87.374-18.557-21.518-39.544-36.26-61.118-44.213-20.155-7.41-40.564-8.74-59.953-4.248-18.058 4.204-35.196 13.466-50.603 27.62-14.42 13.21-26.09 29.626-35.185 47.807a233.224 233.224 0 0 0-19.29 56.57 286.023 286.023 0 0 0-5.856 60.674l22.582-3.16a209.143 209.143 0 0 1 5.047-40.344 166.26 166.26 0 0 1 15.972-42.926c7.365-13.4 16.716-25.124 27.997-34.087 11.89-9.44 24.88-14.986 38.3-16.64 14.165-1.774 28.773.744 42.938 7.51 14.863 7.1 29.084 18.78 41.485 34.774 12.856 16.572 23.515 37.46 30.66 61.917a225.515 225.515 0 0 1 8.74 74.65c-1.254 24.05-6.4 46.422-14.72 65.656-8.042 18.58-18.857 33.887-31.824 44.88-12.313 10.47-26.345 16.915-41.463 18.656a76.226 76.226 0 0 1-41.163-7.1c-12.313-5.722-23.826-14.485-34.03-25.51a162.212 162.212 0 0 1-25.724-37.637 204.584 204.584 0 0 1-14.542-38.578l-22.484 3.106a280.965 280.965 0 0 0 19.966 57.823 228.2 228.2 0 0 0 32.168 50.092c12.99 15.186 27.82 27.83 43.914 36.793 17.18 9.574 36.027 15.064 55.705 14.865 21.263-.21 41.44-7.022 59.52-19.778 19.356-13.654 36.005-33.897 48.617-59.432 13.244-26.82 21.697-58.788 24.048-93.64a300.742 300.742 0 0 0-12.856-108.76z"/></svg>Guide the dog</span><span class="sub">it chases your finger</span></button>
       <button class="big-btn alt" id="start-cmd-btn"><span class="btn-label"><svg viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M93.75 81.443c-5.38 0-12.368 2.49-22.358 8.967 3.966 4.682 8.167 9.687 16.47 19.256 5.782 6.663 11.618 13.29 16.026 18.088.038.042.055.055.092.096l30.894-17.932-14.652-14.148c-11.292-9.404-18.644-13.866-25.418-14.293-.345-.022-.696-.034-1.055-.034zm120.08 15.082c-.885-.01-1.767-.006-2.643.01-10.46.193-20.2 2.23-26.742 5.424l-67.262 39.038c2.45.544 4.885 1.196 7.287 2.02 17.275 5.923 33.093 18.223 49.568 34.7l216.44 213.5 80.978-44.433L258.54 111.38c-8.656-7.84-22.49-12.908-36.693-14.394-2.677-.28-5.363-.43-8.018-.46zM58.192 102.74c-17.543 20.723-20.57 37.186-15.326 57.004.692 2.618 3.057 6.357 6.373 10.47 2.195-3.144 4.55-6.304 7.086-9.478 3.99-4.995 8.385-9.183 13.085-12.558l-.106-.2 2.768-1.61c1.354-.862 2.73-1.66 4.13-2.393l11.868-6.89c-4.175-4.618-8.94-10.017-13.803-15.622-5.956-6.864-11.732-13.62-16.074-18.723zm184.093 13.438l58.415 61.67c-46.086-5.037-56.79 13.2-69.027 34.2l-57.334-59.304 67.946-36.566zM103.702 157.23c-.714-.016-1.43-.016-2.15.002-6.976.18-14.207 2.058-22.252 5.885-3.035 2.29-5.99 5.196-8.91 8.852-25.77 32.264-30.45 59.135-25.484 83.477 4.965 24.343 20.536 46.656 37.916 66.455 13.314 15.168 28.86 23.992 48.472 27.93 19.614 3.94 43.438 2.708 71.98-3.475 33.246-7.2 66.01 8.42 95.81 27.665 26.118 16.868 50.676 37.09 70.98 49.95l8.79-18.935-217.52-214.57-.022-.022c-15.524-15.524-29.565-25.905-42.682-30.402-5.02-1.722-9.925-2.695-14.928-2.813zm367.08 210.456l-73.45 40.304-10.48 22.567 70.833-38.41 13.096-24.46z"/></svg>Command mode</span><span class="sub">whistle the dog around</span></button>
     </div>
-    <p class="keys-note" id="keys-note">Click to send the dog (or WASD / arrows) · charge a sheep to bark · 1–6 call commands · C camera angle · swap modes any time</p>
+    <p class="keys-note" id="keys-note">Click to send the dog (or WASD / arrows) · charge a sheep to bark · 1–6 call commands · C camera angle · , / . game speed · swap modes any time</p>
     <p class="build-tag" id="build-tag"></p>
     <p class="build-tag credit-tag">icons by Delapouite &amp; Skoll · game-icons.net · <span>CC BY 3.0</span></p>
     <p class="build-tag credit-tag" title="&quot;Fireflies and Stardust&quot;, &quot;Still Pickin&quot;, &quot;Hillbilly Swing&quot;, &quot;Guts and Bourbon&quot;, &quot;Bama Country&quot;, &quot;River Valley Breakdown&quot;, &quot;Corncob&quot;, &quot;Brightly Fancy&quot; — Kevin MacLeod (incompetech.com), CC BY 4.0">music by Kevin MacLeod · incompetech.com · <span>CC BY 4.0</span></p>
@@ -1019,6 +1020,65 @@
     const i = CAM_ORDER.indexOf(camKey);
     setCamera(CAM_ORDER[(i + 1) % CAM_ORDER.length]);
     toast('🎥 Camera: ' + cam.label);
+  }
+
+  // ---------- game speed ----------
+  // A controllable fast-forward, for testing and as a gameplay affordance
+  // (watching the autopilot work a big field is slow at 1x). This is
+  // deliberately NOT a scaled dt — the physics (flocking, collision
+  // pushes, the dog's steering) is tuned around ~1/60s steps, and feeding
+  // it a bigger dt would change behavior, not just pace: sheep could
+  // tunnel through fences, separation could overshoot. Instead frame()
+  // below sub-steps: it runs N normal-sized update() calls per rendered
+  // frame, using a time accumulator so the fractional multipliers the
+  // ramp passes through are handled correctly, and caps sub-steps per
+  // frame so a machine that falls behind can't spiral (each slow frame
+  // owing even more sim time to the next one).
+  const SPEED_LEVELS = [1, 2, 4];
+  // 8x isn't offered in the UI: past 4x a hands-on player in guide/command
+  // mode can't really react to what's happening, and the payoff is mostly
+  // for watching the autopilot, which 4x already serves well. Harnesses
+  // can still ask for more via the dev hook below.
+  const SPEED_KEY = 'comeby-speed';
+  const SPEED_RAMP = 0.25; // seconds to ease into a newly picked speed
+  const MAX_SUBSTEPS = 8;  // death-spiral guard — see frame()
+  let speedIdx = 0;
+  try {
+    const saved = Number(localStorage.getItem(SPEED_KEY));
+    const i = SPEED_LEVELS.indexOf(saved);
+    if (i >= 0) speedIdx = i;
+  } catch (err) { /* storage walled off — stay on the default */ }
+  // speed persists across levels (like the camera preset and autopilot
+  // toggle do) rather than resetting to 1x on a new level — re-picking it
+  // every level would be a bigger paper cut than the risk of a level
+  // starting fast, and the always-visible HUD chip plus the ramp below
+  // mean a persisted high speed is never a silent surprise.
+  let speedTarget = SPEED_LEVELS[speedIdx];
+  let speedCur = speedTarget; // no ramp-in on page load
+  let speedAcc = 0; // sub-step time accumulator (sim-seconds owed)
+  function updateSpeedChip() {
+    const el = document.getElementById('speed-btn');
+    if (el) el.innerHTML = '⏩<span class="wide-only"> ' + speedTarget + 'x</span>';
+  }
+  function setSpeed(mult) {
+    const i = SPEED_LEVELS.indexOf(mult);
+    if (i < 0) return;
+    speedIdx = i;
+    speedTarget = mult;
+    try { localStorage.setItem(SPEED_KEY, String(mult)); } catch (err) { /* storage walled off */ }
+    updateSpeedChip();
+  }
+  function cycleSpeed() {
+    const next = SPEED_LEVELS[(speedIdx + 1) % SPEED_LEVELS.length];
+    setSpeed(next);
+    toast('⏩ Speed: ' + next + 'x');
+  }
+  // clamps at the ends rather than wrapping — , / . feel like a slider,
+  // not a cycle button
+  function stepSpeed(dir) {
+    const next = SPEED_LEVELS[clamp(speedIdx + dir, 0, SPEED_LEVELS.length - 1)];
+    setSpeed(next);
+    toast('⏩ Speed: ' + next + 'x');
   }
   function makeHill() {
     const { w, h } = state.world;
@@ -1648,6 +1708,9 @@
     if (!e.repeat && e.key.toLowerCase() === 'c') cycleCam();
     // dev: F projects the gate funnel as a heat map (speed ramp + rings)
     if (!e.repeat && e.key.toLowerCase() === 'f') state.funnelViz = !state.funnelViz;
+    // , / . step game speed down / up through SPEED_LEVELS
+    if (!e.repeat && e.key === ',') stepSpeed(-1);
+    if (!e.repeat && e.key === '.') stepSpeed(1);
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
@@ -2761,7 +2824,12 @@
         }
       }
 
-      if (Math.random() < dt * (0.008 + s.panic * 0.1)) sfx.baa(rand(0.75, 1.3));
+      // ambient only (no gameplay effect) — damped by the current speed so
+      // a sped-up flock doesn't turn into a wall of baas: this keeps the
+      // real-time bleat rate roughly steady instead of scaling with speed,
+      // unlike the defiant-plant roll above, which is a real mechanic and
+      // stays tied to sim time on purpose
+      if (Math.random() < dt * (0.008 + s.panic * 0.1) / Math.max(1, speedCur)) sfx.baa(rand(0.75, 1.3));
     }
   }
 
@@ -3804,6 +3872,9 @@
   // camera chip: cycle hillside → spectator → overhead (also the C key)
   document.getElementById('cam-name').textContent = cam.label;
   document.getElementById('cam-btn').addEventListener('click', cycleCam);
+  // speed chip: cycle 1x → 2x → 4x → 1x (also the , / . keys)
+  updateSpeedChip();
+  document.getElementById('speed-btn').addEventListener('click', cycleSpeed);
   document.getElementById('mute-btn').addEventListener('click', (e) => {
     muted = !muted;
     e.currentTarget.textContent = muted ? '🔇' : '🔊';
@@ -3864,10 +3935,37 @@
   }
   let last = performance.now();
   function frame(now) {
-    const dt = Math.min((now - last) / 1000, 0.05);
+    // frameDt is the real, UNSCALED size of one normal step — the same
+    // clamp as before speed existed. It's also the sub-step size: at 4x
+    // with a 16ms frame that's 4 sub-steps of 16ms each, never one big
+    // 64ms step, so the physics (tuned for ~1/60s steps) sees the same
+    // step size at any speed.
+    const frameDt = Math.min((now - last) / 1000, 0.05);
     last = now;
     pollGamepad();
-    update(dt);
+    // ease speedCur toward the picked target over SPEED_RAMP seconds, so
+    // a change in speed glides rather than snaps
+    if (speedCur !== speedTarget) {
+      const k = Math.min(1, frameDt / SPEED_RAMP);
+      speedCur += (speedTarget - speedCur) * k;
+      if (Math.abs(speedTarget - speedCur) < 0.002) speedCur = speedTarget;
+    }
+    // bank sim time at the ramped rate, then drain it in normal-sized
+    // slices — a time accumulator, so fractional mid-ramp rates (e.g.
+    // 2.4x) still advance the sim at the right average pace instead of
+    // rounding to whole steps.
+    speedAcc += frameDt * speedCur;
+    let steps = 0;
+    while (speedAcc >= frameDt && steps < MAX_SUBSTEPS) {
+      update(frameDt);
+      speedAcc -= frameDt;
+      steps++;
+    }
+    // death-spiral guard: if a machine can't keep up, MAX_SUBSTEPS caps
+    // how much work one frame can demand. Without dropping the leftover
+    // here, the unpaid sim time would carry into the next frame, which
+    // would then owe even more — each frame falling further behind.
+    if (steps >= MAX_SUBSTEPS) speedAcc = 0;
     stepBake();
     render(now);
     fpsTick(now);
@@ -3876,8 +3974,17 @@
   requestAnimationFrame(frame);
 
   // dev hook: lets a headless harness drive the sim clock directly
-  // (demo soak tests, balance sweeps) — not used by the game itself
-  window.__sheepDev = { state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas, landCanvas, bakeSyncFinish };
+  // (demo soak tests, balance sweeps) — not used by the game itself.
+  // update() itself is untouched by the speed feature (it always takes
+  // the exact dt it's given), so this path keeps working exactly as
+  // before; setSpeed()/getSpeed() additionally let a harness drive the
+  // frame()-level ramp/sub-step machinery, with multipliers beyond the
+  // 1/2/4 the UI offers (instant, no ramp, for determinism).
+  window.__sheepDev = {
+    state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas, landCanvas, bakeSyncFinish,
+    setSpeed: (mult) => { speedTarget = mult; speedCur = mult; },
+    getSpeed: () => ({ target: speedTarget, current: speedCur }),
+  };
 
   // debug/test handle
   window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv, runSeed };
