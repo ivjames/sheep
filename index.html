@@ -117,12 +117,16 @@
     left: 14px;
     z-index: 45;
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    /* four across so the full 1..200 ladder stays a compact block; it is
+       scrollable as a backstop for short screens in landscape */
+    grid-template-columns: repeat(4, 1fr);
     gap: 6px;
     padding: 10px;
     background: var(--plum);
     border-radius: 18px;
     box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    max-height: calc(100vh - 70px);
+    overflow-y: auto;
   }
   #level-picker button {
     font-family: var(--display);
@@ -526,6 +530,14 @@
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
+  // flock growth: linear and untouched up to FLOCK_SOFT, then easing onto
+  // FLOCK_MAX rather than climbing without bound — see startLevel. FLOCK_MAX
+  // is set by what the renderer can actually carry: ~324 sheep measured 29fps
+  // on a phone-sized canvas and ~154 measured 51fps, so the top of the game
+  // sits just the playable side of that line, and difficulty past it comes
+  // from the defiant share (which keeps climbing to its third of the flock)
+  // rather than from more animals.
+  const FLOCK_SOFT = 150, FLOCK_MAX = 260;
   const GATE_W = 112;             // gate width at level 1...
   const GATE_MIN = 68;            // ...narrowing 4px a level down to this
   const GATE_PULL = 390;          // sheep this near the gate mouth drift on in
@@ -1834,7 +1846,21 @@
     // of (but just as pinned to (runSeed, n) as) the layout draws below.
     let count, defiantCount;
     withSeed(levelSeed(n) + ':size', () => {
-      count = randInt(4 + n * 3, 6 + n * 4);
+      // One roll, exactly as before — the RNG stream is untouched, so a level's
+      // layout, obstacles and temperaments are the same draws they always were.
+      const raw = randInt(4 + n * 3, 6 + n * 4);
+      // ...but the roll now eases onto an asymptote instead of climbing for
+      // ever. A flock at or under FLOCK_SOFT is passed through untouched, so
+      // the brisk early ramp — the game's whole character — is bit-for-bit
+      // what it was up to about level 36. Past that the curve bends: the old
+      // straight line put ~800 sheep on level 200, which drew at 13fps on a
+      // phone, so "no cap" did not mean the top of the game was hard, it meant
+      // it was unplayable. This is continuous at the join and never quite
+      // reaches FLOCK_MAX, so the mob still grows for as long as you keep
+      // clearing — just ever more slowly, and inside what a phone can draw.
+      count = raw <= FLOCK_SOFT ? raw
+        : Math.round(FLOCK_SOFT + (FLOCK_MAX - FLOCK_SOFT) *
+            (1 - Math.exp(-(raw - FLOCK_SOFT) / (FLOCK_MAX - FLOCK_SOFT))));
       defiantCount = n < 2 ? 0 : Math.min(1 + Math.floor((n - 2) / 2), Math.floor(count / 3));
     });
     layoutField(count, defiantCount, 3 + Math.min(n, 5), levelSeed(n));
@@ -3468,10 +3494,148 @@
     return out;
   })();
 
+  // ---------- draw modes (dev) ----------
+  // A frame-cost probe you can run ON the device that's actually dropping
+  // frames, because which of these is fastest depends on the rasteriser and
+  // cannot be settled on a different machine. Canvas2D rasterises lazily, so
+  // timing sections of render() with performance.now() would measure command
+  // recording and miss the pixel cost entirely — the honest measurement is
+  // ablation: draw less, see what the frame rate does.
+  //
+  // Off unless ?perf=1, and then it's driven by tapping the fps chip, so it
+  // works on a tablet with no keyboard. A normal player never has a way in.
+  //   normal   — the shipping art: the fleece as nine antialiased fills
+  //   bake     — the fleece as one blit from the baked strip
+  //   nofleece — no fleece at all: the fleece's share of the frame
+  //   nosheep  — no sheep bodies: every sheep's share of the frame
+  //   auto     — blit where the blit is also the sharper choice (default)
+  const DRAW_MODES = ['auto', 'normal', 'bake', 'nofleece', 'nosheep'];
+  const perfProbe = urlParams.get('perf') === '1';
+  let drawMode = DRAW_MODES.includes(urlParams.get('draw')) ? urlParams.get('draw') : 'auto';
+  // How large one sheep lands in DEVICE pixels, set per sheep by drawSheep.
+  // 'auto' spends it on the one question that decides both speed and quality
+  // together: the strip is baked at BODY_BAKE× the reference sheep, so while
+  // a sheep draws at or below that, the blit is a DOWNSCALE — sharp, and
+  // cheaper than nine antialiased fills. Drawn larger, the blit would upscale
+  // and soften the bump outlines, which is exactly the detail the fleece is
+  // carrying, so the vector art takes over. Phones sit far below the line and
+  // get the fast path; a big desktop canvas sits above it and keeps the crisp
+  // fills. Nothing has to be guessed about the device.
+  let actorScale = 1, frameScale = 1;
+
+  // fleece bump offsets as fractions of the barrel's radii. Deliberately
+  // uneven and clustered toward the shoulder — evenly spaced bumps of one
+  // radius read as scallops stuck on an ellipse. This is most of what sells
+  // wool instead of an egg at 30px, so it has to survive small sizes.
+  const FLEECE_BUMPS = [[-0.86, -0.4, 0.36], [-0.5, -0.72, 0.5],
+                        [0.0, -0.8, 0.41], [0.46, -0.66, 0.47],
+                        [0.82, -0.34, 0.32], [0.88, 0.18, 0.25]];
+
+  // ---------- baked fleece ----------
+  // The barrel, its bumps and the tail puff are the sheep's largest and
+  // costliest piece — nine antialiased fills covering most of its pixels —
+  // and the only piece that depends on nothing but heading and temperament.
+  // `alert` moves the head; `bob` swings the legs; neither touches the wool.
+  //
+  // Heading collapses to ONE parameter. The drawing reads it only through
+  // side = |cos dir|, face = max(0, sin dir) and rear = max(0, -sin dir),
+  // with the left-facing half handled by a mirror — and since
+  // side = sqrt(1 - sin²dir), all three follow from sin(dir) alone. So the
+  // fleece is a function of (sin dir, temper) and bakes into a strip of
+  // BODY_DIRS samples per fleece colour. Size never enters the bake: every
+  // coordinate scales with u, so the blit just scales. That is why this can
+  // be a sprite when the whole sheep cannot — baking the head as well would
+  // need a `alert` axis, and the legs a stride axis, and the atlas would go
+  // combinatorial for parts that are cheap to draw live anyway.
+  //
+  // The heading is quantised, but only for the wool: the legs and head still
+  // use the exact heading, so nothing about the sheep's pose steps. At 32
+  // samples the barrel's half-width moves at most ~0.3px between neighbours,
+  // which is under one device pixel at the dpr-2 cap.
+  const BODY_DIRS = 32;   // samples across the half-circle; the rest mirrors
+  const BODY_BAKE = 2;    // supersample, matching the dpr-2 cap
+  const bodyGeom = (side) => {
+    const ry = 8.8 + (1 - side), rx = 6.2 + 5.6 * side;
+    return { rx, ry, cx: 0.4, cy: 7.4 - ry - 0.3 };
+  };
+  // the fleece at u = 1, drawn about the sheep's ground origin
+  function paintFleece(g, side, rear, wool, shade) {
+    const { rx, ry, cx, cy } = bodyGeom(side);
+    // darker rim behind, lit fleece in front — the rim offset fades out
+    // approaching head/tail-on so a round cloud stays round instead of
+    // reading as a lopsided crescent
+    g.fillStyle = shade;
+    g.beginPath();
+    g.ellipse(cx - 0.7 * side, cy, rx, ry, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = wool;
+    g.beginPath();
+    g.ellipse(cx + 0.6 * side, cy - 0.4, rx * 0.94, ry * 0.9, 0, 0, Math.PI * 2);
+    g.fill();
+    for (const [bx, by, br] of FLEECE_BUMPS) {
+      g.beginPath();
+      g.arc(cx + bx * rx, cy + by * ry, ry * br, 0, Math.PI * 2);
+      g.fill();
+    }
+    // tail: a puff set clearly PAST the barrel's edge, so the silhouette
+    // itself reads as a tail from behind rather than a smudge on the fleece
+    g.beginPath();
+    g.arc(cx - rx * 1.04, cy + ry * 0.3, 2.9 + 1.2 * rear, 0, Math.PI * 2);
+    g.fill();
+  }
+  // one cell box covering every sample, so the strip indexes uniformly
+  const FLEECE_BOX = (() => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const put = (cx, cy, rx, ry) => {
+      x0 = Math.min(x0, cx - rx); x1 = Math.max(x1, cx + rx);
+      y0 = Math.min(y0, cy - ry); y1 = Math.max(y1, cy + ry);
+    };
+    for (let i = 0; i < BODY_DIRS; i++) {
+      const a = -Math.PI / 2 + (i / (BODY_DIRS - 1)) * Math.PI;
+      const side = Math.cos(a), rear = Math.max(0, -Math.sin(a));
+      const { rx, ry, cx, cy } = bodyGeom(side);
+      put(cx - 0.7 * side, cy, rx, ry);
+      put(cx + 0.6 * side, cy - 0.4, rx * 0.94, ry * 0.9);
+      for (const [bx, by, br] of FLEECE_BUMPS) put(cx + bx * rx, cy + by * ry, ry * br, ry * br);
+      const tr = 2.9 + 1.2 * rear;
+      put(cx - rx * 1.04, cy + ry * 0.3, tr, tr);
+    }
+    return { x0: x0 - 1, y0: y0 - 1, x1: x1 + 1, y1: y1 + 1 };
+  })();
+  // baked per fleece colour, on first use: a level only ever touches the
+  // buckets its flock actually rolled, and baking all sixteen up front would
+  // put a few hundred fills in the way of the first frame
+  const fleeceStrips = [];
+  function fleeceStrip(ti) {
+    let s = fleeceStrips[ti];
+    if (s) return s;
+    const w = Math.ceil((FLEECE_BOX.x1 - FLEECE_BOX.x0) * BODY_BAKE);
+    const h = Math.ceil((FLEECE_BOX.y1 - FLEECE_BOX.y0) * BODY_BAKE);
+    const c = document.createElement('canvas');
+    c.width = w * BODY_DIRS;
+    c.height = h;
+    const g = c.getContext('2d');
+    const pal = FLEECE[ti];
+    for (let i = 0; i < BODY_DIRS; i++) {
+      const a = -Math.PI / 2 + (i / (BODY_DIRS - 1)) * Math.PI;
+      g.save();
+      g.translate(i * w, 0);
+      g.scale(BODY_BAKE, BODY_BAKE);
+      g.translate(-FLEECE_BOX.x0, -FLEECE_BOX.y0);
+      paintFleece(g, Math.cos(a), Math.max(0, -Math.sin(a)), pal.wool, pal.shade);
+      g.restore();
+    }
+    s = { c, w, h };
+    fleeceStrips[ti] = s;
+    return s;
+  }
+
   function drawSheepTop(x, y, size, dir, temper, bob, moving, alert) {
+    if (drawMode === 'nosheep') return; // ablation — see DRAW_MODES
     const u = size / 30;
-    const pal = FLEECE[Math.max(0, Math.min(15, Math.round(temper * 15)))];
-    const wool = pal.wool, shade = pal.shade, skin = pal.skin;
+    const ti = Math.max(0, Math.min(15, Math.round(temper * 15)));
+    const pal = FLEECE[ti];
+    const wool = pal.wool, skin = pal.skin; // shade is only used by the bake
     const eyeCol = '#fff8ec';
 
     const fx = Math.cos(dir), fy = Math.sin(dir);
@@ -3584,37 +3748,45 @@
     ctx.fill();
     ctx.globalAlpha = 1;
 
-    // wool barrel: darker rim behind, lit fleece in front — the rim offset
-    // fades out approaching head/tail-on so a round cloud stays round
-    // instead of reading as a lopsided crescent
-    ctx.fillStyle = shade;
-    ctx.beginPath();
-    ctx.ellipse(bodyCx - 0.7 * u * side, bodyCy, bodyRx, bodyRy, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = wool;
-    ctx.beginPath();
-    ctx.ellipse(bodyCx + 0.6 * u * side, bodyCy - 0.4 * u, bodyRx * 0.94, bodyRy * 0.9, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // fleece bumps break the perfect-ellipse outline — this is most of what
-    // sells wool instead of an egg at 30px, so it has to survive small
-    // sizes deliberately uneven and clustered toward the shoulder — evenly
-    // spaced bumps of one radius read as scallops stuck on an ellipse
-    for (const [bx, by, br] of [[-0.86, -0.4, 0.36], [-0.5, -0.72, 0.5],
-                                 [0.0, -0.8, 0.41], [0.46, -0.66, 0.47],
-                                 [0.82, -0.34, 0.32], [0.88, 0.18, 0.25]]) {
+    // The wool barrel, its bumps and the tail puff. Normally nine antialiased
+    // fills; under the `bake` draw mode, one blit from the strip baked above.
+    // Which is faster depends entirely on the device's rasteriser — a blit
+    // wins on a GPU-backed canvas and loses on a software one — so this is a
+    // switch to be measured per device, not a decision baked into the source.
+    const bakeFits = drawMode === 'bake' ||
+                     (drawMode === 'auto' && actorScale * u <= BODY_BAKE);
+    if (bakeFits) {
+      const strip = fleeceStrip(ti);
+      const di = clamp(Math.round((Math.asin(clamp(fy, -1, 1)) + Math.PI / 2)
+                                  / Math.PI * (BODY_DIRS - 1)), 0, BODY_DIRS - 1);
+      ctx.drawImage(strip.c, di * strip.w, 0, strip.w, strip.h,
+                    FLEECE_BOX.x0 * u, FLEECE_BOX.y0 * u,
+                    (strip.w / BODY_BAKE) * u, (strip.h / BODY_BAKE) * u);
+    } else if (drawMode !== 'nofleece') {
+      // darker rim behind, lit fleece in front — the rim offset fades out
+      // approaching head/tail-on so a round cloud stays round instead of
+      // reading as a lopsided crescent
+      ctx.fillStyle = pal.shade;
       ctx.beginPath();
-      ctx.arc(bodyCx + bx * bodyRx, bodyCy + by * bodyRy, bodyRy * br, 0, Math.PI * 2);
+      ctx.ellipse(bodyCx - 0.7 * u * side, bodyCy, bodyRx, bodyRy, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = wool;
+      ctx.beginPath();
+      ctx.ellipse(bodyCx + 0.6 * u * side, bodyCy - 0.4 * u, bodyRx * 0.94, bodyRy * 0.9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      for (const [bx, by, br] of FLEECE_BUMPS) {
+        ctx.beginPath();
+        ctx.arc(bodyCx + bx * bodyRx, bodyCy + by * bodyRy, bodyRy * br, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // tail: a puff set clearly behind the rump so it reads from the back.
+      // The puff has to sit PAST the barrel's edge to break the silhouette —
+      // tucked inside it, all you see is its shaded core as a disc floating
+      // on the fleece, which reads as a smudge rather than a tail
+      ctx.beginPath();
+      ctx.arc(bodyCx - bodyRx * 1.04, bodyCy + bodyRy * 0.3, (2.9 + 1.2 * rear) * u, 0, Math.PI * 2);
       ctx.fill();
     }
-
-    // tail: a puff set clearly behind the rump so it reads from the back
-    // the puff has to sit PAST the barrel's edge to break the silhouette —
-    // tucked inside it, all you see is its shaded core as a disc floating
-    // on the fleece, which reads as a smudge rather than a tail
-    ctx.fillStyle = wool;
-    ctx.beginPath();
-    ctx.arc(bodyCx - bodyRx * 1.04, bodyCy + bodyRy * 0.3, (2.9 + 1.2 * rear) * u, 0, Math.PI * 2);
-    ctx.fill();
     // no shaded core inside the puff: shade on wool is barely a value step,
     // so a concentric disc reads as a smudge on the fleece rather than a
     // tail. Now the puff clears the barrel's edge, the silhouette does it.
@@ -4055,6 +4227,7 @@
   function render(now) {
     const { w, h } = state.world;
     const { scale, ox, oy } = viewFit();
+    frameScale = scale * dpr; // world units → device px, before per-actor depth
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // surround (letterbox) — darker turf so the field pops
     ctx.fillStyle = '#4a7c33';
@@ -4207,6 +4380,10 @@
       // the projection was computed for the depth sort — reuse it rather
       // than running camPt/camScale a second time for every sheep
       const k = p.k;
+      // world → device px for THIS sheep: the viewport fit, its own depth
+      // scale, and the backing-store ratio. `auto` reads it to decide whether
+      // a baked blit would be a downscale — see DRAW_MODES.
+      actorScale = frameScale * k;
       ctx.save();
       ctx.translate(p.x - s.x * k, p.y - s.y * k);
       ctx.scale(k, k);
@@ -4580,7 +4757,7 @@
 
   // dev shortcut: tap the level chip to jump between levels by tens
   const levelPicker = document.getElementById('level-picker');
-  for (let n = 0; n <= 100; n += 10) {
+  for (let n = 0; n <= 200; n += 10) {
     const lv = n || 1;
     const b = document.createElement('button');
     b.textContent = lv;
@@ -4659,6 +4836,40 @@
   // whenever the reading crosses a threshold in either direction
   const fpsChip = document.getElementById('fps-chip');
   const fpsVal = document.getElementById('fps-val');
+  // under ?perf=1 the fps chip becomes the probe's only control: tap it to
+  // step through the draw modes and read the frame rate off the same chip.
+  // The mode rides in the chip's own label so a screenshot of the HUD is a
+  // complete reading — which mode, and what it cost.
+  if (perfProbe) {
+    fpsChip.style.pointerEvents = 'auto';
+    fpsChip.style.cursor = 'pointer';
+    // phones normally collapse this chip to its coloured dot, which only
+    // reports a tier — useless for a probe. Under ?perf=1 the number itself
+    // is forced back on at every width, and the chip is pulled out of the
+    // HUD's flow so a wrapped two-row header can't push it off-screen.
+    fpsChip.querySelectorAll('.wide-only').forEach(el => { el.style.display = 'inline'; });
+    // display:flex also overrides the ≤420px rule that hides this chip
+    // outright, so the probe still reports on a small phone
+    fpsChip.style.cssText += ';display:flex;position:fixed;z-index:60;right:8px;' +
+      'top:calc(50px + env(safe-area-inset-top, 0px));';
+    const showMode = () => {
+      let tag = fpsChip.querySelector('.draw-mode');
+      if (!tag) {
+        tag = document.createElement('span');
+        tag.className = 'draw-mode';
+        tag.style.cssText = 'opacity:0.75;font-size:11px;letter-spacing:0.04em';
+        fpsChip.appendChild(tag);
+      }
+      tag.textContent = ' ' + drawMode;
+    };
+    fpsChip.addEventListener('click', (e) => {
+      e.stopPropagation();
+      drawMode = DRAW_MODES[(DRAW_MODES.indexOf(drawMode) + 1) % DRAW_MODES.length];
+      showMode();
+      toast('📊 Draw mode: ' + drawMode);
+    });
+    showMode();
+  }
   let fpsFrames = 0, fpsT0 = performance.now(), fpsTier = '';
   function fpsTick(now) {
     fpsFrames++;
