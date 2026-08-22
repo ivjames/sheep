@@ -1952,7 +1952,11 @@
     const reach = GATE_PULL;
     if (tl < 0.01 || tl > reach) return null;
     const k = 1 - tl / reach;
-    const f = willing * (40 + 320 * k * k);
+    // the pull bites the moment a sheep crosses into the funnel — a
+    // quadratic ramp left the outer half of it nearly force-free, so
+    // sheep hit the mouth at a trot and stalled into a crawl until
+    // they'd drifted deep enough for the suction to pick back up
+    const f = willing * (120 + 240 * k);
     return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * willing };
   }
   // a settling spot deep in the pen, spread across the back, so each
@@ -2326,9 +2330,11 @@
       // fright level — bold used to pay off only at full panic, so a
       // driven ram lagged the woollier sheep it was walking with
       let cap = s.planted ? 10 : 26 + 14 * s.bold + s.panic * (150 + 30 * s.bold);
-      // the funnel pulls at a run, quicker still with a crowd behind —
-      // and a frightened sheep that's found the gate flat-out bolts in
-      if (gs) cap = Math.max(cap, (45 + 130 * gs.k + 60 * Math.min(cn, 6) / 6) * (1 + 0.45 * s.panic));
+      // the funnel pulls at a run from the moment a sheep crosses into
+      // it — no easing in from a walk at the mouth's edge — quicker
+      // still with depth and a crowd behind, and a frightened sheep
+      // that's found the gate flat-out bolts in
+      if (gs) cap = Math.max(cap, (120 + 70 * gs.k + 60 * Math.min(cn, 6) / 6) * (1 + 0.45 * s.panic));
       const spd = Math.hypot(s.vx, s.vy);
       if (spd > cap) { s.vx *= cap / spd; s.vy *= cap / spd; }
       s.x = clamp(s.x + s.vx * dt, HEDGE + 14, w - HEDGE - 14);
