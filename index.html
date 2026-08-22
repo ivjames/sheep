@@ -3254,16 +3254,35 @@
   // (grazing, not a dog's alert-up head). The pose is authored right-facing
   // and mirrored, never rotated, so it reads correctly from every heading
   // with no sprite-sheet popping.
-  // `defiant` is the stubborn temperament, not a different animal. It used to
-  // be drawn as a horned ram, which was wrong husbandry — rams aren't run with
-  // the ewes outside tupping — so a defiant sheep is now simply an older,
-  // scruffier ewe: heavier through the body, fleece gone dun rather than
-  // cream. The pulsing aura its caller draws is what actually flags it.
-  function drawSheepTop(x, y, size, dir, defiant, bob, moving, alert) {
+  // Fleece scales with temperament rather than flagging one category of sheep:
+  // a biddable ewe is cream, a stubborn one dun, and everything between reads
+  // as between. `temper` is the sheep's own `bold`, the same 0..1 that already
+  // sets how close the dog must press, how willing it is at the gate and how
+  // hard it is to panic — so the flock's colour is a readout of how much work
+  // each animal is going to be, visible before you touch it.
+  //
+  // bold is rolled once at spawn and never changes, so the palette is a table
+  // lookup rather than a mix per draw — this runs twenty-odd times a frame and
+  // has no business building colour strings in the draw path.
+  const FLEECE = (() => {
+    const mix = (a, b, t) => '#' + [0, 1, 2].map(i =>
+      Math.round(a[i] + (b[i] - a[i]) * t).toString(16).padStart(2, '0')).join('');
+    const out = [];
+    for (let i = 0; i < 16; i++) {
+      const t = i / 15;
+      out.push({
+        wool:  mix([0xf6, 0xf1, 0xe6], [0xd9, 0xc6, 0xa8], t),
+        shade: mix([0xdd, 0xd3, 0xbf], [0xb8, 0xa2, 0x84], t),
+        skin:  mix([0x3b, 0x3b, 0x46], [0x4a, 0x3b, 0x30], t),
+      });
+    }
+    return out;
+  })();
+
+  function drawSheepTop(x, y, size, dir, temper, bob, moving, alert) {
     const u = size / 30;
-    const wool = defiant ? '#d9c6a8' : '#f6f1e6';
-    const shade = defiant ? '#b8a284' : '#ddd3bf';
-    const skin = defiant ? '#4a3b30' : '#3b3b46';
+    const pal = FLEECE[Math.max(0, Math.min(15, Math.round(temper * 15)))];
+    const wool = pal.wool, shade = pal.shade, skin = pal.skin;
     const eyeCol = '#fff8ec';
 
     const fx = Math.cos(dir), fy = Math.sin(dir);
@@ -3991,7 +4010,7 @@
         ctx.arc(s.x, s.y - hop, 21, 0, Math.PI * 2);
         ctx.fill();
       }
-      drawSheepTop(s.x, s.y - hop, s.defiant ? 32 : 30, s.dir, s.defiant, s.bob,
+      drawSheepTop(s.x, s.y - hop, 29.4 + 2.6 * s.bold, s.dir, s.bold, s.bob,
         Math.hypot(s.vx, s.vy) > 12, s.alert);
       if (s.planted) {
         drawDoodle('huff', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
