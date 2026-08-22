@@ -322,6 +322,18 @@
   .big-btn .btn-label svg { width: 21px; height: 21px; flex: 0 0 21px; display: block; }
   .mode-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .keys-note { margin: 16px 0 0; font-size: 12.5px; font-weight: 700; opacity: 0.65; }
+  /* dev/enthusiast affordance: the field's seed, tap to copy a shareable
+     link — same styling family as .build-tag, just clickable */
+  .seed-chip {
+    margin: 8px 0 0;
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0.55;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .seed-chip:hover { opacity: 0.85; }
   .build-tag { margin: 10px 0 0; font-size: 10.5px; font-weight: 700; opacity: 0.35; letter-spacing: 0.08em; }
   /* icon attribution — game-icons.net art is CC BY 3.0, credit is required */
   .credit-tag { margin-top: 4px; letter-spacing: 0.05em; }
@@ -403,6 +415,7 @@
   <div class="panel">
     <h2 id="clear-title">Level clear!</h2>
     <p class="tagline" id="clear-tag">That'll do, dog. That'll do.</p>
+    <p class="seed-chip" id="clear-seed"></p>
     <div class="stats">
       <div class="stat"><span class="num" id="stat-sheep">0</span><span class="lbl">sheep</span></div>
       <div class="stat"><span class="num" id="stat-barks">0</span><span class="lbl">barks</span></div>
@@ -417,6 +430,7 @@
     <h2 id="ready-title">Level 1</h2>
     <p class="tagline" id="ready-tag">Take in the field. The clock waits for you.</p>
     <button class="big-btn" id="ready-btn">🐑 Ready!</button>
+    <p class="seed-chip" id="ready-seed"></p>
   </div>
 </div>
 
@@ -679,9 +693,88 @@
     else if (musicStarted && !muted) musicEl.play().catch(() => {});
   });
 
-  // ---------- helpers ----------
-  const rand = (a, b) => a + Math.random() * (b - a);
+  // ---------- seeded RNG ----------
+  // mulberry32: small, fast 32-bit PRNG — plenty for cosmetic field layout,
+  // not for anything security-sensitive.
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  // xmur3: string -> 32-bit hash, so a level seed can be a human-typed
+  // string ("testseed") rather than a bare number.
+  function xmur3(str) {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+      h = (h << 13) | (h >>> 19);
+    }
+    return () => {
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return (h ^= h >>> 16) >>> 0;
+    };
+  }
+  const hashSeed = (str) => xmur3(String(str))();
+
+  // Every random draw the game makes — level layout AND per-frame ambience
+  // (wander timers, baa sfx, floaties, music shuffle) — used to call
+  // Math.random directly. Level generation now reads through this swappable
+  // source instead; everything else stays on Math.random on purpose, so a
+  // level's field never depends on how long you played the level before it.
+  let rngSource = Math.random;
+  const rand = (a, b) => a + rngSource() * (b - a);
   const randInt = (a, b) => Math.floor(rand(a, b + 1));
+
+  // Runs fn() with rand()/randInt() drawing from a fresh stream seeded from
+  // seedStr, then restores Math.random — even if fn throws. This is what
+  // makes generation seedable without turning the whole session into one
+  // continuing seeded stream: a level's layout would otherwise drift with
+  // play duration, because per-frame effects call rand() too. Instead each
+  // call gets its OWN generator, used only for the duration of fn, so a
+  // level's field depends on nothing but the seed string it's handed.
+  function withSeed(seedStr, fn) {
+    rngSource = mulberry32(hashSeed(seedStr));
+    try {
+      return fn();
+    } finally {
+      rngSource = Math.random;
+    }
+  }
+
+  // ---------- run seed ----------
+  // The run seed picks every level's field for this session. ?seed=
+  // replays (or shares) a run; anything else in the query string is
+  // ignored. A level's seed string is runSeed + ':' + levelNumber, so
+  // layoutField's fingerprint depends on exactly those two values.
+  const urlParams = new URLSearchParams(location.search);
+  const SEED_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
+  function randomSeed(len) {
+    let s = '';
+    for (let i = 0; i < len; i++) s += SEED_ALPHABET[Math.floor(Math.random() * SEED_ALPHABET.length)];
+    return s;
+  }
+  const runSeed = (urlParams.get('seed') || '').trim() || randomSeed(7);
+  const levelSeed = (n) => runSeed + ':' + n;
+  // ?level=N jumps straight to level N — invaluable for testing/repro.
+  // Composes with ?seed=: same seed + same level always gives the same
+  // field, however you got there, since generation only ever reads
+  // (runSeed, level) — never how you reached it.
+  const startAtLevel = (() => {
+    const n = parseInt(urlParams.get('level'), 10);
+    return Number.isFinite(n) && n >= 1 ? n : null;
+  })();
+  // shareable link for a given level under the current run seed
+  function seedShareUrl(n) {
+    const u = new URL(location.href);
+    u.search = '';
+    u.searchParams.set('seed', runSeed);
+    u.searchParams.set('level', n);
+    return u.toString();
+  }
   const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   // rotate angle a toward target by at most rate, taking the short way round
@@ -1107,7 +1200,7 @@
     fc.fillStyle = '#7ec850';
     fc.fillRect(-M, -M, w + 2 * M, h + 2 * M);
     for (let i = 0; i < 30 * k; i++) {
-      const [cr, cg, cb, ca] = Math.random() < 0.55
+      const [cr, cg, cb, ca] = rand(0, 1) < 0.55
         ? [111, 183, 70, 0.5] : [139, 210, 92, 0.45];
       const grad = fc.createRadialGradient(0, 0, 0, 0, 0, 1);
       grad.addColorStop(0, `rgba(${cr},${cg},${cb},${ca})`);
@@ -1126,7 +1219,7 @@
     }
     // fine speckle grain over the top
     for (let i = 0; i < 900 * k; i++) {
-      fc.fillStyle = Math.random() < 0.5
+      fc.fillStyle = rand(0, 1) < 0.5
         ? 'rgba(104, 176, 64, 0.3)' : 'rgba(152, 218, 102, 0.3)';
       fc.beginPath();
       fc.arc(rand(-M, w + M), rand(-M, h + M), rand(1.5, 5), 0, Math.PI * 2);
@@ -1227,8 +1320,12 @@
   }
 
   // one field layout, shared by the real levels and the title demo:
-  // world, pen, obstacles, a bunched flock far from the pen, dog at heel
-  function layoutField(count, defiantCount, obCount) {
+  // world, pen, obstacles, a bunched flock far from the pen, dog at heel.
+  // seedStr pins every random draw made while laying out the field (decor,
+  // pen, obstacles, flock, temperaments) to a fresh generator of its own —
+  // see withSeed — so the same seedStr always reproduces the same field.
+  function layoutField(count, defiantCount, obCount, seedStr) {
+    withSeed(seedStr, () => {
     // Zoomed-out pasture: the whole field fits on screen, sized to this
     // device's aspect so it fills the viewport.
     const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
@@ -1242,7 +1339,7 @@
     // obstacles: trees and rocks, clear of the pen mouth and mid-field
     state.obstacles = [];
     for (let i = 0; i < obCount; i++) {
-      const kind = Math.random() < 0.6 ? 'tree' : 'rock';
+      const kind = rand(0, 1) < 0.6 ? 'tree' : 'rock';
       const r = kind === 'tree' ? 32 : 20;
       for (let tries = 0; tries < 40; tries++) {
         const x = rand(HEDGE + 90, w - HEDGE - 90), y = rand(HEDGE + 90, h - HEDGE - 90);
@@ -1268,7 +1365,7 @@
     for (let i = 0; i < defiantCount; i++) tempers.push(true);
     while (tempers.length < count) tempers.push(false);
     for (let i = tempers.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(rand(0, i + 1));
       [tempers[i], tempers[j]] = [tempers[j], tempers[i]];
     }
     for (let i = 0; i < count; i++) {
@@ -1319,6 +1416,7 @@
     state.levelTime = 0;
     state.barksUsed = 0;
     state.demo = false;
+    });
   }
 
   function startLevel(n) {
@@ -1326,16 +1424,22 @@
     state.mode = 'ready'; // field is laid out but the clock waits for the Ready click
     // a random-sized flock, growing fast with the levels — the big mobs
     // are the fun part, so get there quickly, and there's no cap: the
-    // flock keeps growing as long as you keep clearing
-    const count = randInt(4 + n * 3, 6 + n * 4);
-    const defiantCount = n < 2 ? 0 : Math.min(1 + Math.floor((n - 2) / 2), Math.floor(count / 3));
-    layoutField(count, defiantCount, 3 + Math.min(n, 5));
+    // flock keeps growing as long as you keep clearing. This is generation
+    // too, so it's seeded off a spur of the level's own seed — independent
+    // of (but just as pinned to (runSeed, n) as) the layout draws below.
+    let count, defiantCount;
+    withSeed(levelSeed(n) + ':size', () => {
+      count = randInt(4 + n * 3, 6 + n * 4);
+      defiantCount = n < 2 ? 0 : Math.min(1 + Math.floor((n - 2) / 2), Math.floor(count / 3));
+    });
+    layoutField(count, defiantCount, 3 + Math.min(n, 5), levelSeed(n));
 
     hud.style.display = 'flex';
     titleOverlay.classList.add('hidden');
     clearOverlay.classList.add('hidden');
     readyTitle.textContent = 'Level ' + n;
     readyTag.textContent = count + ' sheep to pen — the clock starts when you do.';
+    renderSeedChip(readySeedEl, n);
     // sit the panel away from a bottom-edge pen so the gate stays scoutable
     readyOverlay.classList.toggle('top', state.pen.side === 2);
     readyOverlay.classList.remove('hidden');
@@ -2473,6 +2577,7 @@
       'Not a single stray in the heather.',
       'The gate swings shut. The flock is home.',
       'Ewe did it. Every last one.'][state.level % 4];
+    renderSeedChip(clearSeedEl, state.level);
     clearOverlay.classList.remove('hidden');
     cmdUi.style.display = 'none';
     if (state.auto) state.autoWaitT = 2.2; // let the card read, then play on
@@ -3296,7 +3401,25 @@
   const statTime = document.getElementById('stat-time');
   const clearTitle = document.getElementById('clear-title');
   const clearTag = document.getElementById('clear-tag');
+  const clearSeedEl = document.getElementById('clear-seed');
   let lastTimeShown = -1;
+
+  // dev/enthusiast affordance: show the field's seed and let a tap copy a
+  // shareable ?seed=&level= link for it via the clipboard
+  function renderSeedChip(el, n) {
+    el.textContent = '🌱 ' + runSeed + ' · level ' + n + ' — tap to copy link';
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const url = seedShareUrl(n);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url)
+          .then(() => toast('🔗 Link copied — seed ' + runSeed + ', level ' + n))
+          .catch(() => toast('🔗 ' + url));
+      } else {
+        toast('🔗 ' + url);
+      }
+    };
+  }
 
   function updateHud() {
     levelChip.textContent = 'Level ' + state.level;
@@ -3428,6 +3551,7 @@
   const readyTitle = document.getElementById('ready-title');
   const readyTag = document.getElementById('ready-tag');
   const readyBtn = document.getElementById('ready-btn');
+  const readySeedEl = document.getElementById('ready-seed');
   readyBtn.addEventListener('click', beginLevel);
   document.getElementById('build-tag').textContent = 'build ' + BUILD;
   // camera chip: cycle hillside → spectator → overhead (also the C key)
@@ -3449,9 +3573,13 @@
   // ---------- title demo ----------
   // the title screen runs the real game behind the panel: a small
   // flock, a proper pen, and the dog working it alone on the autopilot.
-  // Cleared fields lay out fresh and go again until the player starts.
+  // Cleared fields lay out fresh and go again until the player starts. The
+  // demo isn't a level a player can jump back to, so it isn't pinned to
+  // (runSeed, n) like a real level — it gets its own counted label (distinct
+  // from any real level's numeric seed) so it keeps varying loop to loop.
+  let demoRunN = 0;
   function startDemo() {
-    layoutField(8, 1, 3);
+    layoutField(8, 1, 3, runSeed + ':demo:' + (demoRunN++));
     state.mode = 'title';
     state.demo = true;
     state.demoT = rand(1.5, 2.5); // let the field settle before the dog sets off
@@ -3459,7 +3587,10 @@
     state.dog.cmd = 'walk';
     state.pace = 0.4;
   }
-  startDemo();
+  // ?level=N (see "run seed" above) jumps straight past the title into
+  // that level's Ready card instead of the attract-mode demo.
+  if (startAtLevel) startLevel(startAtLevel);
+  else startDemo();
 
   // ---------- main loop ----------
   // dev FPS meter: frames counted over half-second windows; the dot is
@@ -3498,10 +3629,10 @@
 
   // dev hook: lets a headless harness drive the sim clock directly
   // (demo soak tests, balance sweeps) — not used by the game itself
-  window.__sheepDev = { state, update, startDemo, startLevel };
+  window.__sheepDev = { state, update, startDemo, startLevel, runSeed, levelSeed };
 
   // debug/test handle
-  window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv };
+  window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv, runSeed };
 })();
 </script>
 </body>
