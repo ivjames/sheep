@@ -943,7 +943,7 @@
   // H is affine in y for a fixed x, so every vertical strip of the flat
   // field maps onto the hill with one translate + stretch (an exact warp,
   // baked once per level) and the pointer math inverts in closed form.
-  const hill = { amp: 0, m: 0, top: 0, ridge: () => 0 };
+  const hill = { amp: 0, m: 0, mMax: 0, top: 0, ridge: () => 0 };
 
   // ---------- camera ----------
   // Two stages, both exactly invertible. Stage 1 is the hillside lift
@@ -1004,6 +1004,11 @@
     camKey = name;
     cam = CAMS[name];
     try { localStorage.setItem(CAM_KEY, name); } catch (err) { /* storage walled off */ }
+    // hill.mMax (the fieldCanvas/decor extent) is level-invariant and stays
+    // put, but hill.m — the CURRENT camera's own bake margin — has to be
+    // re-derived for the new preset before startBake() reads it, or the
+    // land bake would keep using whatever camera was active at level start.
+    hill.m = requiredHillMargin(cam);
     startBake();
     const el = document.getElementById('cam-name');
     if (el) el.textContent = cam.label;
@@ -1013,12 +1018,60 @@
     setCamera(CAM_ORDER[(i + 1) % CAM_ORDER.length]);
     toast('🎥 Camera: ' + cam.label);
   }
+  // The far row's own margin has to reach out to wherever the fitted
+  // viewport's top corners land, at the far row's own (shrunken-under-tilt)
+  // horizontal scale — not a fraction of world size. viewFit() fits
+  // land.bb (the FIELD's screen bbox, camera-warped but margin-free) into
+  // [vw × ah] with `scale`; the local-frame half-width that fit has to
+  // cover, measured from the field's centerline, works out to exactly
+  // vw/(2·scale) regardless of which axis viewFit() ends up letterboxing
+  // on (the bb-relative "extra" term cancels — see hill-margin.md for the
+  // full derivation). The far row supplies (hill.m + w/2)·sFar of reach on
+  // each side, so solving for the margin that makes that equal the need:
+  //   hill.m = vw / (2 · scale · sFar) − w/2
+  // Evaluated for an arbitrary camPreset (not just the currently-active
+  // `cam`) by swapping the module-level `cam` binding camPt()/hillLift()
+  // close over, so this doubles as the per-camera margin (called with the
+  // live `cam` on every bake) and the level-wide max (called once per CAMS
+  // entry — see makeHill()). ah assumes the command pad's full reserve
+  // even if it happens to be hidden right now: the pad can toggle on
+  // without a rebake, and a margin sized for "pad hidden" would come up
+  // short the instant it shows.
+  function requiredHillMargin(camPreset) {
+    const { w, h } = state.world;
+    const saved = cam;
+    cam = camPreset;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const [ax, ay, bx, by] of [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]) {
+      for (let i = 0; i <= 16; i++) {
+        const p = camPt(ax + (bx - ax) * i / 16, ay + (by - ay) * i / 16);
+        if (p.x < x0) x0 = p.x;
+        if (p.x > x1) x1 = p.x;
+        if (p.y < y0) y0 = p.y;
+        if (p.y > y1) y1 = p.y;
+      }
+    }
+    cam = saved;
+    const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
+    // measure the pad's real reserve even if it's hidden right now — CSS
+    // defaults #cmd-ui to display:none, so an unset inline style (before
+    // the first show/hide toggle has ever run) reads as hidden too
+    const prevDisplay = cmdUi.style.display;
+    cmdUi.style.display = 'grid';
+    const padReserve = cmdUi.offsetHeight ? cmdUi.offsetHeight + 30 : 0;
+    cmdUi.style.display = prevDisplay;
+    const ah = Math.max(120, vh - padReserve);
+    const scale = Math.min((vw || 1) / bw, ah / bh);
+    const need = (vw || w) / (2 * scale * camPreset.sFar) - w / 2;
+    // +8% and a flat +20 world units of headroom past the exact geometric
+    // requirement, for antialiasing/pixel-snap at the literal corner pixel
+    // and modest viewport drift (resize, pad ease) between bakes; floored
+    // so an untilted camera still gets some breathing room past the fence.
+    return Math.max(60, Math.ceil(need * 1.08) + 20);
+  }
   function makeHill() {
     const { w, h } = state.world;
     hill.amp = Math.min(w, h) * HILL_AMP;
-    // the land spreads this far past the field on every side, so letterbox
-    // bars and the command-pad strip sit over rolling pasture, not backdrop
-    hill.m = Math.round(0.4 * Math.max(w, h));
     // two sine rolls — one broad, one smaller riding on it — with random
     // phase and frequency, so every level gets its own skyline
     const a1 = rand(0, Math.PI * 2), a2 = rand(0, Math.PI * 2);
@@ -1028,6 +1081,13 @@
       const s = 0.62 * Math.sin(u * f1 + a1) + 0.38 * Math.sin(u * f2 + a2);
       return hill.amp * (0.5 + 0.5 * s);
     };
+    // hill.m is the ACTIVE camera's own margin (drives this bake's
+    // hillCanvas/landCanvas size); hill.mMax is the largest margin any
+    // CAMS preset could need this level, and sizes fieldCanvas/decor
+    // scatter once so a later camera switch (setCamera(), above) never has
+    // to repaint the pasture texture to grow into a harder tilt.
+    hill.mMax = CAM_ORDER.reduce((mx, k) => Math.max(mx, requiredHillMargin(CAMS[k])), 0);
+    hill.m = requiredHillMargin(cam);
   }
   // trace world-space points through the camera, subdividing runs so edges
   // bow with the ridge. Under the tilt only fixed-x runs stay straight and
@@ -1094,7 +1154,8 @@
   // can never diverge pixel-for-pixel.
   function* bakeGen(decorData) {
     const { w, h } = state.world;
-    const M = hill.m;
+    const M = hill.m;       // ACTIVE camera's margin — sizes this bake's hillCanvas/landCanvas
+    const Mf = hill.mMax;   // fieldCanvas's actual paint offset (see makeDecor) — M ≤ Mf always
     if (decorData) {
       // willReadFrequently: this generator now deliberately reads these
       // canvases back every yield (see the block comment above) to force
@@ -1104,9 +1165,9 @@
       // through once the first readback happens
       const fc = fieldCanvas.getContext('2d', { willReadFrequently: true });
       fc.setTransform(1, 0, 0, 1, 0, 0);
-      fc.translate(M, M); // paint in world coords over [−M, w+M] × [−M, h+M]
+      fc.translate(Mf, Mf); // paint in world coords over [−Mf, w+Mf] × [−Mf, h+Mf]
       fc.fillStyle = '#7ec850';
-      fc.fillRect(-M, -M, w + 2 * M, h + 2 * M);
+      fc.fillRect(-Mf, -Mf, w + 2 * Mf, h + 2 * Mf);
       fc.getImageData(0, 0, 1, 1);
       yield;
       for (const p of decorData.patches) {
@@ -1183,7 +1244,9 @@
       const sw = Math.min(STRIP, w + M - x);
       const r = hill.ridge(x + sw / 2) * cam.hillK;
       const q = r * HILL_FLAT / h; // y′ = y·(1+q) − R, affine per column
-      hc.drawImage(fieldCanvas, x + M, 0, sw, h + 2 * M,
+      // fieldCanvas's own pixel origin is offset by Mf (its paint margin,
+      // see makeDecor), not M — read the M-wide sub-window centred on it
+      hc.drawImage(fieldCanvas, x + Mf, Mf - M, sw, h + 2 * M,
         x, -M * (1 + q) - r, sw, (h + 2 * M) * (1 + q));
       // slope shading sells the curvature: sun rakes in from the left, so
       // west-facing rises catch light and east-facing falls sit in shade
@@ -1373,7 +1436,13 @@
   function makeDecor() {
     const { w, h } = state.world;
     makeHill();
-    const M = hill.m;
+    // fieldCanvas (and the decor scattered onto it) is painted once per
+    // level and reused across every later camera switch, so it has to run
+    // out to hill.mMax — the largest margin ANY camera preset could need —
+    // not just hill.m (the currently-active camera's own, possibly
+    // smaller, margin). Using hill.m here would leave an unpainted ring
+    // waiting to be exposed the moment the player switches to a harder tilt.
+    const M = hill.mMax;
     const k = ((w + 2 * M) * (h + 2 * M)) / FIELD_AREA;
     // pre-render the pasture once per level: flat green with soft-edged
     // patches of lighter and darker grass — pasture, not a mowed pitch.
