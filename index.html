@@ -3751,11 +3751,16 @@
     // shoulder. Lifting it to the front edge keeps it clear, with neck between.
     const headX = bodyCx + (7 + 3.2 * alert) * u * side;
     const headY = ((6.6 - 0.4 * side) - 12.5 * alert) * u;
-    // Going away, the head is either solidly there or it isn't — a half-lit
-    // skull reads as a grey smudge on the fleece, the same way the old rump
-    // patch did. Grazing, it tucks out of sight past the wool; head up, it
-    // stays fully opaque above the shoulders, which is where it would be.
-    const headAlpha = 1 - rear * 0.94 * (1 - alert);
+    // Going away, there is no head: skull, ears and eyes all belong to the
+    // front of the animal, and from this camera a retreating sheep is its
+    // fleece, tail and hind legs. The old rule kept an ALERT head lit from
+    // behind (it is up above the wool, after all) — but a travelling sheep
+    // is always alert, so every fleeing sheep dragged a dark skull across
+    // its own rump and the flock read as staring back at the player. The
+    // head now rides the heading alone: full in profile and coming on, cut
+    // on a fast ramp once the sheep quarters away — a ramp, not a linear
+    // fade, because a half-lit skull is a grey smudge on the fleece.
+    const headAlpha = clamp((0.45 - rear) / 0.21, 0, 1);
     // the FACE still turns away even when the skull doesn't — eyes belong to
     // the front of the head and have no business showing from behind it
     const faceShow = Math.max(0, 1 - rear * 1.5);
@@ -3773,16 +3778,18 @@
     // shoulder rather than tapering to a point, so what emerges reads as a
     // neck rather than a spike
     const neckTop = -0.30 - 0.16 * alert, neckBot = 0.34 - 0.20 * alert;
-    ctx.globalAlpha = headAlpha;
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    ctx.moveTo(bodyCx + bodyRx * 0.34, bodyCy + bodyRy * neckTop);
-    ctx.lineTo(headX - 0.6 * u, headY - 2.6 * u);
-    ctx.lineTo(headX - 3.2 * u, headY + 1.6 * u);
-    ctx.lineTo(bodyCx + bodyRx * 0.1, bodyCy + bodyRy * neckBot);
-    ctx.closePath();
-    ctx.fill();
-    ctx.globalAlpha = 1;
+    if (headAlpha > 0.01) {
+      ctx.globalAlpha = headAlpha;
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.moveTo(bodyCx + bodyRx * 0.34, bodyCy + bodyRy * neckTop);
+      ctx.lineTo(headX - 0.6 * u, headY - 2.6 * u);
+      ctx.lineTo(headX - 3.2 * u, headY + 1.6 * u);
+      ctx.lineTo(bodyCx + bodyRx * 0.1, bodyCy + bodyRy * neckBot);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
 
     // The wool barrel, its bumps and the tail puff. Normally nine antialiased
     // fills; under the `bake` draw mode, one blit from the strip baked above.
@@ -3833,61 +3840,63 @@
     // the tail breaking the outline and the hind legs beneath it.
 
 
-    ctx.globalAlpha = headAlpha * farEar;
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    ctx.ellipse(earBackX - earLat, headY - (0.6 * side + 0.5 * splay) * u,
-                (2.4 - 0.2 * splay) * u, 1.25 * u, -0.5 * side - 0.3 * splay, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.globalAlpha = headAlpha;
-
-    // wool fringe on the poll, UNDER the skull: drawn over it, it read as a
-    // pale cap painted onto the face. Beneath, only the fringe above the head
-    // shows — wool the head pokes out of, which is what it actually is.
-    ctx.fillStyle = wool;
-    ctx.beginPath();
-    ctx.ellipse(headX - 2.8 * u * side, headY - (2.3 - 0.5 * face) * u,
-                (2.1 + 0.9 * splay) * u, 2.1 * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // head + muzzle. In profile the skull is long and the muzzle juts
-    // forward; squared up to the camera both collapse onto the centreline.
-    // The muzzle's offset rides on `side` so it reaches zero head-on —
-    // otherwise a sheep looking straight at you keeps its nose stuck out
-    // sideways and reads as still being in profile.
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    ctx.ellipse(headX, headY, (4.6 - 2.2 * face) * u, (3.4 + 1.1 * face) * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.ellipse(headX + 3.3 * u * side * (0.35 + 0.65 * side), headY + (0.7 + 0.9 * face) * u,
-                (2.5 - 0.5 * face) * u, (1.9 - 0.3 * face) * u, 0, 0, Math.PI * 2);
-    ctx.fill();
-
-    // near ear, over the head
-    ctx.fillStyle = skin;
-    ctx.beginPath();
-    ctx.ellipse(earBackX + earLat, headY + (0.6 * side - 0.5 * splay) * u,
-                (2.4 - 0.2 * splay) * u, 1.25 * u, 0.5 * side + 0.3 * splay, 0, Math.PI * 2);
-    ctx.fill();
-
-    // eyes: one in profile, a symmetric PAIR once the sheep squares up. They
-    // separate SIDEWAYS as `face` rises rather than stacking one above the
-    // other — a second eye below the first just reads as a profile head that
-    // has grown a spare, not as a face looking back at you. Drawn as separate
-    // fills so the profile eye's alpha never rides the far eye's crossfade.
-    const eyeY = headY - (1.3 - 0.5 * face) * u;
-    ctx.globalAlpha = headAlpha * faceShow;
-    ctx.fillStyle = eyeCol;
-    ctx.beginPath();
-    ctx.arc(headX + (1.3 + 0.6 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
-    ctx.fill();
-    if (face > 0.04) {
-      ctx.globalAlpha = headAlpha * faceShow * Math.min(1, face * 2.2);
+    if (headAlpha > 0.01) {
+      ctx.globalAlpha = headAlpha * farEar;
+      ctx.fillStyle = skin;
       ctx.beginPath();
-      ctx.arc(headX + (1.3 - 3.2 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
+      ctx.ellipse(earBackX - earLat, headY - (0.6 * side + 0.5 * splay) * u,
+                  (2.4 - 0.2 * splay) * u, 1.25 * u, -0.5 * side - 0.3 * splay, 0, Math.PI * 2);
       ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = headAlpha;
+
+      // wool fringe on the poll, UNDER the skull: drawn over it, it read as a
+      // pale cap painted onto the face. Beneath, only the fringe above the head
+      // shows — wool the head pokes out of, which is what it actually is.
+      ctx.fillStyle = wool;
+      ctx.beginPath();
+      ctx.ellipse(headX - 2.8 * u * side, headY - (2.3 - 0.5 * face) * u,
+                  (2.1 + 0.9 * splay) * u, 2.1 * u, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // head + muzzle. In profile the skull is long and the muzzle juts
+      // forward; squared up to the camera both collapse onto the centreline.
+      // The muzzle's offset rides on `side` so it reaches zero head-on —
+      // otherwise a sheep looking straight at you keeps its nose stuck out
+      // sideways and reads as still being in profile.
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.ellipse(headX, headY, (4.6 - 2.2 * face) * u, (3.4 + 1.1 * face) * u, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(headX + 3.3 * u * side * (0.35 + 0.65 * side), headY + (0.7 + 0.9 * face) * u,
+                  (2.5 - 0.5 * face) * u, (1.9 - 0.3 * face) * u, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // near ear, over the head
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.ellipse(earBackX + earLat, headY + (0.6 * side - 0.5 * splay) * u,
+                  (2.4 - 0.2 * splay) * u, 1.25 * u, 0.5 * side + 0.3 * splay, 0, Math.PI * 2);
+      ctx.fill();
+
+      // eyes: one in profile, a symmetric PAIR once the sheep squares up. They
+      // separate SIDEWAYS as `face` rises rather than stacking one above the
+      // other — a second eye below the first just reads as a profile head that
+      // has grown a spare, not as a face looking back at you. Drawn as separate
+      // fills so the profile eye's alpha never rides the far eye's crossfade.
+      const eyeY = headY - (1.3 - 0.5 * face) * u;
+      ctx.globalAlpha = headAlpha * faceShow;
+      ctx.fillStyle = eyeCol;
+      ctx.beginPath();
+      ctx.arc(headX + (1.3 + 0.6 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
+      ctx.fill();
+      if (face > 0.04) {
+        ctx.globalAlpha = headAlpha * faceShow * Math.min(1, face * 2.2);
+        ctx.beginPath();
+        ctx.arc(headX + (1.3 - 3.2 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
     }
 
     ctx.restore();
