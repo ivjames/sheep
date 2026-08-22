@@ -3107,10 +3107,13 @@
     ctx.restore();
   }
 
-  // ---------- top-down actor shapes ----------
-  // Sheep and dog are drawn as simple vector shapes instead of emoji:
-  // oblong bodies built nose-first along +x, then rotated to the smoothed
-  // heading (dir), so the flock visibly streams the way it's running.
+  // ---------- actor shapes ----------
+  // Sheep and dog are upright 2.5D billboards, matching the trees and fence
+  // posts that already stand on the ground plane. Both are authored once as
+  // a right-facing profile and mirrored, never rotated: cos(dir) picks the
+  // screen facing and foreshortens the body toward a narrow head-on
+  // silhouette, sin(dir) crossfades between a face and a rump. Everything
+  // varies continuously, so turning through a full circle never pops.
   // Sheep as an upright billboard: a woolly barrel that nearly sits on the
   // ground, on four short thick dark legs, with a dark head carried low
   // (grazing, not a dog's alert-up head). The pose is authored right-facing
@@ -3313,64 +3316,250 @@
     ctx.restore();
   }
 
-  // `gait` is 0 (standing) → 1 (flat out): the trot, the tail swish and
-  // the bounce all scale off it so a creeping dog eases into its stride
+  // Dog as an upright billboard: a lean black-and-white herder whose *pose*,
+  // not just its animation speed, tells you the gait. gait 0 is the working
+  // collie's stalking crouch — low but still standing on bent, coiled legs,
+  // head dropped level with or below the shoulders, creeping. gait 1 is flat
+  // out: the body stretches long, legs reach far fore and aft, the tail
+  // lifts and streams. Authored right-facing and mirrored, never rotated, so
+  // it billboards correctly from every heading with no sprite-sheet popping.
   function drawDogTop(x, y, size, dir, bob, gait) {
     const u = size / 34;
-    const coat = '#26262e', white = '#f4efe4';
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(dir);
-    ctx.lineCap = 'round';
-    // tail streams out behind, swishing wider at a run
-    const wag = Math.sin(bob * 1.6) * (2 + 2 * gait) * u;
-    ctx.strokeStyle = coat;
-    ctx.lineWidth = 4.5 * u;
-    ctx.beginPath();
-    ctx.moveTo(-12 * u, 0);
-    ctx.quadraticCurveTo(-19 * u, wag * 0.6, -23 * u, wag);
-    ctx.stroke();
-    ctx.fillStyle = white; // tail tip
-    ctx.beginPath();
-    ctx.arc(-23 * u, wag, 2.6 * u, 0, Math.PI * 2);
-    ctx.fill();
-    // paws, diagonal pairs
-    ctx.fillStyle = coat;
-    const step = Math.sin(bob * 2) * 4 * u * gait;
-    for (const [px, py, ph] of [[8, -7, 1], [-8, -7, -1], [8, 7, -1], [-8, 7, 1]]) {
+    const g = Math.max(0, Math.min(1, gait));
+    const coat = '#26262e', coatLit = '#383844', white = '#f4efe4', nose = '#111116';
+
+    const fx = Math.cos(dir), fy = Math.sin(dir);
+    const side = Math.abs(fx);          // 1 = full profile, 0 = head/tail-on
+    const sx = fx >= 0 ? 1 : -1;
+    const face = Math.max(0, fy);       // crossfade weight: coming at you
+    const rear = Math.max(0, -fy);      // crossfade weight: going away
+    const lerp = (a, b, t) => a + (b - a) * t;
+
+    // closed silhouette through a ring of points, rounded off at each corner
+    // by curving through the midpoints — cheap way to get a soft dog-shaped
+    // outline (deep chest, tucked waist) without hand-tuned bezier handles
+    function blob(pts) {
+      const n = pts.length;
+      const midX = (pts[n - 1][0] + pts[0][0]) / 2, midY = (pts[n - 1][1] + pts[0][1]) / 2;
       ctx.beginPath();
-      ctx.arc(px * u + step * ph, py * u, 2.2 * u, 0, Math.PI * 2);
+      ctx.moveTo(midX, midY);
+      for (let i = 0; i < n; i++) {
+        const nx = pts[(i + 1) % n][0], ny = pts[(i + 1) % n][1];
+        ctx.quadraticCurveTo(pts[i][0], pts[i][1], (pts[i][0] + nx) / 2, (pts[i][1] + ny) / 2);
+      }
+      ctx.closePath();
       ctx.fill();
     }
-    // oblong body
+
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(sx, 1);
+    ctx.lineCap = 'round';
+
+    const footY = 13 * u;
+    // leg attach height: bent and low when creeping, driving long at a run —
+    // this one number does most of the work of making the crouch read as
+    // coiled tension rather than a flattened smear, while still keeping the
+    // body clearly standing off the ground on visible legs
+    const hipY = lerp(6.6, 4, g) * u;
+    const L = (5 + (5 + 4 * g) * side) * u;   // body half-length: 10u crouch -> 14u run
+    const D = (3.3 + 0.4 * (1 - side)) * u;   // body half-depth (deep chest, not a tube)
+    const bodyCx = (0.3 + 1 * g) * u;         // weight shifts forward at speed
+    const bodyCy = hipY - D * 0.85;
+
+    // fore/aft leg pairs converge under the body as side -> 0; the near pair
+    // (viewer's side) sits a touch lower and draws over the body, the far
+    // pair sits a touch higher and draws behind it
+    const frontHipX = bodyCx + (4.6 + 1.8 * g) * u * side;
+    const rearHipX = bodyCx - (5 + 2.6 * g) * u * side;
+    const pairSpread = (1 - side) * 1.6 * u;
+    const strideAmt = (1.6 + 4.2 * g) * u;
+    const stride = Math.sin(bob * 2) * strideAmt * (0.4 + 0.6 * side);
+    const lift = Math.max(0, Math.sin(bob * 2)) * 2 * u * g;   // only the run picks its paws up
+    const legW = (2.3 + 0.4 * side) * u;
+
+    // leg + paw drawn as one continuous stroke so the white sock never reads
+    // as a mark floating apart from the leg: dark from the hip, then the
+    // same-width stroke turns white for the lower third, capped by a small
+    // dark toe planted exactly on the sock's end
+    function leg(hxx, hyy, fxx, fyy) {
+      ctx.strokeStyle = coat;
+      ctx.lineWidth = legW;
+      ctx.beginPath();
+      ctx.moveTo(hxx, hyy);
+      ctx.lineTo(fxx, fyy);
+      ctx.stroke();
+      ctx.strokeStyle = white;
+      ctx.beginPath();
+      ctx.moveTo(lerp(hxx, fxx, 0.58), lerp(hyy, fyy, 0.58));
+      ctx.lineTo(fxx, fyy);
+      ctx.stroke();
+      ctx.fillStyle = coat;
+      ctx.beginPath();
+      ctx.ellipse(fxx, fyy + 0.3 * u, legW * 0.42, legW * 0.32, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // tail: a low plume, not a spike — hangs when working, streams roughly
+    // horizontal at a run, never standing up vertical. Drawn as one curve
+    // split at its own midpoint (De Casteljau) so the white tip is a literal
+    // continuation of the same stroke, not a dot dropped near the end.
+    // From dead ahead the tail is behind the dog and shouldn't read at all;
+    // it swings into view turning to a profile or squaring up away from camera
+    const tailBaseX = bodyCx - L * 0.86, tailBaseY = bodyCy + D * 0.1;
+    const tailShow = lerp(0.15, 1, Math.max(side, rear));
+    const tailLift = lerp(1.5, -3.5, g) * u;
+    const wag = Math.sin(bob * 1.6) * (1 + 1.6 * g) * u;
+    const tCx = tailBaseX - (3.4 + 1.8 * g) * u * tailShow, tCy = tailBaseY + tailLift * 0.6;
+    const tTx = tailBaseX - (5.4 + 3.2 * g) * u * tailShow, tTy = tailBaseY + tailLift + wag;
+    // TIP is where the coat gives way to the white — a collie's tip is a
+    // flash on the end, not half the tail, and at 34px anything earlier
+    // than this reads as a pale plume rather than a black tail
+    const TIP = 0.78;
+    const splitX = lerp(lerp(tailBaseX, tCx, TIP), lerp(tCx, tTx, TIP), TIP);
+    const splitY = lerp(lerp(tailBaseY, tCy, TIP), lerp(tCy, tTy, TIP), TIP);
+    const midCx = lerp(tCx, tTx, TIP), midCy = lerp(tCy, tTy, TIP);
+    ctx.strokeStyle = coat;
+    ctx.lineWidth = 4 * u;
     ctx.beginPath();
-    ctx.ellipse(-1 * u, 0, 13.5 * u, 7 * u, 0, 0, Math.PI * 2);
+    ctx.moveTo(tailBaseX, tailBaseY);
+    ctx.quadraticCurveTo(lerp(tailBaseX, tCx, TIP), lerp(tailBaseY, tCy, TIP), splitX, splitY);
+    ctx.stroke();
+    ctx.strokeStyle = white;
+    ctx.lineWidth = 3.6 * u;
+    ctx.beginPath();
+    ctx.moveTo(splitX, splitY);
+    ctx.quadraticCurveTo(midCx, midCy, tTx, tTy);
+    ctx.stroke();
+
+    // far pair first, tucked up and in — mostly hidden by the body fill
+    leg(frontHipX, hipY - pairSpread * 0.5, frontHipX - stride, footY - pairSpread - lift);
+    leg(rearHipX, hipY - pairSpread * 0.5, rearHipX + stride, footY - pairSpread - lift);
+
+    // body: a deep chest tapering to a tucked waist and hip, not a uniform
+    // tube — the ring of points below goes chest-bottom -> chest-front ->
+    // shoulder -> withers -> hip-top -> haunch -> waist-tuck -> back to chest
+    ctx.fillStyle = coat;
+    blob([
+      [bodyCx + L * 0.6, bodyCy + D * 0.8],
+      [bodyCx + L * 0.7, bodyCy - D * 0.15],
+      [bodyCx + L * 0.4, bodyCy - D * 1.08],
+      [bodyCx - L * 0.15, bodyCy - D * 0.95],
+      [bodyCx - L * 0.82, bodyCy - D * 0.55],
+      [bodyCx - L * 0.86, bodyCy + D * 0.5],
+      [bodyCx - L * 0.16, bodyCy - D * 0.05],
+      [bodyCx + L * 0.2, bodyCy + D * 0.35],
+    ]);
+    ctx.fillStyle = coatLit;
+    ctx.beginPath();
+    ctx.ellipse(bodyCx + L * 0.15, bodyCy - D * 0.6, L * 0.55, D * 0.32, 0, 0, Math.PI * 2);
     ctx.fill();
-    // white shoulder band
+    // rump lightens as the dog turns away — the black silhouette otherwise
+    // goes flat from directly behind
+    if (rear > 0.02) {
+      ctx.fillStyle = white;
+      ctx.globalAlpha = rear * 0.28;
+      ctx.beginPath();
+      ctx.ellipse(bodyCx - L * 0.55, bodyCy + D * 0.25, L * 0.26, D * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    // white chest bib, angled up toward the throat
+    const chestX = bodyCx + L * 0.42, chestY = bodyCy + D * 0.3;
     ctx.fillStyle = white;
     ctx.beginPath();
-    ctx.ellipse(5.5 * u, 0, 4 * u, 6.2 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(chestX, chestY, (1.5 + 0.25 * g) * u * (0.5 + 0.5 * side), D * 0.6, 0, 0, Math.PI * 2);
     ctx.fill();
-    // head with pricked ears
+
+    // near pair, drawn over the body
+    leg(frontHipX, hipY + pairSpread * 0.5, frontHipX + stride, footY + pairSpread - lift);
+    leg(rearHipX, hipY + pairSpread * 0.5, rearHipX - stride, footY + pairSpread - lift);
+
+    // head: low and forward, level with or below the shoulder line when
+    // creeping; forward and lifted into the stride once flat out
+    const headX = bodyCx + (7 + 3 * g) * u * side;
+    // headY drops toward the belly at low gait but must never reach the
+    // hips — at side -> 0 the head's x-offset collapses onto the same column
+    // as the legs, so if y collapsed too the head would paint over them and
+    // the crouch would lose its legs entirely
+    const headY = Math.min(bodyCy + D * lerp(0.5, -1.55, g), hipY - 2.4 * u);
+    const headRx = 3.6 * u, headRy = 3 * u;
+
+    // neck bridges body to head — dark on top, a white throat stripe
+    // continuing straight out of the chest bib underneath, so the two
+    // markings read as one continuous patch instead of separate blobs
+    const neckSx = bodyCx + L * 0.48, neckSy = bodyCy - D * 0.1;
+    const neckEx = headX - headRx * 0.3, neckEy = headY + headRy * 0.3;
+    ctx.strokeStyle = coat;
+    ctx.lineWidth = (3.2 + 0.7 * g) * u;
+    ctx.beginPath();
+    ctx.moveTo(neckSx, neckSy);
+    ctx.lineTo(neckEx, neckEy);
+    ctx.stroke();
+    ctx.strokeStyle = white;
+    ctx.lineWidth = (3.2 + 0.7 * g) * u * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(chestX, chestY - D * 0.2);
+    ctx.lineTo(lerp(neckSx, neckEx, 0.5), lerp(neckSy, neckEy, 0.5));
+    ctx.stroke();
+
+    // ears: small and semi-pricked with a soft, folded tip — an ellipse
+    // tilted back reads as a collie ear; a sharp triangle reads as a horn
+    const earSpread = (1.1 + 1.1 * (1 - side)) * u;
+    const earLen = (2.2 + 0.35 * g) * u;
+    ctx.fillStyle = coat;
+    ctx.save();
+    ctx.translate(headX - 0.6 * u, headY - earSpread - headRy * 0.55);
+    ctx.rotate(-0.5);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, earLen * 0.42, earLen * 0.72, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // skull
+    ctx.beginPath();
+    ctx.ellipse(headX, headY, headRx, headRy, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(headX - 0.6 * u, headY + earSpread + headRy * 0.55);
+    ctx.rotate(0.5);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, earLen * 0.42, earLen * 0.72, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // muzzle: a coat-coloured snout with a thin white blaze down its centre
+    // and a nose at the very tip — slides toward the face-centre as side -> 0
+    // rather than vanishing, since a head-on collie still shows the blaze
+    const muzzleOff = (2.1 + 0.4 * g) * u * (0.45 + 0.55 * side);
+    const muzzleX = headX + muzzleOff, muzzleY = headY + 0.5 * u;
     ctx.fillStyle = coat;
     ctx.beginPath();
-    ctx.ellipse(13 * u, 0, 7 * u, 5.2 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(muzzleX, muzzleY, 1.9 * u, 1.3 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(9 * u, -4 * u); ctx.lineTo(6 * u, -9.5 * u); ctx.lineTo(13 * u, -6.5 * u);
-    ctx.closePath();
-    ctx.moveTo(9 * u, 4 * u); ctx.lineTo(6 * u, 9.5 * u); ctx.lineTo(13 * u, 6.5 * u);
-    ctx.closePath();
-    ctx.fill();
-    // blaze down the muzzle, wet nose out front
     ctx.fillStyle = white;
     ctx.beginPath();
-    ctx.ellipse(17 * u, 0, 3.6 * u, 1.9 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(muzzleX + 0.3 * u, muzzleY, 0.9 * u, 1.1 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = '#111116';
+    ctx.fillStyle = nose;
     ctx.beginPath();
-    ctx.arc(20 * u, 0, 1.8 * u, 0, Math.PI * 2);
+    ctx.arc(muzzleX + 1.7 * u * (0.45 + 0.55 * side), muzzleY, 0.8 * u, 0, Math.PI * 2);
     ctx.fill();
+
+    // eyes only fade in facing the camera — a side profile reads by
+    // silhouette alone, not a stray dot floating on the cheek
+    if (face > 0.06) {
+      ctx.fillStyle = nose;
+      ctx.globalAlpha = Math.min(1, face * 2.4);
+      const eyeSpread = 1.1 * u * (0.5 + 0.5 * (1 - side));
+      ctx.beginPath();
+      ctx.arc(headX - eyeSpread, headY - 0.6 * u, 0.55 * u, 0, Math.PI * 2);
+      ctx.arc(headX + eyeSpread, headY - 0.6 * u, 0.55 * u, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
     ctx.restore();
   }
 
