@@ -3361,31 +3361,42 @@
       }
     }
 
-    // dog influence ring (a faint pressure aura helps read the herding range)
+    // dog influence ring (a faint pressure aura helps read the herding range) —
+    // a ground circle, not a screen one: sample it in world space and run each
+    // point through camPt so it bows with the ridge and tilts like the turf under it
     if (state.mode === 'playing') {
-      const dg = state.dog;
-      const dp = camPt(dg.x, dg.y), dk = camScale(dg.x, dg.y);
-      ctx.fillStyle = 'rgba(255, 246, 232, 0.05)';
+      const dg = state.dog, dk = camScale(dg.x, dg.y);
+      const RING_N = 48; // drawn every frame — smooth without being wasteful
       ctx.beginPath();
-      ctx.arc(dp.x, dp.y, FLEE_RANGE * dk, 0, Math.PI * 2);
+      for (let i = 0; i <= RING_N; i++) {
+        const a = Math.PI * 2 * i / RING_N;
+        const p = camPt(dg.x + Math.cos(a) * FLEE_RANGE, dg.y + Math.sin(a) * FLEE_RANGE);
+        i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(255, 246, 232, 0.05)';
       ctx.fill();
       ctx.strokeStyle = 'rgba(255, 246, 232, 0.14)';
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 2 * dk; // a ring far up the field reads thinner, same as its radius does
       ctx.setLineDash([10, 14]);
-      ctx.beginPath();
-      ctx.arc(dp.x, dp.y, FLEE_RANGE * dk, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // bark shockwaves
+    // bark shockwaves — same ground-circle treatment as the influence ring above
     for (const b of state.barks) {
       const k = b.t / 0.6;
-      const bp = camPt(b.x, b.y), bk = camScale(b.x, b.y);
-      ctx.strokeStyle = `rgba(127, 212, 255, ${0.6 * (1 - k)})`;
-      ctx.lineWidth = 5 * (1 - k) + 1;
+      const bk = camScale(b.x, b.y);
+      const r = BARK_RANGE * (0.25 + 0.75 * k);
+      const RING_N = 40; // a handful of these on screen at once — a touch leaner than the ring
       ctx.beginPath();
-      ctx.arc(bp.x, bp.y, BARK_RANGE * (0.25 + 0.75 * k) * bk, 0, Math.PI * 2);
+      for (let i = 0; i <= RING_N; i++) {
+        const a = Math.PI * 2 * i / RING_N;
+        const p = camPt(b.x + Math.cos(a) * r, b.y + Math.sin(a) * r);
+        i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+      }
+      ctx.strokeStyle = `rgba(127, 212, 255, ${0.6 * (1 - k)})`;
+      ctx.lineWidth = (5 * (1 - k) + 1) * bk;
       ctx.stroke();
     }
 
