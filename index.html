@@ -1042,6 +1042,15 @@
   const SPEED_KEY = 'comeby-speed';
   const SPEED_RAMP = 0.25; // seconds to ease into a newly picked speed
   const MAX_SUBSTEPS = 8;  // death-spiral guard — see frame()
+  // the size of one sub-step. The physics is tuned for ~1/60s steps, so
+  // that is what a sub-step must be — NOT the current frame's duration.
+  // Sizing a slice by frameDt looks equivalent at a steady 60fps but
+  // isn't: at 4x a frame does four times the work, so frames stretch,
+  // so frameDt grows, so every sub-step grows with it — measured at up
+  // to 35ms on a 154-sheep field, twice the step the flocking and
+  // collision pushes were tuned against, and self-reinforcing. A fixed
+  // slice keeps the step honest and just runs more of them.
+  const SUB_STEP = 1 / 60;
   let speedIdx = 0;
   try {
     const saved = Number(localStorage.getItem(SPEED_KEY));
@@ -3956,9 +3965,9 @@
     // rounding to whole steps.
     speedAcc += frameDt * speedCur;
     let steps = 0;
-    while (speedAcc >= frameDt && steps < MAX_SUBSTEPS) {
-      update(frameDt);
-      speedAcc -= frameDt;
+    while (speedAcc >= SUB_STEP && steps < MAX_SUBSTEPS) {
+      update(SUB_STEP);
+      speedAcc -= SUB_STEP;
       steps++;
     }
     // death-spiral guard: if a machine can't keep up, MAX_SUBSTEPS caps
