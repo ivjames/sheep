@@ -1265,13 +1265,26 @@
       }
       const lc = landCanvas.getContext('2d', { willReadFrequently: true });
       lc.clearRect(0, 0, landCanvas.width, landCanvas.height);
+      // Each strip's destination edges are snapped to whole pixel rows
+      // (consecutive strips share the rounded boundary, so they tile with
+      // no gaps or overlaps). Letting them land on fractional boundaries
+      // reads fine on browsers that pixel-snap axis-aligned image draws,
+      // but Safari antialiases each strip's edges independently: two
+      // abutting fractional edges double-blend against the transparent
+      // canvas and leave a translucent seam row per strip — visible as
+      // periodic horizontal lines across the whole land, strongest where
+      // the far rows compress. The ≤0.5px of per-strip jitter the
+      // rounding adds is invisible on pasture texture.
+      const rowY = (v) => Math.round(land.oy + s0 * v + g * v * v / 2);
       for (let j = 0; j < hillCanvas.height; j += 2) {
-        const v = j - hill.top, v2 = v + 2;
+        const v = j - hill.top;
         const sv = sClamp(s0 + g * v);
-        const Yv = s0 * v + g * v * v / 2, Yv2 = s0 * v2 + g * v2 * v2 / 2;
+        const yA = rowY(v), yB = rowY(v + 2);
+        // a far strip can compress to zero rows — its neighbors own the pixel
+        if (yB <= yA) continue;
         lc.drawImage(hillCanvas, 0, j, W1, 2,
-          land.ox + (w / 2 - (hill.m + w / 2) * sv), land.oy + Yv,
-          W1 * sv, Math.max(Yv2 - Yv, 0.5));
+          land.ox + (w / 2 - (hill.m + w / 2) * sv), yA,
+          W1 * sv, yB - yA);
         lc.getImageData(0, 0, 1, 1);
         yield; // one row-pair per slice — dominant cost under a tilted camera
       }
