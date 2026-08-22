@@ -3111,60 +3111,205 @@
   // Sheep and dog are drawn as simple vector shapes instead of emoji:
   // oblong bodies built nose-first along +x, then rotated to the smoothed
   // heading (dir), so the flock visibly streams the way it's running.
+  // Sheep as an upright billboard: a woolly barrel that nearly sits on the
+  // ground, on four short thick dark legs, with a dark head carried low
+  // (grazing, not a dog's alert-up head). The pose is authored right-facing
+  // and mirrored, never rotated, so it reads correctly from every heading
+  // with no sprite-sheet popping.
   function drawSheepTop(x, y, size, dir, ram, bob, moving) {
     const u = size / 30;
     const wool = ram ? '#d9c6a8' : '#f6f1e6';
     const shade = ram ? '#b8a284' : '#ddd3bf';
     const skin = ram ? '#4a3b30' : '#3b3b46';
+    const hornCol = '#e0d3b8';
+    const eyeCol = '#fff8ec';
+
+    const fx = Math.cos(dir), fy = Math.sin(dir);
+    const side = Math.abs(fx);           // 1 = full profile, 0 = head/tail-on
+    const sx = fx >= 0 ? 1 : -1;
+    const face = Math.max(0, fy);        // crossfade weight: coming at you
+    const rear = Math.max(0, -fy);       // crossfade weight: going away
+
     ctx.save();
     ctx.translate(x, y);
-    ctx.rotate(dir + Math.sin(bob) * 0.05); // slight waddle
-    // trotting feet, diagonal pairs swinging in counter-phase
-    ctx.fillStyle = skin;
-    const step = moving ? Math.sin(bob * 2) * 3.5 * u : 0;
-    for (const [px, py, ph] of [[7, -8, 1], [-8, -8, -1], [7, 8, -1], [-8, 8, 1]]) {
+    ctx.scale(sx, 1);
+    // grazing sheep barely rock when idle; a trot supplies its own motion,
+    // so the standing sway is a faint remnant of the old top-down waddle
+    if (!moving) ctx.translate(Math.sin(bob * 0.6) * 0.5 * u, 0);
+
+    const footY = 12 * u;
+    const hipY = 7.4 * u;                             // short legs — the barrel nearly sits on the ground
+    const bodyRy = (8.8 + 1 * (1 - side)) * u;        // rounder cloud head/tail-on
+    const bodyRx = (6.2 + 5.6 * side) * u;            // stays inside the shadow's footprint
+    const bodyCx = 0.4 * u;
+    const bodyCy = hipY - bodyRy - 0.3 * u;
+
+    // fore/aft leg pairs converge under the barrel as side -> 0, keeping a
+    // little residual stance width so head/tail-on still reads as two legs
+    // rather than one fat column. The near pair (viewer's side) sits a
+    // touch lower and draws over the body, the far pair a touch higher and
+    // draws behind it — that overlap alone sells the depth.
+    const frontHipX = bodyCx + (1.4 + 3.2 * side) * u;
+    const rearHipX = bodyCx - (1.6 + 3.6 * side) * u;
+    const pairSpread = (1 - side) * 1.5 * u;
+    // fore-aft swing only reads from the side, so its x-component fades out
+    // approaching head/tail-on; there it becomes a small vertical lift
+    // instead, so a squared-up trot still has some life without the legs'
+    // stride crossing into an X where the hips have converged together
+    const strideX = moving ? Math.sin(bob * 2) * 2 * u * side : 0;
+    const strideY = moving ? Math.sin(bob * 2) * 1 * u * (1 - side) : 0;
+
+    function leg(hx, hyy, fxx, fyy) {
+      ctx.strokeStyle = skin;
+      ctx.lineWidth = (2.1 + 0.5 * side) * u;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.arc(px * u + step * ph, py * u, 2.4 * u, 0, Math.PI * 2);
+      ctx.moveTo(hx, hyy);
+      ctx.lineTo(fxx, fyy);
+      ctx.stroke();
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.ellipse(fxx, fyy + 0.3 * u, 1.5 * u, 1.05 * u, 0, 0, Math.PI * 2);
       ctx.fill();
     }
-    // oblong wool body with a darker rim
+
+    // far pair first, tucked up and in — mostly hidden by the body fill
+    leg(frontHipX, hipY - pairSpread * 0.5, frontHipX - strideX, footY - pairSpread - strideY);
+    leg(rearHipX, hipY - pairSpread * 0.5, rearHipX + strideX, footY - pairSpread + strideY);
+
+    // wool barrel: darker rim behind, lit fleece in front — the rim offset
+    // fades out approaching head/tail-on so a round cloud stays round
+    // instead of reading as a lopsided crescent
     ctx.fillStyle = shade;
     ctx.beginPath();
-    ctx.ellipse(-0.5 * u, 0, 14 * u, 9.5 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(bodyCx - 0.7 * u * side, bodyCy, bodyRx, bodyRy, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = wool;
     ctx.beginPath();
-    ctx.ellipse(0.5 * u, 0, 12.5 * u, 8.5 * u, 0, 0, Math.PI * 2);
+    ctx.ellipse(bodyCx + 0.6 * u * side, bodyCy - 0.4 * u, bodyRx * 0.94, bodyRy * 0.9, 0, 0, Math.PI * 2);
     ctx.fill();
-    // tail puff
+    // fleece bumps break the perfect-ellipse outline — this is most of what
+    // sells wool instead of an egg at 30px, so it has to survive small
+    for (const [bx, by, br] of [[-0.8, -0.52, 0.42], [-0.32, -0.75, 0.46],
+                                 [0.22, -0.7, 0.44], [0.7, -0.48, 0.4],
+                                 [0.85, 0.05, 0.3]]) {
+      ctx.beginPath();
+      ctx.arc(bodyCx + bx * bodyRx, bodyCy + by * bodyRy, bodyRy * br, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // tail: a puff set clearly behind the rump so it reads from the back
+    ctx.fillStyle = wool;
     ctx.beginPath();
-    ctx.arc(-14 * u, 0, 3.2 * u, 0, Math.PI * 2);
+    ctx.arc(bodyCx - bodyRx * 0.92, bodyCy + bodyRy * 0.2, (3 + 1.3 * rear) * u, 0, Math.PI * 2);
     ctx.fill();
-    // head out front, ears to the sides
+    ctx.fillStyle = shade;
+    ctx.beginPath();
+    ctx.arc(bodyCx - bodyRx * 0.92, bodyCy + bodyRy * 0.2, (1.7 + 0.7 * rear) * u, 0, Math.PI * 2);
+    ctx.fill();
+    // rump fades in as the sheep turns away — profile/face show none of it
+    if (rear > 0.02) {
+      ctx.fillStyle = skin;
+      ctx.globalAlpha = rear * 0.7;
+      ctx.beginPath();
+      ctx.ellipse(bodyCx - bodyRx * 0.6, bodyCy + bodyRy * 0.3, bodyRx * 0.2, bodyRy * 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // head: a distinct dark wedge carried low, out ahead of the body —
+    // sliding back to body-center as side -> 0. Sized to still read at
+    // game scale, closer to the old top-down model's head mass.
+    const headX = bodyCx + 7 * u * side;
+    const headY = (6.6 - 0.4 * side) * u;
+    const headAlpha = 1 - rear * 0.8;   // grazing face tucks out of sight from behind
+    const earSpread = (2.2 + 2 * (1 - side)) * u;
+
+    // short neck wedge, always opaque, keeps the head visibly attached to
+    // the barrel even as the face itself fades going away
     ctx.fillStyle = skin;
     ctx.beginPath();
-    ctx.ellipse(14 * u, 0, 6 * u, 4.2 * u, 0, 0, Math.PI * 2);
+    ctx.moveTo(bodyCx + bodyRx * 0.5, bodyCy + bodyRy * 0.62);
+    ctx.lineTo(headX - 1 * u, headY - 2 * u);
+    ctx.lineTo(headX - 3.4 * u, headY + 1 * u);
+    ctx.lineTo(bodyCx + bodyRx * 0.12, bodyCy + bodyRy * 0.82);
+    ctx.closePath();
+    ctx.fill();
+
+    // far horn — curling behind the skull. Horns stay bold from every
+    // heading (only a slight rear fade) so the ram reads from behind too
+    if (ram) {
+      ctx.globalAlpha = 1 - rear * 0.15;
+      const hnFar = headY - (2.4 + 2 * (1 - side)) * u;
+      ctx.strokeStyle = hornCol;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 3 * u;
+      ctx.beginPath();
+      ctx.arc(headX - 2.4 * u, hnFar, 3.2 * u, 2.7, 5.8);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.globalAlpha = headAlpha;
+    // far ear, behind the head
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(headX - 2.6 * u, headY - earSpread, 3 * u, 1.3 * u, -0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // head + muzzle
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(headX, headY, 4.6 * u, 3.4 * u, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.beginPath();
-    ctx.ellipse(11 * u, -5.5 * u, 3.8 * u, 1.8 * u, -0.5, 0, Math.PI * 2);
-    ctx.ellipse(11 * u, 5.5 * u, 3.8 * u, 1.8 * u, 0.5, 0, Math.PI * 2);
+    ctx.ellipse(headX + 3.3 * u * (0.35 + 0.65 * side), headY + 0.7 * u, 2.5 * u, 1.9 * u, 0, 0, Math.PI * 2);
     ctx.fill();
-    // wool cap on the crown
+    // wool fringe on the crown so the head reads as poking out of the fleece
     ctx.fillStyle = wool;
     ctx.beginPath();
-    ctx.arc(10.5 * u, 0, 4 * u, 0, Math.PI * 2);
+    ctx.arc(headX - 2.8 * u, headY - 2.3 * u, 2.1 * u, 0, Math.PI * 2);
     ctx.fill();
-    if (ram) { // horns curling beside the head
-      ctx.strokeStyle = '#e0d3b8';
-      ctx.lineCap = 'round';
-      ctx.lineWidth = 2.6 * u;
+
+    // near ear, over the head
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(headX - 2.6 * u, headY + earSpread, 3 * u, 1.3 * u, 0.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // eyes: one dot in profile, a second fades in as the sheep faces you —
+    // drawn as separate fills so the profile eye's alpha never rides on
+    // the crossfade meant only for the second one
+    ctx.fillStyle = eyeCol;
+    ctx.beginPath();
+    ctx.arc(headX + 1.3 * u, headY - 1.3 * u * (1 - 0.4 * face), 0.85 * u, 0, Math.PI * 2);
+    ctx.fill();
+    if (face > 0.04) {
+      ctx.globalAlpha = headAlpha * Math.min(1, face * 2.2);
       ctx.beginPath();
-      ctx.arc(11 * u, -6.5 * u, 3.6 * u, 2.7, 5.8);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(11 * u, 6.5 * u, 3.6 * u, 0.5, 3.6);
-      ctx.stroke();
+      ctx.arc(headX + 1.3 * u, headY + 1.5 * u * face, 0.85 * u, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
+
+    // near horn, over the head — reads as a spiral in profile, a flanking
+    // curl once the sheep squares up to face-on or away
+    if (ram) {
+      ctx.globalAlpha = 1 - rear * 0.15;
+      const hnNear = headY + (2.4 + 2 * (1 - side)) * u;
+      ctx.strokeStyle = hornCol;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 3 * u;
+      ctx.beginPath();
+      ctx.arc(headX - 2.4 * u, hnNear, 3.2 * u, 0.5, 3.6);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    // near pair last, drawn over the body
+    leg(frontHipX, hipY + pairSpread * 0.5, frontHipX + strideX, footY + pairSpread + strideY);
+    leg(rearHipX, hipY + pairSpread * 0.5, rearHipX - strideX, footY + pairSpread - strideY);
+
     ctx.restore();
   }
 
