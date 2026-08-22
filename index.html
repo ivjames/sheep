@@ -3462,10 +3462,118 @@
     return out;
   })();
 
+  // fleece bump offsets as fractions of the barrel's radii. Deliberately
+  // uneven and clustered toward the shoulder — evenly spaced bumps of one
+  // radius read as scallops stuck on an ellipse. This is most of what sells
+  // wool instead of an egg at 30px, so it has to survive small sizes.
+  const FLEECE_BUMPS = [[-0.86, -0.4, 0.36], [-0.5, -0.72, 0.5],
+                        [0.0, -0.8, 0.41], [0.46, -0.66, 0.47],
+                        [0.82, -0.34, 0.32], [0.88, 0.18, 0.25]];
+
+  // ---------- baked fleece ----------
+  // The barrel, its bumps and the tail puff are the sheep's largest and
+  // costliest piece — nine antialiased fills covering most of its pixels —
+  // and the only piece that depends on nothing but heading and temperament.
+  // `alert` moves the head; `bob` swings the legs; neither touches the wool.
+  //
+  // Heading collapses to ONE parameter. The drawing reads it only through
+  // side = |cos dir|, face = max(0, sin dir) and rear = max(0, -sin dir),
+  // with the left-facing half handled by a mirror — and since
+  // side = sqrt(1 - sin²dir), all three follow from sin(dir) alone. So the
+  // fleece is a function of (sin dir, temper) and bakes into a strip of
+  // BODY_DIRS samples per fleece colour. Size never enters the bake: every
+  // coordinate scales with u, so the blit just scales. That is why this can
+  // be a sprite when the whole sheep cannot — baking the head as well would
+  // need a `alert` axis, and the legs a stride axis, and the atlas would go
+  // combinatorial for parts that are cheap to draw live anyway.
+  //
+  // The heading is quantised, but only for the wool: the legs and head still
+  // use the exact heading, so nothing about the sheep's pose steps. At 32
+  // samples the barrel's half-width moves at most ~0.3px between neighbours,
+  // which is under one device pixel at the dpr-2 cap.
+  const BODY_DIRS = 32;   // samples across the half-circle; the rest mirrors
+  const BODY_BAKE = 2;    // supersample, matching the dpr-2 cap
+  const bodyGeom = (side) => {
+    const ry = 8.8 + (1 - side), rx = 6.2 + 5.6 * side;
+    return { rx, ry, cx: 0.4, cy: 7.4 - ry - 0.3 };
+  };
+  // the fleece at u = 1, drawn about the sheep's ground origin
+  function paintFleece(g, side, rear, wool, shade) {
+    const { rx, ry, cx, cy } = bodyGeom(side);
+    // darker rim behind, lit fleece in front — the rim offset fades out
+    // approaching head/tail-on so a round cloud stays round instead of
+    // reading as a lopsided crescent
+    g.fillStyle = shade;
+    g.beginPath();
+    g.ellipse(cx - 0.7 * side, cy, rx, ry, 0, 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = wool;
+    g.beginPath();
+    g.ellipse(cx + 0.6 * side, cy - 0.4, rx * 0.94, ry * 0.9, 0, 0, Math.PI * 2);
+    g.fill();
+    for (const [bx, by, br] of FLEECE_BUMPS) {
+      g.beginPath();
+      g.arc(cx + bx * rx, cy + by * ry, ry * br, 0, Math.PI * 2);
+      g.fill();
+    }
+    // tail: a puff set clearly PAST the barrel's edge, so the silhouette
+    // itself reads as a tail from behind rather than a smudge on the fleece
+    g.beginPath();
+    g.arc(cx - rx * 1.04, cy + ry * 0.3, 2.9 + 1.2 * rear, 0, Math.PI * 2);
+    g.fill();
+  }
+  // one cell box covering every sample, so the strip indexes uniformly
+  const FLEECE_BOX = (() => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const put = (cx, cy, rx, ry) => {
+      x0 = Math.min(x0, cx - rx); x1 = Math.max(x1, cx + rx);
+      y0 = Math.min(y0, cy - ry); y1 = Math.max(y1, cy + ry);
+    };
+    for (let i = 0; i < BODY_DIRS; i++) {
+      const a = -Math.PI / 2 + (i / (BODY_DIRS - 1)) * Math.PI;
+      const side = Math.cos(a), rear = Math.max(0, -Math.sin(a));
+      const { rx, ry, cx, cy } = bodyGeom(side);
+      put(cx - 0.7 * side, cy, rx, ry);
+      put(cx + 0.6 * side, cy - 0.4, rx * 0.94, ry * 0.9);
+      for (const [bx, by, br] of FLEECE_BUMPS) put(cx + bx * rx, cy + by * ry, ry * br, ry * br);
+      const tr = 2.9 + 1.2 * rear;
+      put(cx - rx * 1.04, cy + ry * 0.3, tr, tr);
+    }
+    return { x0: x0 - 1, y0: y0 - 1, x1: x1 + 1, y1: y1 + 1 };
+  })();
+  // baked per fleece colour, on first use: a level only ever touches the
+  // buckets its flock actually rolled, and baking all sixteen up front would
+  // put a few hundred fills in the way of the first frame
+  const fleeceStrips = [];
+  function fleeceStrip(ti) {
+    let s = fleeceStrips[ti];
+    if (s) return s;
+    const w = Math.ceil((FLEECE_BOX.x1 - FLEECE_BOX.x0) * BODY_BAKE);
+    const h = Math.ceil((FLEECE_BOX.y1 - FLEECE_BOX.y0) * BODY_BAKE);
+    const c = document.createElement('canvas');
+    c.width = w * BODY_DIRS;
+    c.height = h;
+    const g = c.getContext('2d');
+    const pal = FLEECE[ti];
+    for (let i = 0; i < BODY_DIRS; i++) {
+      const a = -Math.PI / 2 + (i / (BODY_DIRS - 1)) * Math.PI;
+      g.save();
+      g.translate(i * w, 0);
+      g.scale(BODY_BAKE, BODY_BAKE);
+      g.translate(-FLEECE_BOX.x0, -FLEECE_BOX.y0);
+      paintFleece(g, Math.cos(a), Math.max(0, -Math.sin(a)), pal.wool, pal.shade);
+      g.restore();
+    }
+    s = { c, w, h };
+    fleeceStrips[ti] = s;
+    return s;
+  }
+
   function drawSheepTop(x, y, size, dir, temper, bob, moving, alert) {
     const u = size / 30;
-    const pal = FLEECE[Math.max(0, Math.min(15, Math.round(temper * 15)))];
-    const wool = pal.wool, shade = pal.shade, skin = pal.skin;
+    const ti = Math.max(0, Math.min(15, Math.round(temper * 15)));
+    const pal = FLEECE[ti];
+    const wool = pal.wool, skin = pal.skin; // shade is only used by the bake
     const eyeCol = '#fff8ec';
 
     const fx = Math.cos(dir), fy = Math.sin(dir);
@@ -3578,37 +3686,15 @@
     ctx.fill();
     ctx.globalAlpha = 1;
 
-    // wool barrel: darker rim behind, lit fleece in front — the rim offset
-    // fades out approaching head/tail-on so a round cloud stays round
-    // instead of reading as a lopsided crescent
-    ctx.fillStyle = shade;
-    ctx.beginPath();
-    ctx.ellipse(bodyCx - 0.7 * u * side, bodyCy, bodyRx, bodyRy, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = wool;
-    ctx.beginPath();
-    ctx.ellipse(bodyCx + 0.6 * u * side, bodyCy - 0.4 * u, bodyRx * 0.94, bodyRy * 0.9, 0, 0, Math.PI * 2);
-    ctx.fill();
-    // fleece bumps break the perfect-ellipse outline — this is most of what
-    // sells wool instead of an egg at 30px, so it has to survive small
-    // sizes deliberately uneven and clustered toward the shoulder — evenly
-    // spaced bumps of one radius read as scallops stuck on an ellipse
-    for (const [bx, by, br] of [[-0.86, -0.4, 0.36], [-0.5, -0.72, 0.5],
-                                 [0.0, -0.8, 0.41], [0.46, -0.66, 0.47],
-                                 [0.82, -0.34, 0.32], [0.88, 0.18, 0.25]]) {
-      ctx.beginPath();
-      ctx.arc(bodyCx + bx * bodyRx, bodyCy + by * bodyRy, bodyRy * br, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    // tail: a puff set clearly behind the rump so it reads from the back
-    // the puff has to sit PAST the barrel's edge to break the silhouette —
-    // tucked inside it, all you see is its shaded core as a disc floating
-    // on the fleece, which reads as a smudge rather than a tail
-    ctx.fillStyle = wool;
-    ctx.beginPath();
-    ctx.arc(bodyCx - bodyRx * 1.04, bodyCy + bodyRy * 0.3, (2.9 + 1.2 * rear) * u, 0, Math.PI * 2);
-    ctx.fill();
+    // the wool barrel, its bumps and the tail puff, blitted from the bake
+    // above instead of filled — see the baked-fleece block for why this
+    // piece, and only this piece, reduces to a sprite
+    const strip = fleeceStrip(ti);
+    const di = clamp(Math.round((Math.asin(clamp(fy, -1, 1)) + Math.PI / 2)
+                                / Math.PI * (BODY_DIRS - 1)), 0, BODY_DIRS - 1);
+    ctx.drawImage(strip.c, di * strip.w, 0, strip.w, strip.h,
+                  FLEECE_BOX.x0 * u, FLEECE_BOX.y0 * u,
+                  (strip.w / BODY_BAKE) * u, (strip.h / BODY_BAKE) * u);
     // no shaded core inside the puff: shade on wool is barely a value step,
     // so a concentric disc reads as a smudge on the fleece rather than a
     // tail. Now the puff clears the barrel's edge, the silhouette does it.
