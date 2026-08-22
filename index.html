@@ -1903,7 +1903,9 @@
   addEventListener('keydown', (e) => {
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     keys[e.key.toLowerCase()] = true;
-    if (!e.repeat && CMD_KEYS[e.key] && state.input === 'cmd') issueCommand(CMD_KEYS[e.key]);
+    // under the autopilot the pad is live in any input mode (LOOK BACK
+    // steers the run) — issueCommand itself gates the rest per input mode
+    if (!e.repeat && CMD_KEYS[e.key] && (state.input === 'cmd' || state.auto)) issueCommand(CMD_KEYS[e.key]);
     // C swaps the camera angle — works in either input mode
     if (!e.repeat && e.key.toLowerCase() === 'c') cycleCam();
     // dev: F projects the gate funnel as a heat map (speed ramp + rings)
@@ -2023,7 +2025,7 @@
     if (down[13]) pad.y += 1;
     const hit = (i) => down[i] && !pad.prev[i];
     if (state.mode === 'playing') {
-      if (state.input === 'cmd') {
+      if (state.input === 'cmd' || state.auto) {
         if (hit(5)) issueCommand('cb');                   // R1
         if (hit(4)) issueCommand('aw');                   // L1
         if (hit(2)) issueCommand('walk');                 // X
@@ -2078,11 +2080,19 @@
     back:   { label: 'look back', whistle: 'whistle_tome' },
   };
   function issueCommand(cmd) {
-    if (state.mode !== 'playing' || state.input !== 'cmd') return;
+    if (state.mode !== 'playing') return;
     // LOOK BACK is a one-shot retarget, not a steady-state call like the
     // rest of the pad — it never becomes state.dog.cmd, so it's handled
-    // entirely on its own and never falls into the pace/floatie code below
-    if (cmd === 'back') { issueLookBack(); return; }
+    // entirely on its own and never falls into the pace/floatie code below.
+    // It also answers under the autopilot from EITHER input mode: the pad
+    // is on screen whenever auto is (updateCmdVisibility), and in guide
+    // mode the old input gate below dropped the press on the floor — the
+    // button flashed live but the whistle never blew.
+    if (cmd === 'back') {
+      if (state.input === 'cmd' || state.auto) issueLookBack();
+      return;
+    }
+    if (state.input !== 'cmd') return;
     if (state.auto) setAuto(false); // your call takes the whistle back
     ensureAudio();
     // pace is a gradient: WALK ON taps push it up, STEADY taps ease it
@@ -2122,7 +2132,9 @@
   // that's the lot most likely left behind. Committing it is just handing
   // flockInfo() a new workX/workY and a fresh WORK_HOLD: its own
   // stickiness then keeps the dog on the new group same as any other
-  // pick, so there's no parallel targeting machinery to keep in sync.
+  // pick, so there's no parallel targeting machinery to keep in sync —
+  // and it works the same whether the player or the autopilot holds the
+  // whistle, since both read the flock through flockInfo().
   function issueLookBack() {
     const clusters = clusterLoose();
     if (clusters.length < 2) {
@@ -2145,17 +2157,29 @@
       if (!target || dist2(c.cx, c.cy, P.gx, P.gy) > dist2(target.cx, target.cy, P.gx, P.gy)) target = c;
     }
     if (!target) target = clusters[0]; // current somehow matched every cluster — don't strand the call
-    if (state.auto) setAuto(false); // hands back a halted dog (pace 0)
     ensureAudio();
     d.workX = target.cx;
     d.workY = target.cy;
     state.workHold = WORK_HOLD;
-    d.cmd = 'walk';
+    if (state.auto) {
+      // under the autopilot the call STEERS the run rather than taking the
+      // whistle back — the old setAuto(false) here parked the dog and, in
+      // guide mode, left no way to send it anywhere at all. The new lot is
+      // already committed above; clear the brain's decision state — the
+      // wear bout, the stall clocks, the tick timer — so the very next
+      // tick judges fresh against the new target instead of playing out a
+      // sweep it had planned around the old one.
+      state.demoT = 0;
+      state.demoStallT = 0;
+      state.wearSide = 0; state.wearT = 0; state.stallT = 0;
+    } else {
+      d.cmd = 'walk';
+    }
     // the retarget skips issueCommand's pace handling, so restore a
-    // working pace here or a dog parked by LIE DOWN (pace 0) — or by the
-    // setAuto(false) above — takes the whistle, flashes the button, and
-    // then never moves: every walk-mode velocity term scales by
-    // paceSpeed(state.pace), and paceSpeed(0) is a halt
+    // working pace here or a dog parked by LIE DOWN (pace 0) takes the
+    // whistle, flashes the button, and then never moves: every walk-mode
+    // velocity term scales by paceSpeed(state.pace), and paceSpeed(0) is
+    // a halt
     state.pace = Math.max(state.pace, PACE_START);
     sfx.whistle_tome();
     state.floaties.push({
@@ -3130,31 +3154,43 @@
     state.demoT = AUTO_TICK;
     const d = state.dog;
     const P = state.pen;
-    let n = 0, panic = 0, mouth = 0, planted = false;
+    let n = 0, panic = 0, planted = false;
     for (const s of state.sheep) {
       if (s.penned) continue;
       n++;
       panic += s.panic;
       planted = planted || s.planted;
-      if (dist2(s.x, s.y, P.gx, P.gy) < GATE_PULL * GATE_PULL) mouth++;
     }
     if (!n) return;
     panic /= n;
-    if (mouth >= n * 0.7) {
-      // most of what's left is in the funnel — stand off and let the
-      // gate's own pull drain it; if it jams, walk back in gently
-      state.demoStallT += AUTO_TICK;
-      state.wearSide = 0; state.wearT = 0;
-      if (state.demoStallT < 5) {
-        if (d.cmd !== 'lie') { d.cmd = 'lie'; state.pace = 0; }
-      } else {
-        d.cmd = 'walk';
-        state.pace = Math.max(state.pace, 0.3);
+    const flock = flockInfo();
+    // Stand off while the funnel drains — judged against the lot the dog
+    // is WORKING, not the whole field. Counted field-wide, a mob draining
+    // at the mouth held the dog parked at the gate while stragglers sat
+    // out in the grass, and it swallowed LOOK BACK outright: the retarget
+    // landed in workX, then this branch returned before ever consulting
+    // it. Per-lot, a dog sent back for the leftovers keeps working them
+    // while the mouth crowd files in on its own.
+    if (flock) {
+      let mouth = 0;
+      for (const m of flock.members) {
+        if (dist2(m.x, m.y, P.gx, P.gy) < GATE_PULL * GATE_PULL) mouth++;
       }
-      return;
+      if (mouth >= flock.n * 0.7) {
+        // most of the worked lot is in the funnel — stand off and let the
+        // gate's own pull drain it; if it jams, walk back in gently
+        state.demoStallT += AUTO_TICK;
+        state.wearSide = 0; state.wearT = 0;
+        if (state.demoStallT < 5) {
+          if (d.cmd !== 'lie') { d.cmd = 'lie'; state.pace = 0; }
+        } else {
+          d.cmd = 'walk';
+          state.pace = Math.max(state.pace, 0.3);
+        }
+        return;
+      }
     }
     state.demoStallT = 0;
-    const flock = flockInfo();
     if (flock) {
       // repositioning is a CALLED FLANK, not walk-on's cautious swing:
       // far off the balance line the drive creeps its way round, but a
