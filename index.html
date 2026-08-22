@@ -2882,8 +2882,16 @@
       const enter = state.wearSide || flock.r > gathered || stalled;
       if (state.wearT >= 0 && flock.n > 1 && enter && panic < 0.7) {
         // come by carries the dog clockwise round the mob and away runs it
-        // back the other way. Open the bout toward the side the dog already
-        // sits on rather than hauling it across the line.
+        // back the other way. Open the bout sweeping TOWARD the drive line —
+        // the arc whose pressure keeps folding the flock gate-ward, and the
+        // same opening the player-dog's cast picks. Opening outward (toward
+        // the side the dog already sat on) looked harmless, but WEAR_LEG_MIN
+        // holds a leg open: a bout that began out near the off-balance guard
+        // had its first leg carried on past the quarter, round onto the gate
+        // side of the mob, and that stretch of the sweep shoves the flock
+        // straight back off the gate. Toward the line, every leg stays
+        // inside ±turn of balance and the push never loses its gate-ward
+        // component.
         //
         // Turning: the decision tick is coarse next to the dog's orbit
         // speed — a small mob is a tight circle to run round, and the dog
@@ -2897,7 +2905,7 @@
         const step = paceSpeed(state.pace) / (flock.r + 85) * AUTO_TICK;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
         state.wearLegT += AUTO_TICK;
-        if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; state.stallT = 0; state.wearLegT = 0; }
+        if (!state.wearSide) { state.wearSide = dAng >= 0 ? -1 : 1; state.wearT = 0; state.stallT = 0; state.wearLegT = 0; }
         else if (dAng * state.wearSide > turn && state.wearLegT >= WEAR_LEG_MIN) { state.wearSide = -state.wearSide; state.wearLegT = 0; }
         d.cmd = state.wearSide > 0 ? 'aw' : 'cb';
         state.pace = Math.max(state.pace, PACE_START);
