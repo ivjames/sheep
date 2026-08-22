@@ -799,6 +799,13 @@
     const n = parseInt(urlParams.get('level'), 10);
     return Number.isFinite(n) && n >= 1 ? n : null;
   })();
+  // ?speed=N (dev, with an in-game key — see the X handler below) runs the
+  // simulation N× the wall clock. The frame loop takes N whole update()
+  // passes at the real dt instead of stretching dt itself, so every
+  // integrator keeps the step size it was tuned for — a stretched step
+  // tunnels sheep through fences and sails dogs past their turn points.
+  // Sim time (the level clock included) just runs N× faster, so a sped-up
+  // run's times still read as honest sim seconds.
   // shareable link for a given level under the current run seed
   function seedShareUrl(n) {
     const u = new URL(location.href);
@@ -1057,6 +1064,12 @@
     const i = SPEED_LEVELS.indexOf(saved);
     if (i >= 0) speedIdx = i;
   } catch (err) { /* storage walled off — stay on the default */ }
+  // ?speed= overrides the stored preference — it shipped with the earlier
+  // dev toggle and harnesses use it, so the URL still wins
+  {
+    const q = SPEED_LEVELS.indexOf(parseInt(urlParams.get('speed'), 10));
+    if (q >= 0) speedIdx = q;
+  }
   // speed persists across levels (like the camera preset and autopilot
   // toggle do) rather than resetting to 1x on a new level — re-picking it
   // every level would be a bigger paper cut than the risk of a level
@@ -1353,13 +1366,26 @@
       }
       const lc = landCanvas.getContext('2d', { willReadFrequently: true });
       lc.clearRect(0, 0, landCanvas.width, landCanvas.height);
+      // Each strip's destination edges are snapped to whole pixel rows
+      // (consecutive strips share the rounded boundary, so they tile with
+      // no gaps or overlaps). Letting them land on fractional boundaries
+      // reads fine on browsers that pixel-snap axis-aligned image draws,
+      // but Safari antialiases each strip's edges independently: two
+      // abutting fractional edges double-blend against the transparent
+      // canvas and leave a translucent seam row per strip — visible as
+      // periodic horizontal lines across the whole land, strongest where
+      // the far rows compress. The ≤0.5px of per-strip jitter the
+      // rounding adds is invisible on pasture texture.
+      const rowY = (v) => Math.round(land.oy + s0 * v + g * v * v / 2);
       for (let j = 0; j < hillCanvas.height; j += 2) {
-        const v = j - hill.top, v2 = v + 2;
+        const v = j - hill.top;
         const sv = sClamp(s0 + g * v);
-        const Yv = s0 * v + g * v * v / 2, Yv2 = s0 * v2 + g * v2 * v2 / 2;
+        const yA = rowY(v), yB = rowY(v + 2);
+        // a far strip can compress to zero rows — its neighbors own the pixel
+        if (yB <= yA) continue;
         lc.drawImage(hillCanvas, 0, j, W1, 2,
-          land.ox + (w / 2 - (hill.m + w / 2) * sv), land.oy + Yv,
-          W1 * sv, Math.max(Yv2 - Yv, 0.5));
+          land.ox + (w / 2 - (hill.m + w / 2) * sv), yA,
+          W1 * sv, yB - yA);
         lc.getImageData(0, 0, 1, 1);
         yield; // one row-pair per slice — dominant cost under a tilted camera
       }
@@ -1717,9 +1743,11 @@
     if (!e.repeat && e.key.toLowerCase() === 'c') cycleCam();
     // dev: F projects the gate funnel as a heat map (speed ramp + rings)
     if (!e.repeat && e.key.toLowerCase() === 'f') state.funnelViz = !state.funnelViz;
-    // , / . step game speed down / up through SPEED_LEVELS
+    // , / . step game speed down / up through SPEED_LEVELS; X cycles it
+    // (X shipped first as a dev toggle, so it stays bound)
     if (!e.repeat && e.key === ',') stepSpeed(-1);
     if (!e.repeat && e.key === '.') stepSpeed(1);
+    if (!e.repeat && e.key.toLowerCase() === 'x') cycleSpeed();
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
@@ -2987,8 +3015,16 @@
       const enter = state.wearSide || flock.r > gathered || stalled;
       if (state.wearT >= 0 && flock.n > 1 && enter && panic < 0.7) {
         // come by carries the dog clockwise round the mob and away runs it
-        // back the other way. Open the bout toward the side the dog already
-        // sits on rather than hauling it across the line.
+        // back the other way. Open the bout sweeping TOWARD the drive line —
+        // the arc whose pressure keeps folding the flock gate-ward, and the
+        // same opening the player-dog's cast picks. Opening outward (toward
+        // the side the dog already sat on) looked harmless, but WEAR_LEG_MIN
+        // holds a leg open: a bout that began out near the off-balance guard
+        // had its first leg carried on past the quarter, round onto the gate
+        // side of the mob, and that stretch of the sweep shoves the flock
+        // straight back off the gate. Toward the line, every leg stays
+        // inside ±turn of balance and the push never loses its gate-ward
+        // component.
         //
         // Turning: the decision tick is coarse next to the dog's orbit
         // speed — a small mob is a tight circle to run round, and the dog
@@ -3002,7 +3038,7 @@
         const step = paceSpeed(state.pace) / (flock.r + 85) * AUTO_TICK;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
         state.wearLegArc += step;
-        if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; state.stallT = 0; state.wearLegArc = 0; }
+        if (!state.wearSide) { state.wearSide = dAng >= 0 ? -1 : 1; state.wearT = 0; state.stallT = 0; state.wearLegArc = 0; }
         else if (dAng * state.wearSide > turn && state.wearLegArc >= WEAR_LEG_ARC) { state.wearSide = -state.wearSide; state.wearLegArc = 0; }
         d.cmd = state.wearSide > 0 ? 'aw' : 'cb';
         state.pace = Math.max(state.pace, PACE_START);
@@ -3993,6 +4029,7 @@
     state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas, landCanvas, bakeSyncFinish,
     setSpeed: (mult) => { speedTarget = mult; speedCur = mult; },
     getSpeed: () => ({ target: speedTarget, current: speedCur }),
+    get simSpeed() { return speedTarget; }, // name kept from the earlier dev toggle
   };
 
   // debug/test handle
