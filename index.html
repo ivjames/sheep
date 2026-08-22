@@ -2119,12 +2119,18 @@
       if (!target || dist2(c.cx, c.cy, P.gx, P.gy) > dist2(target.cx, target.cy, P.gx, P.gy)) target = c;
     }
     if (!target) target = clusters[0]; // current somehow matched every cluster — don't strand the call
-    if (state.auto) setAuto(false);
+    if (state.auto) setAuto(false); // hands back a halted dog (pace 0)
     ensureAudio();
     d.workX = target.cx;
     d.workY = target.cy;
     state.workHold = WORK_HOLD;
     d.cmd = 'walk';
+    // the retarget skips issueCommand's pace handling, so restore a
+    // working pace here or a dog parked by LIE DOWN (pace 0) — or by the
+    // setAuto(false) above — takes the whistle, flashes the button, and
+    // then never moves: every walk-mode velocity term scales by
+    // paceSpeed(state.pace), and paceSpeed(0) is a halt
+    state.pace = Math.max(state.pace, PACE_START);
     sfx.whistle_tome();
     state.floaties.push({
       x: d.x, y: d.y - 34, vy: -46, t: 0, life: 1, txt: CMD_INFO.back.label, s: 16,
