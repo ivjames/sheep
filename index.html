@@ -1343,7 +1343,27 @@
       const sMax = Math.max(sClamp(s0 + g * vTop), sClamp(s0 + g * vBot));
       const lcW = Math.ceil(W1 * sMax);
       land.ox = Math.ceil((hill.m + w / 2) * sMax - w / 2);
-      land.oy = Math.ceil(-(s0 * vTop + g * vTop * vTop / 2));
+      // Y(v) = s0·v + g·v²/2 (the row's screen position, before land.oy's
+      // offset) is a PARABOLA in v, not a monotonic ramp — it's minimized
+      // at the vertex v* = −s0/g, so for a wide-enough margin vTop lands
+      // PAST v* (rather than short of it, as every camera preset had room
+      // for before hill.m started tracking the camera). Past that point Y
+      // climbs back up as v keeps decreasing further, so Y(vTop) stops
+      // being the row range's true minimum — using it anyway under-shoots
+      // land.oy, and every row between the true minimum and Y(vTop)
+      // (which, for a big enough margin, comfortably includes v=0 — the
+      // field's own far edge) gets a negative destination row and is
+      // clipped off the top of landCanvas before it's ever drawn. Anchor
+      // on the actual minimum over [vTop, vBot] instead: the vertex when
+      // it falls inside that range (and g > 0, i.e. sNear > sFar — for the
+      // opposite tilt direction the vertex is a maximum, irrelevant here),
+      // else whichever endpoint is smaller.
+      const Yof = (v) => s0 * v + g * v * v / 2;
+      const vStar = Math.abs(g) < 1e-9 ? null : -s0 / g;
+      const yMin = (g > 0 && vStar > vTop && vStar < vBot)
+        ? Math.min(Yof(vTop), Yof(vBot), Yof(vStar))
+        : Math.min(Yof(vTop), Yof(vBot));
+      land.oy = Math.ceil(-yMin);
       const lcH = land.oy + Math.ceil(s0 * vBot + g * vBot * vBot / 2) + 2;
       // as with hillCanvas, only reallocate when the size actually changed
       // (it can, e.g. after a camera swap changes sMax) — and since each
