@@ -3277,43 +3277,46 @@
     ctx.fill();
     // fleece bumps break the perfect-ellipse outline — this is most of what
     // sells wool instead of an egg at 30px, so it has to survive small
-    for (const [bx, by, br] of [[-0.8, -0.52, 0.42], [-0.32, -0.75, 0.46],
-                                 [0.22, -0.7, 0.44], [0.7, -0.48, 0.4],
-                                 [0.85, 0.05, 0.3]]) {
+    // sizes deliberately uneven and clustered toward the shoulder — evenly
+    // spaced bumps of one radius read as scallops stuck on an ellipse
+    for (const [bx, by, br] of [[-0.86, -0.4, 0.36], [-0.5, -0.72, 0.5],
+                                 [0.0, -0.8, 0.41], [0.46, -0.66, 0.47],
+                                 [0.82, -0.34, 0.32], [0.88, 0.18, 0.25]]) {
       ctx.beginPath();
       ctx.arc(bodyCx + bx * bodyRx, bodyCy + by * bodyRy, bodyRy * br, 0, Math.PI * 2);
       ctx.fill();
     }
 
     // tail: a puff set clearly behind the rump so it reads from the back
+    // the puff has to sit PAST the barrel's edge to break the silhouette —
+    // tucked inside it, all you see is its shaded core as a disc floating
+    // on the fleece, which reads as a smudge rather than a tail
     ctx.fillStyle = wool;
     ctx.beginPath();
-    ctx.arc(bodyCx - bodyRx * 0.92, bodyCy + bodyRy * 0.2, (3 + 1.3 * rear) * u, 0, Math.PI * 2);
+    ctx.arc(bodyCx - bodyRx * 1.04, bodyCy + bodyRy * 0.3, (2.9 + 1.2 * rear) * u, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = shade;
-    ctx.beginPath();
-    ctx.arc(bodyCx - bodyRx * 0.92, bodyCy + bodyRy * 0.2, (1.7 + 0.7 * rear) * u, 0, Math.PI * 2);
-    ctx.fill();
-    // rump fades in as the sheep turns away — profile/face show none of it
-    if (rear > 0.02) {
-      ctx.fillStyle = skin;
-      ctx.globalAlpha = rear * 0.7;
-      ctx.beginPath();
-      ctx.ellipse(bodyCx - bodyRx * 0.6, bodyCy + bodyRy * 0.3, bodyRx * 0.2, bodyRy * 0.4, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = 1;
-    }
+    // no shaded core inside the puff: shade on wool is barely a value step,
+    // so a concentric disc reads as a smudge on the fleece rather than a
+    // tail. Now the puff clears the barrel's edge, the silhouette does it.
+    // No painted-on rump patch here. Skin at partial alpha over cream fleece
+    // composites to a flat mid-grey, which read as a smudge on the fleece
+    // rather than as anatomy — at game size it was noise, and blown up for
+    // the UI it looked like a rendering fault. The rear view is carried by
+    // the tail breaking the outline and the hind legs beneath it.
 
     // head: a distinct dark wedge carried low, out ahead of the body —
     // sliding back to body-center as side -> 0. Sized to still read at
     // game scale, closer to the old top-down model's head mass.
     const headX = bodyCx + 7 * u * side;
     const headY = (6.6 - 0.4 * side) * u;
-    const headAlpha = 1 - rear * 0.8;   // grazing face tucks out of sight from behind
+    const headAlpha = 1 - rear * 0.94;  // grazing face tucks out of sight from behind
     const earSpread = (2.2 + 2 * (1 - side)) * u;
 
-    // short neck wedge, always opaque, keeps the head visibly attached to
-    // the barrel even as the face itself fades going away
+    // the neck wedge keeps the head attached to the barrel in profile, but it
+    // fades with the head rather than staying opaque: from directly behind
+    // there is no neck to see, and leaving it lit drew a dark blade under the
+    // fleece that read as a stray shape rather than as part of the animal
+    ctx.globalAlpha = headAlpha;
     ctx.fillStyle = skin;
     ctx.beginPath();
     ctx.moveTo(bodyCx + bodyRx * 0.5, bodyCy + bodyRy * 0.62);
