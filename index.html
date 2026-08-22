@@ -3476,9 +3476,20 @@
   //   bake     — the fleece as one blit from the baked strip
   //   nofleece — no fleece at all: the fleece's share of the frame
   //   nosheep  — no sheep bodies: every sheep's share of the frame
-  const DRAW_MODES = ['normal', 'bake', 'nofleece', 'nosheep'];
+  //   auto     — blit where the blit is also the sharper choice (default)
+  const DRAW_MODES = ['auto', 'normal', 'bake', 'nofleece', 'nosheep'];
   const perfProbe = urlParams.get('perf') === '1';
-  let drawMode = DRAW_MODES.includes(urlParams.get('draw')) ? urlParams.get('draw') : 'normal';
+  let drawMode = DRAW_MODES.includes(urlParams.get('draw')) ? urlParams.get('draw') : 'auto';
+  // How large one sheep lands in DEVICE pixels, set per sheep by drawSheep.
+  // 'auto' spends it on the one question that decides both speed and quality
+  // together: the strip is baked at BODY_BAKE× the reference sheep, so while
+  // a sheep draws at or below that, the blit is a DOWNSCALE — sharp, and
+  // cheaper than nine antialiased fills. Drawn larger, the blit would upscale
+  // and soften the bump outlines, which is exactly the detail the fleece is
+  // carrying, so the vector art takes over. Phones sit far below the line and
+  // get the fast path; a big desktop canvas sits above it and keeps the crisp
+  // fills. Nothing has to be guessed about the device.
+  let actorScale = 1, frameScale = 1;
 
   // fleece bump offsets as fractions of the barrel's radii. Deliberately
   // uneven and clustered toward the shoulder — evenly spaced bumps of one
@@ -3710,7 +3721,9 @@
     // Which is faster depends entirely on the device's rasteriser — a blit
     // wins on a GPU-backed canvas and loses on a software one — so this is a
     // switch to be measured per device, not a decision baked into the source.
-    if (drawMode === 'bake') {
+    const bakeFits = drawMode === 'bake' ||
+                     (drawMode === 'auto' && actorScale * u <= BODY_BAKE);
+    if (bakeFits) {
       const strip = fleeceStrip(ti);
       const di = clamp(Math.round((Math.asin(clamp(fy, -1, 1)) + Math.PI / 2)
                                   / Math.PI * (BODY_DIRS - 1)), 0, BODY_DIRS - 1);
@@ -4182,6 +4195,7 @@
   function render(now) {
     const { w, h } = state.world;
     const { scale, ox, oy } = viewFit();
+    frameScale = scale * dpr; // world units → device px, before per-actor depth
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // surround (letterbox) — darker turf so the field pops
     ctx.fillStyle = '#4a7c33';
@@ -4334,6 +4348,10 @@
       // the projection was computed for the depth sort — reuse it rather
       // than running camPt/camScale a second time for every sheep
       const k = p.k;
+      // world → device px for THIS sheep: the viewport fit, its own depth
+      // scale, and the backing-store ratio. `auto` reads it to decide whether
+      // a baked blit would be a downscale — see DRAW_MODES.
+      actorScale = frameScale * k;
       ctx.save();
       ctx.translate(p.x - s.x * k, p.y - s.y * k);
       ctx.scale(k, k);
@@ -4793,6 +4811,15 @@
   if (perfProbe) {
     fpsChip.style.pointerEvents = 'auto';
     fpsChip.style.cursor = 'pointer';
+    // phones normally collapse this chip to its coloured dot, which only
+    // reports a tier — useless for a probe. Under ?perf=1 the number itself
+    // is forced back on at every width, and the chip is pulled out of the
+    // HUD's flow so a wrapped two-row header can't push it off-screen.
+    fpsChip.querySelectorAll('.wide-only').forEach(el => { el.style.display = 'inline'; });
+    // display:flex also overrides the ≤420px rule that hides this chip
+    // outright, so the probe still reports on a small phone
+    fpsChip.style.cssText += ';display:flex;position:fixed;z-index:60;right:8px;' +
+      'top:calc(50px + env(safe-area-inset-top, 0px));';
     const showMode = () => {
       let tag = fpsChip.querySelector('.draw-mode');
       if (!tag) {
