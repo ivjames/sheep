@@ -795,6 +795,7 @@
     wearT: 0,      // seconds into a wear bout; negative = driving before the next one
     stallT: 0,     // seconds the drive has been stopped with sheep still out
     workHold: 0,   // seconds left on the dog's commitment to its picked group
+    autoWaitT: 0,  // autopilot's pause on an interstitial before it plays on
   };
 
   // ---------- hillside ----------
@@ -1291,6 +1292,7 @@
     // sit the panel away from a bottom-edge pen so the gate stays scoutable
     readyOverlay.classList.toggle('top', state.pen.side === 2);
     readyOverlay.classList.remove('hidden');
+    if (state.auto) state.autoWaitT = 1.6; // a beat to scout the field, then play on
     state.introDefiant = defiantCount > 0 && !state.defiantSeen;
     if (defiantCount) state.defiantSeen = true;
     applyInputMode();
@@ -2407,6 +2409,7 @@
       'Ewe did it. Every last one.'][state.level % 4];
     clearOverlay.classList.remove('hidden');
     cmdUi.style.display = 'none';
+    if (state.auto) state.autoWaitT = 2.2; // let the card read, then play on
   }
 
   // ---------- autopilot (title demo) ----------
@@ -2545,6 +2548,17 @@
 
   function update(dt) {
     const demo = state.mode === 'title' && state.demo;
+    // under the autopilot the interstitials don't wait for a click: the
+    // Ready pause and the level-clear card each hold for a beat or two,
+    // then the run plays on — level after level, until someone takes
+    // the whistle back
+    if (state.auto && (state.mode === 'ready' || state.mode === 'clear')) {
+      state.autoWaitT -= dt;
+      if (state.autoWaitT <= 0) {
+        if (state.mode === 'ready') beginLevel();
+        else startLevel(state.level + 1);
+      }
+    }
     if ((state.mode === 'title' && !demo) || state.mode === 'ready') {
       // the pre-level Ready pause keeps a quiet flock grazing; the dog
       // waits at heel and the clock hasn't started
@@ -3232,6 +3246,7 @@
       state.demoT = 0;
       state.demoStallT = 0;
       state.wearSide = 0; state.wearT = 0; state.workHold = 0;
+      state.autoWaitT = 1.5; // switched on at an interstitial: pause, then play on
     } else {
       state.dog.cmd = 'lie'; // hands back a standing dog awaiting your call
       state.pace = state.input === 'cmd' ? 0 : state.pace;
@@ -3243,10 +3258,15 @@
   }
   autoBtn.addEventListener('click', () => {
     ensureAudio();
-    if (state.mode !== 'playing') { toast('🐕 Autopilot takes over once the level starts'); return; }
+    // toggles mid-level AND on the interstitials, so an auto run can be
+    // started from the Ready card and called off from the clear card
+    if (state.mode !== 'playing' && state.mode !== 'ready' && state.mode !== 'clear') {
+      toast('🐕 Autopilot takes over once the level starts');
+      return;
+    }
     setAuto(!state.auto);
     toast(state.auto
-      ? '🦮 Autopilot — the dog works the flock itself. Touch the field or call a command to take over.'
+      ? '🦮 Autopilot — the dog works the flock itself (and plays on through the menus). Touch the field or call a command to take over.'
       : '🐕 You have the dog back');
   });
 
