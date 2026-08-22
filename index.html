@@ -1018,55 +1018,70 @@
     setCamera(CAM_ORDER[(i + 1) % CAM_ORDER.length]);
     toast('🎥 Camera: ' + cam.label);
   }
-  // The far row's own margin has to reach out to wherever the fitted
-  // viewport's top corners land, at the far row's own (shrunken-under-tilt)
-  // horizontal scale — not a fraction of world size. viewFit() fits
-  // land.bb (the FIELD's screen bbox, camera-warped but margin-free) into
-  // [vw × ah] with `scale`; the local-frame half-width that fit has to
-  // cover, measured from the field's centerline, works out to exactly
-  // vw/(2·scale) regardless of which axis viewFit() ends up letterboxing
-  // on (the bb-relative "extra" term cancels — see hill-margin.md for the
-  // full derivation). The far row supplies (hill.m + w/2)·sFar of reach on
-  // each side, so solving for the margin that makes that equal the need:
-  //   hill.m = vw / (2 · scale · sFar) − w/2
-  // Evaluated for an arbitrary camPreset (not just the currently-active
-  // `cam`) by swapping the module-level `cam` binding camPt()/hillLift()
-  // close over, so this doubles as the per-camera margin (called with the
-  // live `cam` on every bake) and the level-wide max (called once per CAMS
-  // entry — see makeHill()). ah assumes the command pad's full reserve
-  // even if it happens to be hidden right now: the pad can toggle on
-  // without a rebake, and a margin sized for "pad hidden" would come up
-  // short the instant it shows.
+  // The far row's own margin has to reach out to wherever viewFit()'s fit
+  // puts the field's own screen bbox (land.bb) — NOT a fraction of world
+  // size, and NOT simply w·sFar/2 either. Two corrections past the naive
+  // version, both found by testing this against the actual render, not
+  // just derived on paper:
+  //
+  // 1. The bbox viewFit() fits to is land.bb, i.e. bw = the FIELD's own
+  //    screen width (dominated by the near row, bw ≈ w·sNear) — not the
+  //    literal browser viewport. Sizing the margin off the full viewport
+  //    (accounting for whatever extra letterbox bars viewFit adds beyond
+  //    land.bb) was the first thing tried here; it blows up to tens of
+  //    thousands of world units at a hard tilt, because the letterbox
+  //    strip sits at a v deep enough in the margin that this camera's
+  //    row-scale has collapsed toward its 0.2 floor — a unit of margin
+  //    buys almost no reach out there. That's not a cost worth paying for
+  //    a cosmetic strip nobody's eye lands on; matching land.bb (the
+  //    field's own silhouette, where a gap actually reads as broken) is
+  //    the target that's both correct and affordable.
+  // 2. The row that ends up at the TOP of that bbox is not the v=0 row.
+  //    hillLift is unfaded at the far edge (y=0), so the ridge can push
+  //    v negative there, and camPt's Y is monotonic in v — so whichever x
+  //    crests the ridge hardest along y=0 supplies land.bb's y0, at some
+  //    v0 < 0 with a smaller row-scale than sFar. Using sFar outright
+  //    reproduced the sweep's r*≈1.8 threshold almost exactly (the ridge
+  //    term is small at that tilt) but silently under-shot at a harder
+  //    one — confirmed by testing this fix against a real ratio-2.5
+  //    render before trusting it (see hill-margin.md).
+  //
+  // So: trace land.bb's own construction (same loop as the end of
+  // bakeGen) to get bw and y0, invert the stage-2 quadratic (same math as
+  // camInv) to find v0, read that row's own clamped scale, and solve
+  // (hill.m + w/2)·svTop ≥ bw/2 for hill.m. Evaluated for an arbitrary
+  // camPreset (not just the currently-active `cam`) by swapping the
+  // module-level `cam` binding camPt()/hillLift() close over — this
+  // doubles as the per-camera margin (called with the live `cam` on every
+  // bake) and the level-wide max (called once per CAMS entry — see
+  // makeHill()). Depends only on world size + the preset, not the live
+  // viewport, so a plain window resize between bakes can't invalidate it
+  // (matching the old formula's behavior there — resize alone still
+  // doesn't trigger a rebake).
   function requiredHillMargin(camPreset) {
     const { w, h } = state.world;
     const saved = cam;
     cam = camPreset;
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity;
     for (const [ax, ay, bx, by] of [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]) {
       for (let i = 0; i <= 16; i++) {
         const p = camPt(ax + (bx - ax) * i / 16, ay + (by - ay) * i / 16);
         if (p.x < x0) x0 = p.x;
         if (p.x > x1) x1 = p.x;
         if (p.y < y0) y0 = p.y;
-        if (p.y > y1) y1 = p.y;
       }
     }
     cam = saved;
-    const bw = Math.max(1, x1 - x0), bh = Math.max(1, y1 - y0);
-    // measure the pad's real reserve even if it's hidden right now — CSS
-    // defaults #cmd-ui to display:none, so an unset inline style (before
-    // the first show/hide toggle has ever run) reads as hidden too
-    const prevDisplay = cmdUi.style.display;
-    cmdUi.style.display = 'grid';
-    const padReserve = cmdUi.offsetHeight ? cmdUi.offsetHeight + 30 : 0;
-    cmdUi.style.display = prevDisplay;
-    const ah = Math.max(120, vh - padReserve);
-    const scale = Math.min((vw || 1) / bw, ah / bh);
-    const need = (vw || w) / (2 * scale * camPreset.sFar) - w / 2;
+    const bw = Math.max(1, x1 - x0);
+    const s0 = camPreset.sFar, g = (camPreset.sNear - camPreset.sFar) / h;
+    const v0 = Math.abs(g) < 1e-9 ? y0 / s0 : (-s0 + Math.sqrt(Math.max(0, s0 * s0 + 2 * g * y0))) / g;
+    const svTop = clamp(s0 + g * v0, 0.2, 1.6); // mirrors bakeGen's own sClamp
+    const need = bw / (2 * svTop) - w / 2;
     // +8% and a flat +20 world units of headroom past the exact geometric
-    // requirement, for antialiasing/pixel-snap at the literal corner pixel
-    // and modest viewport drift (resize, pad ease) between bakes; floored
-    // so an untilted camera still gets some breathing room past the fence.
+    // requirement, for the 6px inset the corner check samples at and for
+    // the 16-subdivision trace above being an approximation of land.bb's
+    // true extent; floored so an untilted camera still gets some
+    // breathing room past the fence.
     return Math.max(60, Math.ceil(need * 1.08) + 20);
   }
   function makeHill() {
@@ -3874,6 +3889,11 @@
     };
 
     // depth-sort by on-screen (camera) y so overlap order matches the land.
+    // The pen fence used to draw as one pass after every actor, so it always
+    // won the overlap no matter which one the camera actually had closer.
+    // It's cut into short spans below instead, each entered into this same
+    // list under its own ground depth, so a far sheep sorts behind a rail
+    // and a near sheep sorts in front of it — span by span, not wall by wall.
     // Obstacles and sheep are held back with the dog/pen while a bake is
     // in flight — see the inGame comment above.
     const ents = [];
@@ -3882,45 +3902,52 @@
       for (const s of state.sheep) ents.push({ y: camPt(s.x, s.y).y, draw: () => drawSheep(s) });
     }
     if (inGame) ents.push({ y: camPt(state.dog.x, state.dog.y).y, draw: drawDog });
-    ents.sort((a, b) => a.y - b.y);
-    for (const e of ents) e.draw();
 
-    // pen fence on top: vertical posts with two cross rails strung
-    // between them, matching the boundary fence's build
+    // pen fence: vertical posts with two cross rails strung between them,
+    // matching the boundary fence's build. These callbacks now fire mid-sort,
+    // interleaved with arbitrary actor draws, so — unlike the old single
+    // pass — each one sets every piece of canvas state it depends on itself
+    // instead of trusting something set once up front.
     if (inGame) {
       const P = state.pen;
       const FP_H = 16; // post height
-      ctx.lineCap = 'round';
       // sample a fence line every ~52px, each sample lifted into screen
       // space off its own ground point so the fence rides the camera warp
       const fencePts = (x1, y1, x2, y2) => {
         const np = Math.max(1, Math.round(Math.hypot(x2 - x1, y2 - y1) / 52));
         const pts = [];
         for (let i = 0; i <= np; i++) {
-          const px = x1 + (x2 - x1) * (i / np), py = y1 + (y2 - y1) * (i / np);
-          const p = camPt(px, py);
-          pts.push({ x: p.x, y: p.y, k: camScale(px, py) });
+          const wx = x1 + (x2 - x1) * (i / np), wy = y1 + (y2 - y1) * (i / np);
+          const p = camPt(wx, wy);
+          pts.push({ x: p.x, y: p.y, k: camScale(wx, wy), wx, wy });
         }
         return pts;
       };
-      const drawRails = (pts) => {
+      // one span's rails, stroked on their own between two adjacent samples.
+      // Square caps, not round: round only ever did anything at the two
+      // ends of the old single continuous path, and both of those ends
+      // already sit under a post (every sample gets one, endpoints
+      // included) — squaring off here just means neighboring spans butt
+      // together invisibly instead of stacking a second round cap on the
+      // first at every join.
+      const drawRailSpan = (a, b) => {
+        ctx.lineCap = 'butt';
         ctx.strokeStyle = 'rgba(30, 22, 12, 0.25)'; // ground line
         ctx.lineWidth = 3;
         ctx.beginPath();
-        pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
         ctx.stroke();
         for (const [ry, lw, col] of [[0.8, 4, '#8a5f3c'], [0.42, 3, '#a97e50']]) {
           ctx.strokeStyle = col;
           ctx.lineWidth = lw;
           ctx.beginPath();
-          pts.forEach((p, i) => {
-            const y = p.y - FP_H * ry * p.k;
-            i ? ctx.lineTo(p.x, y) : ctx.moveTo(p.x, y);
-          });
+          ctx.moveTo(a.x, a.y - FP_H * ry * a.k);
+          ctx.lineTo(b.x, b.y - FP_H * ry * b.k);
           ctx.stroke();
         }
       };
       const drawPost = (p) => {
+        ctx.lineCap = 'butt';
         ctx.strokeStyle = '#6e4a2c';
         ctx.lineWidth = 5 * p.k;
         ctx.beginPath();
@@ -3932,27 +3959,46 @@
         ctx.arc(p.x, p.y - FP_H * p.k, 2.6 * p.k, 0, Math.PI * 2);
         ctx.fill();
       };
+      // a span's depth is its ground midpoint, not either endpoint. The
+      // spans most likely to disagree with a single-point actor are the
+      // ones running toward the camera, where the two ends of one 52px
+      // sample can already sit a fair way apart in depth; keying off the
+      // near or the far end biases every wrong call the same way (the
+      // fence wins the whole span, or loses it), while the midpoint only
+      // ever bounds the worst case to half the span's own depth spread,
+      // whichever side the actor turns out to be on
+      const pushSpan = (a, b) => {
+        const y = camPt((a.wx + b.wx) / 2, (a.wy + b.wy) / 2).y;
+        ents.push({ y, draw: () => drawRailSpan(a, b) });
+      };
       for (const sgm of P.segs) {
         const pts = fencePts(sgm.x1, sgm.y1, sgm.x2, sgm.y2);
-        drawRails(pts);
-        for (const p of pts) drawPost(p);
+        for (let i = 0; i < pts.length - 1; i++) pushSpan(pts[i], pts[i + 1]);
+        for (const p of pts) ents.push({ y: p.y, draw: () => drawPost(p) });
       }
       // the gate itself, sliding shut once every sheep is home: a light
       // hurdle — rails only — swinging from the hinge post, its leading
-      // post travelling with the free end
+      // post travelling with the free end. Same span treatment; the hinge
+      // end reuses the wall's own permanent post, so only the leading edge
+      // needs one of its own.
       if (state.gateT > 0) {
         const g = P.gate;
         const gx2 = g.x1 + (g.x2 - g.x1) * state.gateT;
         const gy2 = g.y1 + (g.y2 - g.y1) * state.gateT;
-        const pts = [g.x1, gx2].map((x, i) => {
-          const y = i ? gy2 : g.y1;
-          const p = camPt(x, y);
-          return { x: p.x, y: p.y, k: camScale(x, y) };
-        });
-        drawRails(pts);
-        drawPost(pts[1]);
+        const pts = fencePts(g.x1, g.y1, gx2, gy2);
+        for (let i = 0; i < pts.length - 1; i++) pushSpan(pts[i], pts[i + 1]);
+        const tip = pts[pts.length - 1];
+        ents.push({ y: tip.y, draw: () => drawPost(tip) });
       }
-      // gate flags
+    }
+
+    ents.sort((a, b) => a.y - b.y);
+    for (const e of ents) e.draw();
+
+    // gate flags: small and high off the ground at the two fixed gate-frame
+    // corners, not worth depth-sorting against the flock — left on top
+    if (inGame) {
+      const P = state.pen;
       for (const [fx, fy] of [[P.gate.x1, P.gate.y1], [P.gate.x2, P.gate.y2]]) {
         const fp = camPt(fx, fy), fk = camScale(fx, fy);
         ctx.save();
