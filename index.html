@@ -4024,12 +4024,6 @@
       ctx.beginPath();
       ctx.ellipse(s.x, s.y + 13, 15, 5, 0, 0, Math.PI * 2);
       ctx.fill();
-      if (s.defiant && !s.penned) {
-        ctx.fillStyle = `rgba(60, 44, 28, ${0.2 + 0.1 * Math.abs(Math.sin(t * 4 + s.bob))})`;
-        ctx.beginPath();
-        ctx.arc(s.x, s.y - hop, 21, 0, Math.PI * 2);
-        ctx.fill();
-      }
       drawSheepTop(s.x, s.y - hop, 29.4 + 2.6 * s.bold, s.dir, s.bold, s.bob,
         Math.hypot(s.vx, s.vy) > 12, s.alert);
       if (s.planted) {
