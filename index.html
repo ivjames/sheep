@@ -69,6 +69,8 @@
     white-space: nowrap;
   }
   #hud-spacer { flex: 1; }
+  /* the flock-overlay chip lights gold while its viz is up */
+  #viz-btn.viz-on { background: var(--gold); color: var(--plum); }
   /* phones: keep everything on ONE row — stat chips go compact, the
      fps meter collapses to its colored dot, and the action buttons go
      icon-only (their toasts still name the mode on switch) */
@@ -103,7 +105,7 @@
     35% { transform: scale(1.25); }
     100% { transform: scale(1); }
   }
-  #level-chip, #auto-btn, #mode-btn, #cam-btn, #speed-btn, #mute-btn {
+  #level-chip, #auto-btn, #mode-btn, #cam-btn, #viz-btn, #speed-btn, #mute-btn {
     pointer-events: auto;
     cursor: pointer;
     border: 0;
@@ -388,6 +390,7 @@
   <button class="hud-chip" id="auto-btn" aria-label="Toggle autopilot">🐕<span class="wide-only"> auto</span></button>
   <button class="hud-chip" id="mode-btn" aria-label="Switch input mode">🎯<span class="wide-only"> guide</span></button>
   <button class="hud-chip" id="cam-btn" aria-label="Switch camera angle">🎥<span class="wide-only"> <span id="cam-name">hillside</span></span></button>
+  <button class="hud-chip" id="viz-btn" aria-label="Toggle flock overlay">🗺️<span class="wide-only"> overlay</span></button>
   <button class="hud-chip" id="speed-btn" aria-label="Cycle game speed">⏩<span class="wide-only"> 1x</span></button>
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
 </div>
@@ -962,7 +965,8 @@
     stallT: 0,     // seconds the drive has been stopped with sheep still out
     workHold: 0,   // seconds left on the dog's commitment to its picked group
     autoWaitT: 0,  // autopilot's pause on an interstitial before it plays on
-    funnelViz: false, // dev (F key): heat-map projection of the gate funnel
+    funnelViz: false, // overlay chip / F key: heat-map projection of the gate funnel
+    groupViz: false,  // overlay chip / F key: group bounds + density heat + centroids
     bakePending: false, // a land bake is chunking across frames — see startBake()
   };
 
@@ -1906,8 +1910,10 @@
     if (!e.repeat && CMD_KEYS[e.key] && state.input === 'cmd') issueCommand(CMD_KEYS[e.key]);
     // C swaps the camera angle — works in either input mode
     if (!e.repeat && e.key.toLowerCase() === 'c') cycleCam();
-    // dev: F projects the gate funnel as a heat map (speed ramp + rings)
-    if (!e.repeat && e.key.toLowerCase() === 'f') state.funnelViz = !state.funnelViz;
+    // F toggles the flock overlay (group bounds, heat map, centroids, gate
+    // funnel) — same switch as the HUD overlay chip, which exists because
+    // phones and tablets have no keyboard mid-game
+    if (!e.repeat && e.key.toLowerCase() === 'f') setViz(!state.groupViz);
     // , / . step game speed down / up through SPEED_LEVELS; X cycles it
     // (X shipped first as a dev toggle, so it stays bound)
     if (!e.repeat && e.key === ',') stepSpeed(-1);
@@ -4277,7 +4283,7 @@
         ctx.stroke();
         ctx.restore();
       }
-      // dev heat map (F): the funnel's conveyor speed projected on the
+      // funnel heat map (overlay chip / F key): the conveyor speed projected on the
       // field — blue at the 60px/s mouth, red at the 210px/s throat,
       // with dashed iso-rings labelled at round speeds
       if (state.funnelViz && state.gateT === 0) {
@@ -4317,6 +4323,105 @@
         ctx.setLineDash([]);
         ctx.restore();
       }
+    }
+
+    // flock overlay (overlay chip / F key): the field as the dog reads it —
+    // a sheep-density heat map, a bounding ring round each group that
+    // clusterLoose() links, and a crosshair + head count on each centroid.
+    // The group the dog is committed to reads gold, the rest cyan.
+    if (state.groupViz && state.sheep.some(s => !s.penned)) {
+      const clusters = clusterLoose();
+      ctx.save();
+      // density: sampled on a coarse world grid, each sample summing a
+      // smooth falloff kernel over the sheep within HEAT_R (the flocking
+      // grid bounds the scan to the 3x3 cells that can reach it). Samples
+      // only run inside the clusters' circles — the empty field stays
+      // unsampled — and normalize to the frame's peak so a 3-sheep knot
+      // and a 200-sheep mob both use the full blue→red ramp.
+      const step = 40, HEAT_R = 110, HR2 = HEAT_R * HEAT_R;
+      const grid = sheepGrid();
+      const cells = [];
+      const sampled = new Set();
+      let peak = 0;
+      for (const c of clusters) {
+        const reach = c.r + HEAT_R;
+        const i0 = Math.max(0, Math.floor((c.cx - reach) / step));
+        const i1 = Math.min(Math.floor(state.world.w / step), Math.floor((c.cx + reach) / step));
+        const j0 = Math.max(0, Math.floor((c.cy - reach) / step));
+        const j1 = Math.min(Math.floor(state.world.h / step), Math.floor((c.cy + reach) / step));
+        for (let i = i0; i <= i1; i++) {
+          for (let j = j0; j <= j1; j++) {
+            const key = i * 1024 + j;
+            if (sampled.has(key)) continue;
+            const wx = (i + 0.5) * step, wy = (j + 0.5) * step;
+            if (dist2(wx, wy, c.cx, c.cy) > reach * reach) continue;
+            sampled.add(key);
+            let w = 0;
+            const gx = Math.floor(wx / COH_RANGE), gy = Math.floor(wy / COH_RANGE);
+            for (let ci = -1; ci <= 1; ci++) {
+              for (let cj = -1; cj <= 1; cj++) {
+                const cell = grid.get(gridKey(gx + ci, gy + cj));
+                if (!cell) continue;
+                for (const s of cell) {
+                  const dd = dist2(wx, wy, s.x, s.y);
+                  if (dd < HR2) { const q = 1 - dd / HR2; w += q * q; }
+                }
+              }
+            }
+            if (w > 0.05) { cells.push({ wx, wy, w }); if (w > peak) peak = w; }
+          }
+        }
+      }
+      for (const cq of cells) {
+        const heat = cq.w / peak;
+        const p = camPt(cq.wx, cq.wy), k = camScale(cq.wx, cq.wy);
+        ctx.fillStyle = `hsla(${215 * (1 - heat)}, 90%, 55%, ${0.07 + 0.23 * heat})`;
+        ctx.fillRect(p.x - (step / 2) * k, p.y - (step / 2) * k, step * k, step * k);
+      }
+      // the knot the dog is working: flockInfo() tracks it via workX/Y,
+      // which only means anything while something is steering by it
+      let worked = null;
+      const dg = state.dog;
+      if (dg.workX !== undefined && (state.auto || state.demo || state.input === 'cmd')) {
+        let best = Infinity;
+        for (const c of clusters) {
+          const dd = dist2(c.cx, c.cy, dg.workX, dg.workY);
+          if (dd < best) { best = dd; worked = c; }
+        }
+      }
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      const GRP_N = 48; // ground-circle sampling, same as the rings below
+      for (const c of clusters) {
+        const gold = c === worked;
+        // bounds ride a touch outside the farthest member; a lone stray
+        // still gets a readable ring
+        const rr = Math.max(c.r + 24, 46);
+        ctx.setLineDash([8, 10]);
+        ctx.beginPath();
+        for (let i = 0; i <= GRP_N; i++) {
+          const a = Math.PI * 2 * i / GRP_N;
+          const p = camPt(c.cx + Math.cos(a) * rr, c.cy + Math.sin(a) * rr);
+          i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+        }
+        ctx.closePath();
+        ctx.strokeStyle = gold ? 'rgba(255, 216, 77, 0.85)' : 'rgba(127, 212, 255, 0.75)';
+        ctx.lineWidth = gold ? 2.5 : 2;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // centroid crosshair, head count above it
+        const cp = camPt(c.cx, c.cy), ck = camScale(c.cx, c.cy);
+        const ah = 9 * ck;
+        ctx.beginPath();
+        ctx.moveTo(cp.x - ah, cp.y); ctx.lineTo(cp.x + ah, cp.y);
+        ctx.moveTo(cp.x, cp.y - ah); ctx.lineTo(cp.x, cp.y + ah);
+        ctx.strokeStyle = gold ? 'rgba(255, 216, 77, 0.95)' : 'rgba(127, 212, 255, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.92)';
+        ctx.fillText(String(c.n), cp.x, cp.y - ah - 5);
+      }
+      ctx.restore();
     }
 
     // dog influence ring (a faint pressure aura helps read the herding range) —
@@ -4799,6 +4904,21 @@
   // camera chip: cycle hillside → spectator → overhead (also the C key)
   document.getElementById('cam-name').textContent = cam.label;
   document.getElementById('cam-btn').addEventListener('click', cycleCam);
+  // overlay chip: the flock-reading viz — group bounding rings, a density
+  // heat map, centroid crosshairs, and the gate-funnel projection (also
+  // the F key, but touch players can't reach a keyboard mid-game)
+  const vizBtn = document.getElementById('viz-btn');
+  function setViz(on) {
+    state.groupViz = on;
+    state.funnelViz = on;
+    vizBtn.classList.toggle('viz-on', on);
+  }
+  vizBtn.addEventListener('click', () => {
+    setViz(!state.groupViz);
+    toast(state.groupViz
+      ? '🗺️ Flock overlay — group bounds, heat map, centroids, gate funnel'
+      : '🗺️ Flock overlay off');
+  });
   // speed chip: cycle 1x → 2x → 4x → 1x (also the , / . keys)
   updateSpeedChip();
   document.getElementById('speed-btn').addEventListener('click', cycleSpeed);
