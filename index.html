@@ -796,6 +796,7 @@
     stallT: 0,     // seconds the drive has been stopped with sheep still out
     workHold: 0,   // seconds left on the dog's commitment to its picked group
     autoWaitT: 0,  // autopilot's pause on an interstitial before it plays on
+    funnelViz: false, // dev (F key): heat-map projection of the gate funnel
   };
 
   // ---------- hillside ----------
@@ -1321,6 +1322,8 @@
     if (!e.repeat && CMD_KEYS[e.key] && state.input === 'cmd') issueCommand(CMD_KEYS[e.key]);
     // C swaps the camera angle — works in either input mode
     if (!e.repeat && e.key.toLowerCase() === 'c') cycleCam();
+    // dev: F projects the gate funnel as a heat map (speed ramp + rings)
+    if (!e.repeat && e.key.toLowerCase() === 'f') state.funnelViz = !state.funnelViz;
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
@@ -1963,7 +1966,7 @@
     // gradient once caught — willingness decides whether the gate
     // draws a sheep at all, not how fast the funnel carries it.
     const f = willing * (90 + 270 * k);
-    return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * willing, d: k };
+    return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * willing, d: k, w: willing };
   }
   // a settling spot deep in the pen, spread across the back, so each
   // penned sheep trots clear and the flock fans out from the doorway
@@ -2276,6 +2279,23 @@
         const press = 1 + Math.min(cn, 8) * 0.18;
         fx += gs.x * press;
         fy += gs.y * press;
+        // the funnel is a CONVEYOR, not just a pull: the suction force
+        // above is willingness-scaled, and against 2.4/s of drag it
+        // tops out around 40px/s — the speed-cap ramp was never
+        // reached, so sheep didn't visibly accelerate once caught.
+        // Willingness now decides whether the funnel takes hold at all
+        // (a stampede still blows past the mouth); once it has hold,
+        // velocity homes on a gate-ward target whose speed ramps with
+        // RAW depth, gently at the mouth where the field still
+        // contests, firmly in the throat where the sheep is committed
+        const grip = Math.min(1, gs.w * 3) * (0.8 + 3.2 * gs.d) * dt;
+        if (grip > 0.01) {
+          const gl = Math.hypot(gs.x, gs.y) || 1;
+          const want = 60 + 150 * gs.d;
+          const a = Math.min(1, grip);
+          s.vx += (gs.x / gl * want - s.vx) * a;
+          s.vy += (gs.y / gl * want - s.vy) * a;
+        }
         // sheep corner hard: a runner crossing the mouth BENDS its line
         // into the gap instead of overshooting on momentum — the pull
         // as a plain force barely deflects a sheep at speed, so it ran
@@ -2931,6 +2951,46 @@
         ctx.beginPath();
         ctx.moveTo(-10, -16); ctx.lineTo(6, 0); ctx.lineTo(-10, 16);
         ctx.stroke();
+        ctx.restore();
+      }
+      // dev heat map (F): the funnel's conveyor speed projected on the
+      // field — blue at the 60px/s mouth, red at the 210px/s throat,
+      // with dashed iso-rings labelled at round speeds
+      if (state.funnelViz && state.gateT === 0) {
+        ctx.save();
+        const A = { x: P.gx - P.out.x * 34, y: P.gy - P.out.y * 34 };
+        const step = 26;
+        for (let wx = A.x - GATE_PULL; wx <= A.x + GATE_PULL; wx += step) {
+          for (let wy = A.y - GATE_PULL; wy <= A.y + GATE_PULL; wy += step) {
+            if ((wx - P.gx) * P.out.x + (wy - P.gy) * P.out.y < -4) continue;
+            const tl = Math.hypot(A.x - wx, A.y - wy);
+            if (tl > GATE_PULL) continue;
+            const dpt = 1 - tl / GATE_PULL;
+            const p = camPt(wx, wy), k = camScale(wx, wy);
+            ctx.fillStyle = `hsla(${215 * (1 - dpt)}, 90%, 55%, ${0.10 + 0.22 * dpt})`;
+            ctx.fillRect(p.x - (step / 2) * k, p.y - (step / 2) * k, step * k, step * k);
+          }
+        }
+        const th = Math.atan2(P.out.y, P.out.x);
+        ctx.setLineDash([6, 6]);
+        ctx.font = 'bold 12px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        for (const want of [60, 100, 150, 200]) {
+          const r = GATE_PULL * (1 - (want - 60) / 150);
+          ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          for (let i = 0; i <= 32; i++) {
+            const a = th - Math.PI / 2 + (Math.PI * i) / 32;
+            const q = camPt(A.x + Math.cos(a) * r, A.y + Math.sin(a) * r);
+            i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y);
+          }
+          ctx.stroke();
+          const lp = camPt(A.x + P.out.x * r, A.y + P.out.y * r);
+          ctx.fillStyle = 'rgba(255,255,255,0.9)';
+          ctx.fillText(want + ' px/s', lp.x, lp.y - 4);
+        }
+        ctx.setLineDash([]);
         ctx.restore();
       }
     }
