@@ -106,6 +106,11 @@ pressure in a ring, and the only thing that shifts a planted sheep.
   grass in every angle. The choice is remembered in `localStorage`.
 - Dev shortcut: the HUD level chip is a button — click it to jump between
   levels by tens (1, 10, 20 … 100) for stress-testing big flocks.
+- Dev shortcut: sim speed — the `X` key cycles **1× → 2× → 4×** (or open with
+  `?speed=2` / `?speed=4`). The frame loop takes that many whole simulation
+  steps per frame at the real frame `dt` rather than stretching the step, so
+  physics behaves identically, just faster; the level clock runs in sim time
+  so recorded times stay honest.
 
 ## Credits
 

@@ -779,6 +779,18 @@
     const n = parseInt(urlParams.get('level'), 10);
     return Number.isFinite(n) && n >= 1 ? n : null;
   })();
+  // ?speed=N (dev, with an in-game key — see the X handler below) runs the
+  // simulation N× the wall clock. The frame loop takes N whole update()
+  // passes at the real dt instead of stretching dt itself, so every
+  // integrator keeps the step size it was tuned for — a stretched step
+  // tunnels sheep through fences and sails dogs past their turn points.
+  // Sim time (the level clock included) just runs N× faster, so a sped-up
+  // run's times still read as honest sim seconds.
+  const SIM_SPEEDS = [1, 2, 4];
+  let simSpeed = (() => {
+    const n = parseInt(urlParams.get('speed'), 10);
+    return SIM_SPEEDS.includes(n) ? n : 1;
+  })();
   // shareable link for a given level under the current run seed
   function seedShareUrl(n) {
     const u = new URL(location.href);
@@ -1642,6 +1654,11 @@
     if (!e.repeat && e.key.toLowerCase() === 'c') cycleCam();
     // dev: F projects the gate funnel as a heat map (speed ramp + rings)
     if (!e.repeat && e.key.toLowerCase() === 'f') state.funnelViz = !state.funnelViz;
+    // dev: X cycles sim speed (1×/2×/4× — see SIM_SPEEDS)
+    if (!e.repeat && e.key.toLowerCase() === 'x') {
+      simSpeed = SIM_SPEEDS[(SIM_SPEEDS.indexOf(simSpeed) + 1) % SIM_SPEEDS.length];
+      toast(simSpeed > 1 ? '⏩ ' + simSpeed + '× speed' : '▶️ 1× speed');
+    }
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
@@ -3811,7 +3828,7 @@
     const dt = Math.min((now - last) / 1000, 0.05);
     last = now;
     pollGamepad();
-    update(dt);
+    for (let i = 0; i < simSpeed; i++) update(dt);
     stepBake();
     render(now);
     fpsTick(now);
@@ -3821,7 +3838,7 @@
 
   // dev hook: lets a headless harness drive the sim clock directly
   // (demo soak tests, balance sweeps) — not used by the game itself
-  window.__sheepDev = { state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas, landCanvas, bakeSyncFinish };
+  window.__sheepDev = { state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas, landCanvas, bakeSyncFinish, get simSpeed() { return simSpeed; } };
 
   // debug/test handle
   window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv, runSeed };
