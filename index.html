@@ -908,6 +908,7 @@
     workHold: 0,   // seconds left on the dog's commitment to its picked group
     autoWaitT: 0,  // autopilot's pause on an interstitial before it plays on
     funnelViz: false, // dev (F key): heat-map projection of the gate funnel
+    bakePending: false, // a land bake is chunking across frames — see startBake()
   };
 
   // ---------- hillside ----------
@@ -978,7 +979,7 @@
     camKey = name;
     cam = CAMS[name];
     try { localStorage.setItem(CAM_KEY, name); } catch (err) { /* storage walled off */ }
-    bakeLand();
+    startBake();
     const el = document.getElementById('cam-name');
     if (el) el.textContent = cam.label;
   }
@@ -1026,9 +1027,113 @@
   // per level. The canvas carries a full off-screen margin of land on
   // every side, so no bare backdrop ever peeks out from behind the field.
   const hillCanvas = document.createElement('canvas');
-  function bakeHill() {
+  // stage 2: tilt the hill-baked land into screen space, row by row.
+  // Each hillCanvas row j is the land at v = j − hill.top; it maps to a
+  // horizontal band at Y(v) scaled by s(v) about the field's centerline.
+  const landCanvas = document.createElement('canvas');
+  const land = { ox: 0, oy: 0, bb: { x0: 0, y0: 0, x1: 1, y1: 1 } };
+  let landImg = hillCanvas;
+  // The whole land bake — repainting fieldCanvas's pasture texture (for a
+  // new level), then bakeHill's per-column strip warp, then bakeLand's
+  // per-row tilt — is written as one generator that yields after every
+  // paint item, every strip and every row.
+  //
+  // Canvas2D drawing on this engine is lazily rasterized: the actual pixel
+  // cost of a fillRect/drawImage/gradient fill isn't paid when the call is
+  // made, it's deferred until something forces the canvas to resolve (a
+  // pixel readback, or — critically — the first time it's composited to
+  // the visible canvas). A naive version of this generator that only
+  // yielded between calls, without forcing anything, measured near-zero
+  // per frame ANYWAY — because nothing was forcing the real cost to happen
+  // yet, and it landed as one uninterrupted ~85-200ms stall the first time
+  // render() drew the finished land. So every yield point here is preceded
+  // by a 1×1 getImageData() — cheap on its own (confirmed by measurement:
+  // resolving unchanged content is near-free) — whose only job is to force
+  // that item's real rasterization cost to be paid NOW, inside this
+  // generator's accounted time, instead of being silently deferred onto
+  // whatever frame happens to draw the result first.
+  //
+  // decorData (from makeDecor(), see there) carries the pasture's already
+  // RNG-drawn paint parameters — patches/speckles/flowers/blades — so nothing
+  // in this generator consumes randomness: layoutField's seeded RNG window
+  // is only open for the synchronous call into makeDecor(), and generation
+  // that runs later (makePen, obstacles, sheep) depends on drawing in that
+  // exact order, so the pasture's randoms have to be drawn up front, before
+  // this generator ever starts — only the (expensive, RNG-free) canvas
+  // painting itself is deferred. Passing decorData means "repaint the
+  // pasture too" (a new level); omitting it means "just rebake the hill and
+  // tilt from the existing pasture" (a camera switch, where the pasture
+  // hasn't changed). startBake()/stepBake() below drive this across frames;
+  // there is exactly one code path for the bake (synchronous callers just
+  // drain the generator in one shot), so the chunked and unchunked output
+  // can never diverge pixel-for-pixel.
+  function* bakeGen(decorData) {
     const { w, h } = state.world;
     const M = hill.m;
+    if (decorData) {
+      // willReadFrequently: this generator now deliberately reads these
+      // canvases back every yield (see the block comment above) to force
+      // their real rasterization cost to happen incrementally — telling
+      // the browser up front keeps it on one consistent rendering path
+      // for the canvas's whole lifetime, rather than switching partway
+      // through once the first readback happens
+      const fc = fieldCanvas.getContext('2d', { willReadFrequently: true });
+      fc.setTransform(1, 0, 0, 1, 0, 0);
+      fc.translate(M, M); // paint in world coords over [−M, w+M] × [−M, h+M]
+      fc.fillStyle = '#7ec850';
+      fc.fillRect(-M, -M, w + 2 * M, h + 2 * M);
+      fc.getImageData(0, 0, 1, 1);
+      yield;
+      for (const p of decorData.patches) {
+        const grad = fc.createRadialGradient(0, 0, 0, 0, 0, 1);
+        grad.addColorStop(0, `rgba(${p.cr},${p.cg},${p.cb},${p.ca})`);
+        grad.addColorStop(0.55, `rgba(${p.cr},${p.cg},${p.cb},${p.ca * 0.8})`);
+        grad.addColorStop(1, `rgba(${p.cr},${p.cg},${p.cb},0)`);
+        fc.save();
+        fc.translate(p.tx, p.ty);
+        fc.rotate(p.rot);
+        fc.scale(p.sx, p.sy);
+        fc.fillStyle = grad;
+        fc.beginPath();
+        fc.arc(0, 0, 1, 0, Math.PI * 2);
+        fc.fill();
+        fc.restore();
+        fc.getImageData(0, 0, 1, 1);
+        yield;
+      }
+      // fine speckle grain over the top
+      for (const sp of decorData.speckles) {
+        fc.fillStyle = sp.light ? 'rgba(104, 176, 64, 0.3)' : 'rgba(152, 218, 102, 0.3)';
+        fc.beginPath();
+        fc.arc(sp.tx, sp.ty, sp.r, 0, Math.PI * 2);
+        fc.fill();
+        fc.getImageData(0, 0, 1, 1);
+        yield;
+      }
+      // ground decor goes into the flat texture too, so the strip warp and the
+      // slope shading carry it onto the hill for free (the ≤1.1× vertical
+      // stretch on a flower or a blade of grass is imperceptible)
+      for (const fl of decorData.flowers) {
+        drawFlower(fl.tx, fl.ty, fl.s, fl.color, fc);
+        fc.getImageData(0, 0, 1, 1);
+        yield;
+      }
+      fc.strokeStyle = 'rgba(62, 122, 42, 0.5)';
+      fc.lineWidth = 2;
+      for (const bl of decorData.blades) {
+        const { tx, ty, s } = bl;
+        fc.beginPath();
+        fc.moveTo(tx - 5 * s, ty);
+        fc.quadraticCurveTo(tx - 4 * s, ty - 9 * s, tx - 6 * s, ty - 12 * s);
+        fc.moveTo(tx, ty);
+        fc.quadraticCurveTo(tx, ty - 10 * s, tx - 1 * s, ty - 14 * s);
+        fc.moveTo(tx + 5 * s, ty);
+        fc.quadraticCurveTo(tx + 4 * s, ty - 9 * s, tx + 6 * s, ty - 12 * s);
+        fc.stroke();
+        fc.getImageData(0, 0, 1, 1);
+        yield;
+      }
+    }
     // worst-case lift is on the far margin row y = −M: amp·(1 + FLAT·M/h)
     hill.top = Math.ceil(M + hill.amp * (1 + HILL_FLAT * M / h));
     const hcW = w + 2 * M;
@@ -1042,7 +1147,7 @@
       hillCanvas.width = hcW;
       hillCanvas.height = hcH;
     }
-    const hc = hillCanvas.getContext('2d');
+    const hc = hillCanvas.getContext('2d', { willReadFrequently: true });
     hc.setTransform(1, 0, 0, 1, 0, 0);
     hc.clearRect(0, 0, hillCanvas.width, hillCanvas.height);
     hc.translate(M, hill.top); // world origin
@@ -1062,6 +1167,8 @@
       hc.fillStyle = lum >= 0
         ? `rgba(255, 246, 200, ${lum})` : `rgba(20, 40, 16, ${-lum})`;
       hc.fillRect(x, -M * (1 + q) - r, sw, (h + 2 * M) * (1 + q));
+      hc.getImageData(0, 0, 1, 1);
+      yield; // one strip per slice — this loop is the dominant cost
     }
     // beyond the fence the land dims a touch, so the field still pops
     const fence = [[HEDGE, HEDGE], [w - HEDGE, HEDGE], [w - HEDGE, h - HEDGE], [HEDGE, h - HEDGE]];
@@ -1114,17 +1221,12 @@
         hc.fill();
       }
     }
-  }
+    // resolve hillCanvas fully now (fence included) — cheap on its own
+    // (confirmed by measurement), and it means the untilted branch below,
+    // which never otherwise reads hillCanvas again, leaves nothing deferred
+    // for render()'s first draw to pay for
+    hc.getImageData(0, 0, 1, 1);
 
-  // stage 2: tilt the hill-baked land into screen space, row by row.
-  // Each hillCanvas row j is the land at v = j − hill.top; it maps to a
-  // horizontal band at Y(v) scaled by s(v) about the field's centerline.
-  const landCanvas = document.createElement('canvas');
-  const land = { ox: 0, oy: 0, bb: { x0: 0, y0: 0, x1: 1, y1: 1 } };
-  let landImg = hillCanvas;
-  function bakeLand() {
-    bakeHill();
-    const { w, h } = state.world;
     if (cam.sFar === 1 && cam.sNear === 1) {
       // no tilt: the stage-1 bake is already the finished land
       landImg = hillCanvas;
@@ -1148,7 +1250,7 @@
         landCanvas.width = lcW;
         landCanvas.height = lcH;
       }
-      const lc = landCanvas.getContext('2d');
+      const lc = landCanvas.getContext('2d', { willReadFrequently: true });
       lc.clearRect(0, 0, landCanvas.width, landCanvas.height);
       for (let j = 0; j < hillCanvas.height; j += 2) {
         const v = j - hill.top, v2 = v + 2;
@@ -1157,6 +1259,8 @@
         lc.drawImage(hillCanvas, 0, j, W1, 2,
           land.ox + (w / 2 - (hill.m + w / 2) * sv), land.oy + Yv,
           W1 * sv, Math.max(Yv2 - Yv, 0.5));
+        lc.getImageData(0, 0, 1, 1);
+        yield; // one row-pair per slice — dominant cost under a tilted camera
       }
       landImg = landCanvas;
     }
@@ -1175,6 +1279,57 @@
     land.bb = { x0, y0, x1, y1 };
   }
 
+  // ---- incremental bake driver ----
+  // A level transition or camera switch calls startBake() instead of baking
+  // synchronously. stepBake() is pumped once per frame from the main loop
+  // and does up to BAKE_FRAME_BUDGET ms of work, so a bake never owns a
+  // whole frame. Until it finishes, landImg/land stay pointed at the last
+  // COMPLETE bake — render() keeps drawing that (and, per state.bakePending,
+  // holds back the new level's actors) so nothing straddles two levels.
+  let bakeJob = null;        // the in-flight generator, or null when idle
+  let bakeFrames = 0;        // frames the current job has spanned
+  let bakeStartT = 0;        // performance.now() when the current job started
+  let firstBakeDone = false; // first-ever bake has no prior land to hold, so it runs synchronously
+  const BAKE_FRAME_BUDGET = 7;  // ms of bake work allowed per frame
+  // Safety valve is wall-clock time, not a frame count: how many frames a
+  // budget's worth of real (forced-flush) work takes varies a lot across
+  // the bake's own phases and across machines, so a small fixed frame count
+  // can trip before slower phases (the strip warp in particular) get a fair
+  // shake — which would force exactly the single-frame stall this whole
+  // mechanism exists to avoid. BAKE_MAX_FRAMES stays only as a backstop
+  // against a genuinely stuck generator, set far above anything a real bake
+  // should ever need.
+  const BAKE_MAX_MS = 1500;     // finish synchronously if still going after this much real time
+  const BAKE_MAX_FRAMES = 600;  // pure infinite-loop backstop
+  function bakeSyncFinish() {
+    if (!bakeJob) return;
+    let r = { done: false };
+    while (!r.done) r = bakeJob.next();
+    bakeJob = null;
+    state.bakePending = false;
+    firstBakeDone = true;
+  }
+  function startBake(decorData) {
+    // supersede cleanly: drop the old generator (its half-painted canvases
+    // get overwritten by the new job's own clear/setup step, so nothing
+    // interleaves) and start fresh
+    bakeJob = bakeGen(decorData);
+    bakeFrames = 0;
+    bakeStartT = performance.now();
+    state.bakePending = true;
+    if (!firstBakeDone) bakeSyncFinish(); // first load: nothing to hold on screen yet
+  }
+  function stepBake() {
+    if (!bakeJob) return;
+    bakeFrames++;
+    const deadline = performance.now() + BAKE_FRAME_BUDGET;
+    let r = { done: false };
+    while (!r.done && performance.now() < deadline) r = bakeJob.next();
+    if (r.done) { bakeJob = null; state.bakePending = false; firstBakeDone = true; return; }
+    // never allowed to stall forever
+    if (bakeFrames >= BAKE_MAX_FRAMES || performance.now() - bakeStartT >= BAKE_MAX_MS) bakeSyncFinish();
+  }
+
   // ---------- world decor ----------
   const fieldCanvas = document.createElement('canvas');
   function makeDecor() {
@@ -1188,65 +1343,49 @@
     // can cover the whole viewport with land.
     const fcW = w + 2 * M, fcH = h + 2 * M;
     // see bakeHill: skip the reallocation when the size is unchanged, but
-    // reproduce what it would've given us — a clean transform (the fillRect
-    // right below repaints every pixel, so no explicit clear is needed).
+    // reproduce what it would've given us — a clean transform (bakeGen's
+    // fillRect repaints every pixel, so no explicit clear is needed).
     if (fieldCanvas.width !== fcW || fieldCanvas.height !== fcH) {
       fieldCanvas.width = fcW;
       fieldCanvas.height = fcH;
     }
-    const fc = fieldCanvas.getContext('2d');
-    fc.setTransform(1, 0, 0, 1, 0, 0);
-    fc.translate(M, M); // paint in world coords over [−M, w+M] × [−M, h+M]
-    fc.fillStyle = '#7ec850';
-    fc.fillRect(-M, -M, w + 2 * M, h + 2 * M);
+    // Draw every random parameter the pasture needs — patch/speckle/flower/
+    // blade positions, colors, sizes — right here, synchronously, in the
+    // same order the old unchunked code drew them in. This has to stay
+    // synchronous: layoutField's seeded RNG window is only open for this
+    // call, and makePen/obstacles/sheep draw their own randoms immediately
+    // after makeDecor() returns, so nothing here can defer a rand() call
+    // without desyncing everything drawn after it. What CAN defer is the
+    // actual canvas painting (the expensive part, and RNG-free once these
+    // parameters exist) — bakeGen() does that from the lists built below,
+    // spread across frames by startBake().
+    const patches = [];
     for (let i = 0; i < 30 * k; i++) {
       const [cr, cg, cb, ca] = rand(0, 1) < 0.55
         ? [111, 183, 70, 0.5] : [139, 210, 92, 0.45];
-      const grad = fc.createRadialGradient(0, 0, 0, 0, 0, 1);
-      grad.addColorStop(0, `rgba(${cr},${cg},${cb},${ca})`);
-      grad.addColorStop(0.55, `rgba(${cr},${cg},${cb},${ca * 0.8})`);
-      grad.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
-      fc.save();
-      fc.translate(rand(-M, w + M), rand(-M, h + M));
-      fc.rotate(rand(0, Math.PI));
       const big = i % 2 === 0; // half broad drifts, half smaller mottles
-      fc.scale(rand(big ? 100 : 40, big ? 280 : 110), rand(big ? 70 : 30, big ? 180 : 80));
-      fc.fillStyle = grad;
-      fc.beginPath();
-      fc.arc(0, 0, 1, 0, Math.PI * 2);
-      fc.fill();
-      fc.restore();
+      patches.push({
+        cr, cg, cb, ca,
+        tx: rand(-M, w + M), ty: rand(-M, h + M), rot: rand(0, Math.PI),
+        sx: rand(big ? 100 : 40, big ? 280 : 110), sy: rand(big ? 70 : 30, big ? 180 : 80),
+      });
     }
-    // fine speckle grain over the top
+    const speckles = [];
     for (let i = 0; i < 900 * k; i++) {
-      fc.fillStyle = rand(0, 1) < 0.5
-        ? 'rgba(104, 176, 64, 0.3)' : 'rgba(152, 218, 102, 0.3)';
-      fc.beginPath();
-      fc.arc(rand(-M, w + M), rand(-M, h + M), rand(1.5, 5), 0, Math.PI * 2);
-      fc.fill();
+      speckles.push({ light: rand(0, 1) < 0.5, tx: rand(-M, w + M), ty: rand(-M, h + M), r: rand(1.5, 5) });
     }
-    // ground decor goes into the flat texture too, so the strip warp and the
-    // slope shading carry it onto the hill for free (the ≤1.1× vertical
-    // stretch on a flower or a blade of grass is imperceptible)
+    const flowers = [];
     for (let i = 0; i < 80 * k; i++) {
-      drawFlower(rand(-M + 30, w + M - 30), rand(-M + 30, h + M - 30), rand(13, 21),
-        ['#fff6e8', '#ffb3d9', '#ff8fa3', '#ffd166', '#c69bf5', '#ff9c6b'][Math.floor(rand(0, 6))], fc);
+      flowers.push({
+        tx: rand(-M + 30, w + M - 30), ty: rand(-M + 30, h + M - 30), s: rand(13, 21),
+        color: ['#fff6e8', '#ffb3d9', '#ff8fa3', '#ffd166', '#c69bf5', '#ff9c6b'][Math.floor(rand(0, 6))],
+      });
     }
-    fc.strokeStyle = 'rgba(62, 122, 42, 0.5)';
-    fc.lineWidth = 2;
+    const blades = [];
     for (let i = 0; i < 170 * k; i++) {
-      const tx = rand(-M + 30, w + M - 30), ty = rand(-M + 30, h + M - 30);
-      const s = rand(0.5, 1.15);
-      fc.beginPath();
-      fc.moveTo(tx - 5 * s, ty);
-      fc.quadraticCurveTo(tx - 4 * s, ty - 9 * s, tx - 6 * s, ty - 12 * s);
-      fc.moveTo(tx, ty);
-      fc.quadraticCurveTo(tx, ty - 10 * s, tx - 1 * s, ty - 14 * s);
-      fc.moveTo(tx + 5 * s, ty);
-      fc.quadraticCurveTo(tx + 4 * s, ty - 9 * s, tx + 6 * s, ty - 12 * s);
-      fc.stroke();
+      blades.push({ tx: rand(-M + 30, w + M - 30), ty: rand(-M + 30, h + M - 30), s: rand(0.5, 1.15) });
     }
-    bakeLand();
+    startBake({ patches, speckles, flowers, blades });
   }
 
   // ---------- level generation ----------
@@ -1452,6 +1591,9 @@
 
   function beginLevel() {
     if (state.mode !== 'ready') return;
+    // the land is needed for real now — finish a still-chunking bake rather
+    // than let the player start on a half-drawn field
+    bakeSyncFinish();
     ensureAudio();
     state.mode = 'playing';
     readyOverlay.classList.add('hidden');
@@ -3076,7 +3218,12 @@
     ctx.drawImage(landImg, -land.ox, -land.oy);
 
     const t = now / 1000;
-    const inGame = state.mode === 'playing' || state.mode === 'clear' || state.mode === 'ready';
+    // while a bake is chunking, land + fence still draw from the last
+    // COMPLETE bake (above), but the new level's pen/dog/sheep are held
+    // back — showing them over the previous level's terrain would look
+    // worse than the stutter this was meant to fix. They appear together,
+    // in sync with the finished land, once state.bakePending clears.
+    const inGame = (state.mode === 'playing' || state.mode === 'clear' || state.mode === 'ready') && !state.bakePending;
 
     // pen: trodden dirt + gate glow (fence rails draw above the actors)
     if (inGame) {
@@ -3247,10 +3394,14 @@
       ctx.restore();
     };
 
-    // depth-sort by on-screen (camera) y so overlap order matches the land
+    // depth-sort by on-screen (camera) y so overlap order matches the land.
+    // Obstacles and sheep are held back with the dog/pen while a bake is
+    // in flight — see the inGame comment above.
     const ents = [];
-    for (const o of state.obstacles) ents.push({ y: camPt(o.x, o.y).y, draw: () => drawObstacle(o) });
-    for (const s of state.sheep) ents.push({ y: camPt(s.x, s.y).y, draw: () => drawSheep(s) });
+    if (!state.bakePending) {
+      for (const o of state.obstacles) ents.push({ y: camPt(o.x, o.y).y, draw: () => drawObstacle(o) });
+      for (const s of state.sheep) ents.push({ y: camPt(s.x, s.y).y, draw: () => drawSheep(s) });
+    }
     if (inGame) ents.push({ y: camPt(state.dog.x, state.dog.y).y, draw: drawDog });
     ents.sort((a, b) => a.y - b.y);
     for (const e of ents) e.draw();
@@ -3621,6 +3772,7 @@
     last = now;
     pollGamepad();
     update(dt);
+    stepBake();
     render(now);
     fpsTick(now);
     requestAnimationFrame(frame);
@@ -3629,7 +3781,7 @@
 
   // dev hook: lets a headless harness drive the sim clock directly
   // (demo soak tests, balance sweeps) — not used by the game itself
-  window.__sheepDev = { state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas };
+  window.__sheepDev = { state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas, landCanvas, bakeSyncFinish };
 
   // debug/test handle
   window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv, runSeed };
