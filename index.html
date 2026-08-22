@@ -466,10 +466,22 @@
   // wearing (autopilot): how wide a mob may spread before the dog stops
   // driving and sweeps it back together. A mob at comfortable shoulder
   // spacing packs into a radius of about (COMFORT/2)·√n, so the trigger is
-  // that with slack; the dog keeps sweeping until it's back under WEAR_TIGHT
-  // of it, and each sweep runs this far off the drive line before it turns.
-  const WEAR_SPREAD = 45, WEAR_TIGHT = 0.82, WEAR_ARC = 0.6;
+  // that with slack. Once a bout starts it's committed for WEAR_BOUT
+  // seconds (the spread trigger only gates the START of a bout — see the
+  // "enter" comment below); WEAR_ARC is how far off the drive line each
+  // sweep carries before it turns back, with a floor so a fast orbit still
+  // covers real ground instead of dithering right on the line.
+  const WEAR_SPREAD = 45, WEAR_ARC = 0.95;
   const WEAR_BOUT = 4.5, WEAR_REST = 3.0; // seconds of wearing, then of driving
+  // ...but the arc floor alone still chatters: on a fast orbit dAng swings
+  // back across the (now-tiny) turn threshold within a tick or two of the
+  // last flip, so a bout that should read as one wide carry-and-return
+  // instead reads as a stutter of one-tick comes-by and aways. WEAR_LEG_MIN
+  // is a floor under the SIDE rather than the angle — once the dog turns,
+  // it holds that side at least this long before the arc test is allowed
+  // to flip it again, so a fast orbit still gets a real carry each way
+  // instead of dithering on the line the arc test alone was meant to avoid.
+  const WEAR_LEG_MIN = 1.8;
   // the autopilot re-decides on this beat, and once it commits to a group
   // it stays on it (or what's left of it) at least this long — an unhurried
   // handler who lets each phase play out rather than flip-flopping
@@ -904,6 +916,7 @@
     demoStallT: 0, // how long the funnel has been left to drain
     wearSide: 0,   // autopilot wear sweep: +1 away-side, -1 come-by side, 0 not wearing
     wearT: 0,      // seconds into a wear bout; negative = driving before the next one
+    wearLegT: 0,   // seconds since the current side was last set — see WEAR_LEG_MIN
     stallT: 0,     // seconds the drive has been stopped with sheep still out
     workHold: 0,   // seconds left on the dog's commitment to its picked group
     autoWaitT: 0,  // autopilot's pause on an interstitial before it plays on
@@ -2775,8 +2788,11 @@
       const dAng = ((Math.atan2(uy / ul, ux / ul) - aDog + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       const flanking = d.cmd === 'cb' || d.cmd === 'aw';
       // a wear sweep (below) is a flank the handler is holding on purpose,
-      // so it doesn't read as the dog having drifted off the balance line
-      if (Math.abs(dAng) > 1.1 || (flanking && !state.wearSide && Math.abs(dAng) > 0.5)) {
+      // so it doesn't read as the dog having drifted off the balance line —
+      // an active bout is free to run wide of both thresholds below without
+      // being cut off half-swept; only a dog that ISN'T already mid-bout
+      // gets judged against them
+      if (!state.wearSide && (Math.abs(dAng) > 1.1 || (flanking && Math.abs(dAng) > 0.5))) {
         state.wearSide = 0; state.wearT = Math.min(0, state.wearT);
         d.cmd = dAng > 0 ? 'cb' : 'aw';
         state.pace = Math.max(state.pace, PACE_START);
@@ -2822,9 +2838,19 @@
         state.wearSide = 0;
         state.wearT = -WEAR_REST; // drive at least this long before the next bout
       }
-      const gathered = WEAR_SPREAD * Math.sqrt(flock.n) *
-        (state.wearSide ? WEAR_TIGHT : 1);
-      if (state.wearT >= 0 && flock.n > 1 && (flock.r > gathered || stalled) && panic < 0.7) {
+      // spread-or-stalled only decides whether to START a bout — once one is
+      // under way it runs on its own account to WEAR_BOUT (that's the bound,
+      // and it's timed, not spread-based; see the comment above). Re-testing
+      // "still spread, or still stalled" on every tick used to fold a
+      // stall-triggered bout after a single 0.6s dab: starting the sweep
+      // gets the dog moving again, so stallT clears itself the very next
+      // tick, and a flock tight enough to need a stall trigger in the first
+      // place was never going to clear the spread half either — so a bout
+      // that was supposed to run for WEAR_BOUT seconds had nothing left
+      // holding it open past tick one
+      const gathered = WEAR_SPREAD * Math.sqrt(flock.n);
+      const enter = state.wearSide || flock.r > gathered || stalled;
+      if (state.wearT >= 0 && flock.n > 1 && enter && panic < 0.7) {
         // come by carries the dog clockwise round the mob and away runs it
         // back the other way. Open the bout toward the side the dog already
         // sits on rather than hauling it across the line.
@@ -2832,16 +2858,17 @@
         // Turning: the decision tick is coarse next to the dog's orbit
         // speed — a small mob is a tight circle to run round, and the dog
         // can cover most of the arc between two ticks. Turned only on
-        // arrival it sails past, far enough off the line that the
-        // off-balance guard above reads it as drift and cancels the sweep
-        // half-finished. So it turns on the tick BEFORE it would run past:
-        // the arc gives way to the ground the dog is about to cover, down
-        // to a floor that keeps a fast orbit sweeping a real width rather
-        // than dithering on the line.
+        // arrival it sails well past WEAR_ARC before the next tick catches
+        // it, so a fast orbit is really sweeping WEAR_ARC-plus-overshoot
+        // wide of the line. So it turns on the tick BEFORE it would run
+        // past: the arc gives way to the ground the dog is about to cover,
+        // down to a floor that keeps a fast orbit sweeping a real width
+        // rather than dithering on the line.
         const step = paceSpeed(state.pace) / (flock.r + 85) * AUTO_TICK;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
-        if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; state.stallT = 0; }
-        else if (dAng * state.wearSide > turn) state.wearSide = -state.wearSide;
+        state.wearLegT += AUTO_TICK;
+        if (!state.wearSide) { state.wearSide = dAng >= 0 ? 1 : -1; state.wearT = 0; state.stallT = 0; state.wearLegT = 0; }
+        else if (dAng * state.wearSide > turn && state.wearLegT >= WEAR_LEG_MIN) { state.wearSide = -state.wearSide; state.wearLegT = 0; }
         d.cmd = state.wearSide > 0 ? 'aw' : 'cb';
         state.pace = Math.max(state.pace, PACE_START);
         return;
