@@ -198,6 +198,24 @@
     box-shadow: 0 4px 0 #c99b13;
   }
   .cmd-btn.active .key-hint { background: rgba(49,32,74,0.14); opacity: 0.7; }
+  /* the dog's own pick under autopilot — a cool glow reading as "watch,
+     don't press", kept visually apart from the warm solid .active a
+     player's own call gets. Pulses gently to draw the eye; parked on the
+     bright end of the pulse when motion is off. */
+  .cmd-btn.auto-active {
+    background: var(--plum-soft);
+    color: var(--cream);
+    box-shadow: 0 4px 0 rgba(0,0,0,0.28), 0 0 0 3px rgba(127,212,255,0.6), 0 0 16px 3px rgba(127,212,255,0.55);
+    animation: auto-cmd-pulse 1.7s ease-in-out infinite;
+  }
+  .cmd-btn.auto-active .key-hint { background: rgba(127,212,255,0.22); opacity: 0.85; }
+  @keyframes auto-cmd-pulse {
+    0%, 100% { box-shadow: 0 4px 0 rgba(0,0,0,0.28), 0 0 0 2px rgba(127,212,255,0.35), 0 0 9px 1px rgba(127,212,255,0.35); }
+    50% { box-shadow: 0 4px 0 rgba(0,0,0,0.28), 0 0 0 4px rgba(127,212,255,0.75), 0 0 20px 5px rgba(127,212,255,0.7); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .cmd-btn.auto-active { animation: none; }
+  }
   /* ---------- Overlays ---------- */
   .overlay {
     position: fixed;
@@ -304,6 +322,18 @@
   .big-btn .btn-label svg { width: 21px; height: 21px; flex: 0 0 21px; display: block; }
   .mode-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
   .keys-note { margin: 16px 0 0; font-size: 12.5px; font-weight: 700; opacity: 0.65; }
+  /* dev/enthusiast affordance: the field's seed, tap to copy a shareable
+     link — same styling family as .build-tag, just clickable */
+  .seed-chip {
+    margin: 8px 0 0;
+    font-size: 11px;
+    font-weight: 700;
+    opacity: 0.55;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+  }
+  .seed-chip:hover { opacity: 0.85; }
   .build-tag { margin: 10px 0 0; font-size: 10.5px; font-weight: 700; opacity: 0.35; letter-spacing: 0.08em; }
   /* icon attribution — game-icons.net art is CC BY 3.0, credit is required */
   .credit-tag { margin-top: 4px; letter-spacing: 0.05em; }
@@ -385,6 +415,7 @@
   <div class="panel">
     <h2 id="clear-title">Level clear!</h2>
     <p class="tagline" id="clear-tag">That'll do, dog. That'll do.</p>
+    <p class="seed-chip" id="clear-seed"></p>
     <div class="stats">
       <div class="stat"><span class="num" id="stat-sheep">0</span><span class="lbl">sheep</span></div>
       <div class="stat"><span class="num" id="stat-barks">0</span><span class="lbl">barks</span></div>
@@ -399,6 +430,7 @@
     <h2 id="ready-title">Level 1</h2>
     <p class="tagline" id="ready-tag">Take in the field. The clock waits for you.</p>
     <button class="big-btn" id="ready-btn">🐑 Ready!</button>
+    <p class="seed-chip" id="ready-seed"></p>
   </div>
 </div>
 
@@ -463,7 +495,7 @@
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
   const GATE_W = 112;             // gate width at level 1...
   const GATE_MIN = 68;            // ...narrowing 4px a level down to this
-  const GATE_PULL = 260;          // sheep this near the gate mouth drift on in
+  const GATE_PULL = 390;          // sheep this near the gate mouth drift on in
   const HILL_AMP = 0.115;         // ridge height as a fraction of the world's short side
   const HILL_FLAT = 0.85;         // share of the lift that fades out by the near edge
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -661,9 +693,88 @@
     else if (musicStarted && !muted) musicEl.play().catch(() => {});
   });
 
-  // ---------- helpers ----------
-  const rand = (a, b) => a + Math.random() * (b - a);
+  // ---------- seeded RNG ----------
+  // mulberry32: small, fast 32-bit PRNG — plenty for cosmetic field layout,
+  // not for anything security-sensitive.
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  // xmur3: string -> 32-bit hash, so a level seed can be a human-typed
+  // string ("testseed") rather than a bare number.
+  function xmur3(str) {
+    let h = 1779033703 ^ str.length;
+    for (let i = 0; i < str.length; i++) {
+      h = Math.imul(h ^ str.charCodeAt(i), 3432918353);
+      h = (h << 13) | (h >>> 19);
+    }
+    return () => {
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      return (h ^= h >>> 16) >>> 0;
+    };
+  }
+  const hashSeed = (str) => xmur3(String(str))();
+
+  // Every random draw the game makes — level layout AND per-frame ambience
+  // (wander timers, baa sfx, floaties, music shuffle) — used to call
+  // Math.random directly. Level generation now reads through this swappable
+  // source instead; everything else stays on Math.random on purpose, so a
+  // level's field never depends on how long you played the level before it.
+  let rngSource = Math.random;
+  const rand = (a, b) => a + rngSource() * (b - a);
   const randInt = (a, b) => Math.floor(rand(a, b + 1));
+
+  // Runs fn() with rand()/randInt() drawing from a fresh stream seeded from
+  // seedStr, then restores Math.random — even if fn throws. This is what
+  // makes generation seedable without turning the whole session into one
+  // continuing seeded stream: a level's layout would otherwise drift with
+  // play duration, because per-frame effects call rand() too. Instead each
+  // call gets its OWN generator, used only for the duration of fn, so a
+  // level's field depends on nothing but the seed string it's handed.
+  function withSeed(seedStr, fn) {
+    rngSource = mulberry32(hashSeed(seedStr));
+    try {
+      return fn();
+    } finally {
+      rngSource = Math.random;
+    }
+  }
+
+  // ---------- run seed ----------
+  // The run seed picks every level's field for this session. ?seed=
+  // replays (or shares) a run; anything else in the query string is
+  // ignored. A level's seed string is runSeed + ':' + levelNumber, so
+  // layoutField's fingerprint depends on exactly those two values.
+  const urlParams = new URLSearchParams(location.search);
+  const SEED_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
+  function randomSeed(len) {
+    let s = '';
+    for (let i = 0; i < len; i++) s += SEED_ALPHABET[Math.floor(Math.random() * SEED_ALPHABET.length)];
+    return s;
+  }
+  const runSeed = (urlParams.get('seed') || '').trim() || randomSeed(7);
+  const levelSeed = (n) => runSeed + ':' + n;
+  // ?level=N jumps straight to level N — invaluable for testing/repro.
+  // Composes with ?seed=: same seed + same level always gives the same
+  // field, however you got there, since generation only ever reads
+  // (runSeed, level) — never how you reached it.
+  const startAtLevel = (() => {
+    const n = parseInt(urlParams.get('level'), 10);
+    return Number.isFinite(n) && n >= 1 ? n : null;
+  })();
+  // shareable link for a given level under the current run seed
+  function seedShareUrl(n) {
+    const u = new URL(location.href);
+    u.search = '';
+    u.searchParams.set('seed', runSeed);
+    u.searchParams.set('level', n);
+    return u.toString();
+  }
   const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   // rotate angle a toward target by at most rate, taking the short way round
@@ -795,6 +906,8 @@
     wearT: 0,      // seconds into a wear bout; negative = driving before the next one
     stallT: 0,     // seconds the drive has been stopped with sheep still out
     workHold: 0,   // seconds left on the dog's commitment to its picked group
+    autoWaitT: 0,  // autopilot's pause on an interstitial before it plays on
+    funnelViz: false, // dev (F key): heat-map projection of the gate funnel
   };
 
   // ---------- hillside ----------
@@ -918,9 +1031,20 @@
     const M = hill.m;
     // worst-case lift is on the far margin row y = −M: amp·(1 + FLAT·M/h)
     hill.top = Math.ceil(M + hill.amp * (1 + HILL_FLAT * M / h));
-    hillCanvas.width = w + 2 * M;
-    hillCanvas.height = hill.top + Math.ceil((h + M) * (1 + hill.amp * HILL_FLAT / h));
+    const hcW = w + 2 * M;
+    const hcH = hill.top + Math.ceil((h + M) * (1 + hill.amp * HILL_FLAT / h));
+    // resizing (.width/.height) forces the browser to discard and reallocate
+    // the whole backing bitmap — costly, and needless when the dims (which
+    // only depend on world size, constant within a session) haven't changed.
+    // Skipped resizes still need the reset a real resize would've given us:
+    // cleared pixels and identity transform, restored explicitly below.
+    if (hillCanvas.width !== hcW || hillCanvas.height !== hcH) {
+      hillCanvas.width = hcW;
+      hillCanvas.height = hcH;
+    }
     const hc = hillCanvas.getContext('2d');
+    hc.setTransform(1, 0, 0, 1, 0, 0);
+    hc.clearRect(0, 0, hillCanvas.width, hillCanvas.height);
     hc.translate(M, hill.top); // world origin
     // hillCanvas is pre-tilt, so its own tracing stays in (u,v) space
     const s1 = (x, y) => ({ x, y: hillY(x, y) });
@@ -1012,11 +1136,20 @@
       const W1 = hillCanvas.width;
       const vTop = -hill.top, vBot = hillCanvas.height - hill.top;
       const sMax = Math.max(sClamp(s0 + g * vTop), sClamp(s0 + g * vBot));
-      landCanvas.width = Math.ceil(W1 * sMax);
+      const lcW = Math.ceil(W1 * sMax);
       land.ox = Math.ceil((hill.m + w / 2) * sMax - w / 2);
       land.oy = Math.ceil(-(s0 * vTop + g * vTop * vTop / 2));
-      landCanvas.height = land.oy + Math.ceil(s0 * vBot + g * vBot * vBot / 2) + 2;
+      const lcH = land.oy + Math.ceil(s0 * vBot + g * vBot * vBot / 2) + 2;
+      // as with hillCanvas, only reallocate when the size actually changed
+      // (it can, e.g. after a camera swap changes sMax) — and since each
+      // scanline strip below is scaled by its own sv, a narrower row can
+      // leave old margin pixels unpainted, so always clear explicitly.
+      if (landCanvas.width !== lcW || landCanvas.height !== lcH) {
+        landCanvas.width = lcW;
+        landCanvas.height = lcH;
+      }
       const lc = landCanvas.getContext('2d');
+      lc.clearRect(0, 0, landCanvas.width, landCanvas.height);
       for (let j = 0; j < hillCanvas.height; j += 2) {
         const v = j - hill.top, v2 = v + 2;
         const sv = sClamp(s0 + g * v);
@@ -1053,13 +1186,21 @@
     // patches of lighter and darker grass — pasture, not a mowed pitch.
     // It runs a margin M past the field on every side so the warped bake
     // can cover the whole viewport with land.
-    fieldCanvas.width = w + 2 * M; fieldCanvas.height = h + 2 * M;
+    const fcW = w + 2 * M, fcH = h + 2 * M;
+    // see bakeHill: skip the reallocation when the size is unchanged, but
+    // reproduce what it would've given us — a clean transform (the fillRect
+    // right below repaints every pixel, so no explicit clear is needed).
+    if (fieldCanvas.width !== fcW || fieldCanvas.height !== fcH) {
+      fieldCanvas.width = fcW;
+      fieldCanvas.height = fcH;
+    }
     const fc = fieldCanvas.getContext('2d');
+    fc.setTransform(1, 0, 0, 1, 0, 0);
     fc.translate(M, M); // paint in world coords over [−M, w+M] × [−M, h+M]
     fc.fillStyle = '#7ec850';
     fc.fillRect(-M, -M, w + 2 * M, h + 2 * M);
     for (let i = 0; i < 30 * k; i++) {
-      const [cr, cg, cb, ca] = Math.random() < 0.55
+      const [cr, cg, cb, ca] = rand(0, 1) < 0.55
         ? [111, 183, 70, 0.5] : [139, 210, 92, 0.45];
       const grad = fc.createRadialGradient(0, 0, 0, 0, 0, 1);
       grad.addColorStop(0, `rgba(${cr},${cg},${cb},${ca})`);
@@ -1078,7 +1219,7 @@
     }
     // fine speckle grain over the top
     for (let i = 0; i < 900 * k; i++) {
-      fc.fillStyle = Math.random() < 0.5
+      fc.fillStyle = rand(0, 1) < 0.5
         ? 'rgba(104, 176, 64, 0.3)' : 'rgba(152, 218, 102, 0.3)';
       fc.beginPath();
       fc.arc(rand(-M, w + M), rand(-M, h + M), rand(1.5, 5), 0, Math.PI * 2);
@@ -1179,8 +1320,12 @@
   }
 
   // one field layout, shared by the real levels and the title demo:
-  // world, pen, obstacles, a bunched flock far from the pen, dog at heel
-  function layoutField(count, defiantCount, obCount) {
+  // world, pen, obstacles, a bunched flock far from the pen, dog at heel.
+  // seedStr pins every random draw made while laying out the field (decor,
+  // pen, obstacles, flock, temperaments) to a fresh generator of its own —
+  // see withSeed — so the same seedStr always reproduces the same field.
+  function layoutField(count, defiantCount, obCount, seedStr) {
+    withSeed(seedStr, () => {
     // Zoomed-out pasture: the whole field fits on screen, sized to this
     // device's aspect so it fills the viewport.
     const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
@@ -1194,7 +1339,7 @@
     // obstacles: trees and rocks, clear of the pen mouth and mid-field
     state.obstacles = [];
     for (let i = 0; i < obCount; i++) {
-      const kind = Math.random() < 0.6 ? 'tree' : 'rock';
+      const kind = rand(0, 1) < 0.6 ? 'tree' : 'rock';
       const r = kind === 'tree' ? 32 : 20;
       for (let tries = 0; tries < 40; tries++) {
         const x = rand(HEDGE + 90, w - HEDGE - 90), y = rand(HEDGE + 90, h - HEDGE - 90);
@@ -1220,7 +1365,7 @@
     for (let i = 0; i < defiantCount; i++) tempers.push(true);
     while (tempers.length < count) tempers.push(false);
     for (let i = tempers.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(rand(0, i + 1));
       [tempers[i], tempers[j]] = [tempers[j], tempers[i]];
     }
     for (let i = 0; i < count; i++) {
@@ -1271,6 +1416,7 @@
     state.levelTime = 0;
     state.barksUsed = 0;
     state.demo = false;
+    });
   }
 
   function startLevel(n) {
@@ -1278,19 +1424,26 @@
     state.mode = 'ready'; // field is laid out but the clock waits for the Ready click
     // a random-sized flock, growing fast with the levels — the big mobs
     // are the fun part, so get there quickly, and there's no cap: the
-    // flock keeps growing as long as you keep clearing
-    const count = randInt(4 + n * 3, 6 + n * 4);
-    const defiantCount = n < 2 ? 0 : Math.min(1 + Math.floor((n - 2) / 2), Math.floor(count / 3));
-    layoutField(count, defiantCount, 3 + Math.min(n, 5));
+    // flock keeps growing as long as you keep clearing. This is generation
+    // too, so it's seeded off a spur of the level's own seed — independent
+    // of (but just as pinned to (runSeed, n) as) the layout draws below.
+    let count, defiantCount;
+    withSeed(levelSeed(n) + ':size', () => {
+      count = randInt(4 + n * 3, 6 + n * 4);
+      defiantCount = n < 2 ? 0 : Math.min(1 + Math.floor((n - 2) / 2), Math.floor(count / 3));
+    });
+    layoutField(count, defiantCount, 3 + Math.min(n, 5), levelSeed(n));
 
     hud.style.display = 'flex';
     titleOverlay.classList.add('hidden');
     clearOverlay.classList.add('hidden');
     readyTitle.textContent = 'Level ' + n;
     readyTag.textContent = count + ' sheep to pen — the clock starts when you do.';
+    renderSeedChip(readySeedEl, n);
     // sit the panel away from a bottom-edge pen so the gate stays scoutable
     readyOverlay.classList.toggle('top', state.pen.side === 2);
     readyOverlay.classList.remove('hidden');
+    if (state.auto) state.autoWaitT = 1.6; // a beat to scout the field, then play on
     state.introDefiant = defiantCount > 0 && !state.defiantSeen;
     if (defiantCount) state.defiantSeen = true;
     applyInputMode();
@@ -1319,6 +1472,8 @@
     if (!e.repeat && CMD_KEYS[e.key] && state.input === 'cmd') issueCommand(CMD_KEYS[e.key]);
     // C swaps the camera angle — works in either input mode
     if (!e.repeat && e.key.toLowerCase() === 'c') cycleCam();
+    // dev: F projects the gate funnel as a heat map (speed ramp + rings)
+    if (!e.repeat && e.key.toLowerCase() === 'f') state.funnelViz = !state.funnelViz;
   });
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
@@ -1961,7 +2116,7 @@
     // gradient once caught — willingness decides whether the gate
     // draws a sheep at all, not how fast the funnel carries it.
     const f = willing * (90 + 270 * k);
-    return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * willing, d: k };
+    return { x: (tx / tl) * f, y: (ty / tl) * f, k: k * willing, d: k, w: willing };
   }
   // a settling spot deep in the pen, spread across the back, so each
   // penned sheep trots clear and the flock fans out from the doorway
@@ -2274,6 +2429,23 @@
         const press = 1 + Math.min(cn, 8) * 0.18;
         fx += gs.x * press;
         fy += gs.y * press;
+        // the funnel is a CONVEYOR, not just a pull: the suction force
+        // above is willingness-scaled, and against 2.4/s of drag it
+        // tops out around 40px/s — the speed-cap ramp was never
+        // reached, so sheep didn't visibly accelerate once caught.
+        // Willingness now decides whether the funnel takes hold at all
+        // (a stampede still blows past the mouth); once it has hold,
+        // velocity homes on a gate-ward target whose speed ramps with
+        // RAW depth, gently at the mouth where the field still
+        // contests, firmly in the throat where the sheep is committed
+        const grip = Math.min(1, gs.w * 3) * (0.8 + 3.2 * gs.d) * dt;
+        if (grip > 0.01) {
+          const gl = Math.hypot(gs.x, gs.y) || 1;
+          const want = 60 + 150 * gs.d;
+          const a = Math.min(1, grip);
+          s.vx += (gs.x / gl * want - s.vx) * a;
+          s.vy += (gs.y / gl * want - s.vy) * a;
+        }
         // sheep corner hard: a runner crossing the mouth BENDS its line
         // into the gap instead of overshooting on momentum — the pull
         // as a plain force barely deflects a sheep at speed, so it ran
@@ -2405,8 +2577,10 @@
       'Not a single stray in the heather.',
       'The gate swings shut. The flock is home.',
       'Ewe did it. Every last one.'][state.level % 4];
+    renderSeedChip(clearSeedEl, state.level);
     clearOverlay.classList.remove('hidden');
     cmdUi.style.display = 'none';
+    if (state.auto) state.autoWaitT = 2.2; // let the card read, then play on
   }
 
   // ---------- autopilot (title demo) ----------
@@ -2545,6 +2719,17 @@
 
   function update(dt) {
     const demo = state.mode === 'title' && state.demo;
+    // under the autopilot the interstitials don't wait for a click: the
+    // Ready pause and the level-clear card each hold for a beat or two,
+    // then the run plays on — level after level, until someone takes
+    // the whistle back
+    if (state.auto && (state.mode === 'ready' || state.mode === 'clear')) {
+      state.autoWaitT -= dt;
+      if (state.autoWaitT <= 0) {
+        if (state.mode === 'ready') beginLevel();
+        else startLevel(state.level + 1);
+      }
+    }
     if ((state.mode === 'title' && !demo) || state.mode === 'ready') {
       // the pre-level Ready pause keeps a quiet flock grazing; the dog
       // waits at heel and the clock hasn't started
@@ -2560,6 +2745,9 @@
       setAuto(false);
     }
     if (demo || state.auto) autopilot(dt);
+    // reflect the dog's current pick on the pad; updateCmdButtons no-ops
+    // once it already matches, so this is cheap even at 60fps
+    if (state.auto) updateCmdButtons();
     if (!demo && !state.gateClosing) state.levelTime += dt; // the clock stops at the last sheep
     updateDog(dt);
     updateSheep(dt);
@@ -2919,6 +3107,46 @@
         ctx.stroke();
         ctx.restore();
       }
+      // dev heat map (F): the funnel's conveyor speed projected on the
+      // field — blue at the 60px/s mouth, red at the 210px/s throat,
+      // with dashed iso-rings labelled at round speeds
+      if (state.funnelViz && state.gateT === 0) {
+        ctx.save();
+        const A = { x: P.gx - P.out.x * 34, y: P.gy - P.out.y * 34 };
+        const step = 26;
+        for (let wx = A.x - GATE_PULL; wx <= A.x + GATE_PULL; wx += step) {
+          for (let wy = A.y - GATE_PULL; wy <= A.y + GATE_PULL; wy += step) {
+            if ((wx - P.gx) * P.out.x + (wy - P.gy) * P.out.y < -4) continue;
+            const tl = Math.hypot(A.x - wx, A.y - wy);
+            if (tl > GATE_PULL) continue;
+            const dpt = 1 - tl / GATE_PULL;
+            const p = camPt(wx, wy), k = camScale(wx, wy);
+            ctx.fillStyle = `hsla(${215 * (1 - dpt)}, 90%, 55%, ${0.10 + 0.22 * dpt})`;
+            ctx.fillRect(p.x - (step / 2) * k, p.y - (step / 2) * k, step * k, step * k);
+          }
+        }
+        const th = Math.atan2(P.out.y, P.out.x);
+        ctx.setLineDash([6, 6]);
+        ctx.font = 'bold 12px system-ui, sans-serif';
+        ctx.textAlign = 'center';
+        for (const want of [60, 100, 150, 200]) {
+          const r = GATE_PULL * (1 - (want - 60) / 150);
+          ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          for (let i = 0; i <= 32; i++) {
+            const a = th - Math.PI / 2 + (Math.PI * i) / 32;
+            const q = camPt(A.x + Math.cos(a) * r, A.y + Math.sin(a) * r);
+            i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y);
+          }
+          ctx.stroke();
+          const lp = camPt(A.x + P.out.x * r, A.y + P.out.y * r);
+          ctx.fillStyle = 'rgba(255,255,255,0.9)';
+          ctx.fillText(want + ' px/s', lp.x, lp.y - 4);
+        }
+        ctx.setLineDash([]);
+        ctx.restore();
+      }
     }
 
     // dog influence ring (a faint pressure aura helps read the herding range)
@@ -3173,7 +3401,25 @@
   const statTime = document.getElementById('stat-time');
   const clearTitle = document.getElementById('clear-title');
   const clearTag = document.getElementById('clear-tag');
+  const clearSeedEl = document.getElementById('clear-seed');
   let lastTimeShown = -1;
+
+  // dev/enthusiast affordance: show the field's seed and let a tap copy a
+  // shareable ?seed=&level= link for it via the clipboard
+  function renderSeedChip(el, n) {
+    el.textContent = '🌱 ' + runSeed + ' · level ' + n + ' — tap to copy link';
+    el.onclick = (e) => {
+      e.stopPropagation();
+      const url = seedShareUrl(n);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url)
+          .then(() => toast('🔗 Link copied — seed ' + runSeed + ', level ' + n))
+          .catch(() => toast('🔗 ' + url));
+      } else {
+        toast('🔗 ' + url);
+      }
+    };
+  }
 
   function updateHud() {
     levelChip.textContent = 'Level ' + state.level;
@@ -3186,20 +3432,37 @@
   }
 
   const cmdBtns = [...cmdUi.querySelectorAll('.cmd-btn')];
+  // dedupes the DOM sync against [cmd, auto] so the per-frame autopilot
+  // poll (below) is a no-op once the pad already reflects reality
+  let lastShownCmd = null;
   function updateCmdButtons() {
+    const key = state.dog.cmd + '|' + state.auto;
+    if (key === lastShownCmd) return;
+    lastShownCmd = key;
     for (const b of cmdBtns) {
-      const c = b.dataset.cmd;
-      b.classList.toggle('active', state.dog.cmd === c);
+      const on = state.dog.cmd === b.dataset.cmd;
+      // a player's own call gets the solid pressed look; the autopilot's
+      // pick gets the separate pulsing auto-active treatment — never both
+      b.classList.toggle('active', on && !state.auto);
+      b.classList.toggle('auto-active', on && state.auto);
     }
   }
   for (const b of cmdBtns) {
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); issueCommand(b.dataset.cmd); });
   }
 
-  function applyInputMode() {
+  // shows the pad whenever there's something to read off it: the player's
+  // own command mode, or the autopilot thinking out loud (any input mode) —
+  // kept separate from applyInputMode's other side effects (below) so
+  // toggling autopilot can re-run just this without resetting state.dog.cmd
+  function updateCmdVisibility() {
     if (state.mode === 'playing') {
-      cmdUi.style.display = state.input === 'cmd' ? 'grid' : 'none';
+      cmdUi.style.display = (state.input === 'cmd' || state.auto) ? 'grid' : 'none';
     }
+  }
+
+  function applyInputMode() {
+    updateCmdVisibility();
     document.body.classList.toggle('cmd-mode', state.input === 'cmd');
     if (state.input === 'cmd') {
       state.dog.cmd = 'lie';
@@ -3232,6 +3495,7 @@
       state.demoT = 0;
       state.demoStallT = 0;
       state.wearSide = 0; state.wearT = 0; state.workHold = 0;
+      state.autoWaitT = 1.5; // switched on at an interstitial: pause, then play on
     } else {
       state.dog.cmd = 'lie'; // hands back a standing dog awaiting your call
       state.pace = state.input === 'cmd' ? 0 : state.pace;
@@ -3239,14 +3503,20 @@
     autoBtn.innerHTML = on
       ? '🦮<span class="wide-only"> auto on</span>'
       : '🐕<span class="wide-only"> auto</span>';
+    updateCmdVisibility(); // pad appears/disappears immediately, any input mode
     updateCmdButtons();
   }
   autoBtn.addEventListener('click', () => {
     ensureAudio();
-    if (state.mode !== 'playing') { toast('🐕 Autopilot takes over once the level starts'); return; }
+    // toggles mid-level AND on the interstitials, so an auto run can be
+    // started from the Ready card and called off from the clear card
+    if (state.mode !== 'playing' && state.mode !== 'ready' && state.mode !== 'clear') {
+      toast('🐕 Autopilot takes over once the level starts');
+      return;
+    }
     setAuto(!state.auto);
     toast(state.auto
-      ? '🦮 Autopilot — the dog works the flock itself. Touch the field or call a command to take over.'
+      ? '🦮 Autopilot — the dog works the flock itself (and plays on through the menus). Touch the field or call a command to take over.'
       : '🐕 You have the dog back');
   });
 
@@ -3281,6 +3551,7 @@
   const readyTitle = document.getElementById('ready-title');
   const readyTag = document.getElementById('ready-tag');
   const readyBtn = document.getElementById('ready-btn');
+  const readySeedEl = document.getElementById('ready-seed');
   readyBtn.addEventListener('click', beginLevel);
   document.getElementById('build-tag').textContent = 'build ' + BUILD;
   // camera chip: cycle hillside → spectator → overhead (also the C key)
@@ -3302,9 +3573,13 @@
   // ---------- title demo ----------
   // the title screen runs the real game behind the panel: a small
   // flock, a proper pen, and the dog working it alone on the autopilot.
-  // Cleared fields lay out fresh and go again until the player starts.
+  // Cleared fields lay out fresh and go again until the player starts. The
+  // demo isn't a level a player can jump back to, so it isn't pinned to
+  // (runSeed, n) like a real level — it gets its own counted label (distinct
+  // from any real level's numeric seed) so it keeps varying loop to loop.
+  let demoRunN = 0;
   function startDemo() {
-    layoutField(8, 1, 3);
+    layoutField(8, 1, 3, runSeed + ':demo:' + (demoRunN++));
     state.mode = 'title';
     state.demo = true;
     state.demoT = rand(1.5, 2.5); // let the field settle before the dog sets off
@@ -3312,7 +3587,10 @@
     state.dog.cmd = 'walk';
     state.pace = 0.4;
   }
-  startDemo();
+  // ?level=N (see "run seed" above) jumps straight past the title into
+  // that level's Ready card instead of the attract-mode demo.
+  if (startAtLevel) startLevel(startAtLevel);
+  else startDemo();
 
   // ---------- main loop ----------
   // dev FPS meter: frames counted over half-second windows; the dot is
@@ -3351,10 +3629,10 @@
 
   // dev hook: lets a headless harness drive the sim clock directly
   // (demo soak tests, balance sweeps) — not used by the game itself
-  window.__sheepDev = { state, update, startDemo, startLevel };
+  window.__sheepDev = { state, update, startDemo, startLevel, runSeed, levelSeed, hill, fieldCanvas };
 
   // debug/test handle
-  window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv };
+  window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv, runSeed };
 })();
 </script>
 </body>
