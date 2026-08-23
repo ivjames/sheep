@@ -2,10 +2,14 @@
 
 A border collie sheep-herding game — one static index.html, no dependencies.
 
-Served at **https://sheep.lab980.com** from the lab980 droplet. Platform-wide
-conventions (droplet layout, nginx/TLS/DNS, the `bin/` fixers, health checks)
-live in the `ivjames/lab980.com` repo's `CLAUDE.md` — read that when the
-question is about the box rather than about this site.
+Served at **https://sheep.lab980.com** from the lab980 droplet.
+
+How work lands here — branch, PR, and the fact that merging is not deploying —
+is in `.claude/rules/lab980-conventions.md`, which Claude Code loads
+automatically every session. That file is owned by the lab980 scaffold and is
+overwritten by it; **this** file is the site's own, and everything below is
+about this site rather than about the platform. For the box itself, read the
+`ivjames/lab980.com` repo's `CLAUDE.md`.
 
 ## Shape
 
@@ -18,19 +22,6 @@ only by a `git reset` on the droplet.
 - Operate CLI: `bin/sheep`, symlinked to `/usr/local/bin/sheep`
 - vhost: generated from `deploy/nginx.conf.template` by `sheep setup`
 
-## How changes land
-
-1. Work on a branch, never directly on `main`.
-2. **Open a pull request and merge it.** That is how every change in this repo
-   has landed and how it should keep landing — the PR is the review record,
-   and squashing that step to save a round trip loses it. If your harness
-   defaults to "don't open a PR unless asked", this file is the standing ask:
-   open one.
-3. Merging to `main` does **not** put anything live. Deploying is a separate
-   step on the droplet (below), and an agent working from a laptop or a cloud
-   session usually cannot reach the droplet at all — so say plainly that the
-   change is merged but not yet deployed rather than implying it shipped.
-
 ## Deploying
 
 On the droplet, as root:
@@ -42,10 +33,8 @@ sheep status      # HEAD, live probe, cert days remaining
 
 Full runbook, including first-time bring-up: `DEPLOY.md`.
 
-Check what is actually live before claiming a deploy happened. `sheep status`
-on the box reports it; from anywhere, ask for the status code and the deployed
-commit rather than eyeballing the page — a 200 only proves the endpoint
-answered, not which build it served:
+Checking what is actually live, concretely for this site — `sheep status` on
+the box, or from anywhere:
 
 ```bash
 curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://sheep.lab980.com/
@@ -61,7 +50,5 @@ literal, so an unfiltered grep reports a phantom second build.)
 - The droplet checkout is the web root, so anything committed here is public
   except dotfiles and `*.md` (the vhost denies both). Don't commit secrets;
   there is no `.env` on a static site.
-- `deploy` runs `git reset --hard`, so any hand-edit made on the droplet is
-  destroyed on the next deploy. Fix things in the repo, not on the box.
-- `health-check --site sheep` (from the lab980 repo's `bin/`) probes DNS,
-  the public URL and cert expiry for this site.
+- There is no `.env` here and nothing to keep out of git beyond that — a
+  static site has no secrets to hold.
