@@ -799,11 +799,6 @@
   // own pace for STALL_HOLD seconds — long enough that an ordinary slow
   // press isn't mistaken for having stopped
   const STALL_SLOW = 0.45, STALL_HOLD = 0.9;
-  // the player's dog casts for itself on the same reading of a stall, and
-  // holds the cast until the drive has been busy (over CAST_BUSY of pace)
-  // for CAST_DONE seconds, so it sweeps rather than stutters
-  const CAST_STILL = 0.45, CAST_WAIT = 0.35, CAST_DONE = 0.8;
-  const CAST_BUSY = 0.55, CAST_GAIN = 0.55, CAST_ARC = 0.3;
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const FEAR_HOLD = 0.5;          // seconds a first-hand startle pins panic at FULL (caught frights hold less)
@@ -1405,7 +1400,7 @@
     auto: false,   // in-game autopilot: the dog works the flock itself
     level: 1,
     world: { w: 1600, h: 1000 },
-    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, casting: 0, castSide: 0, stallT: 0, driveT: 0, barkCd: 0,
+    dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, barkCd: 0,
            // wind: `stam` is the pool (1 full → 0 empty), `blown` latches
            // when it runs out and clears once STAM_WIND is back, and
            // `windK` is the speed cap it costs — eased, not switched, so
@@ -2364,7 +2359,6 @@
     state.handler.y = clamp(P.gy + P.out.y * 150 + ty * (P.gw / 2 + 90), HEDGE + 40, h - HEDGE - 40);
     state.dog.x = state.handler.x + 24; state.dog.y = state.handler.y + 20;
     state.dog.vx = 0; state.dog.vy = 0; state.dog.gait = 0;
-    state.dog.casting = 0; state.dog.castSide = 0; state.dog.stallT = 0; state.dog.driveT = 0;
     state.dog.dir = Math.atan2(P.gy - state.dog.y, P.gx - state.dog.x);
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
@@ -3050,126 +3044,31 @@
       let cmd = d.cmd;
       if (!flock && (cmd === 'cb' || cmd === 'aw' || cmd === 'walk')) cmd = 'lie';
       if (cmd === 'walk') {
-        // WALK ON drives: the dog wants the balance point — straight
-        // across the flock from the gate — and presses from there, so
-        // the push always sends sheep pen-ward. On balance it settles
-        // into a steady escort: match the flock's own drift and hold
-        // a contact ring, rather than charge-stop-charge to a fixed
-        // spot; off balance it swings round the mob the shorter way
-        // instead of shoving through the middle.
-        const P = state.pen;
-        let ux = flock.cx - P.gx, uy = flock.cy - P.gy;
-        const ul = Math.hypot(ux, uy) || 1;
-        ux /= ul; uy /= ul;
-        const hold = clamp(flock.r, 60, 240);
-        const rx = d.x - flock.cx, ry = d.y - flock.cy;
-        const rr = Math.hypot(rx, ry) || 1;
-        const aDog = Math.atan2(ry, rx);
-        let dAng = ((Math.atan2(uy, ux) - aDog + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-        // track the flock's own drift, smoothed (EMA) and clamped so a
-        // sudden centroid jump (a sheep penning, a stray bolting) can't
-        // spike it, then keep only the along-the-drive-line component —
-        // lateral noise in the flock's center shouldn't tug the dog
-        // sideways off the balance line
-        if (d.lastFlockX !== undefined && dt > 1e-4) {
-          const rdx = clamp((flock.cx - d.lastFlockX) / dt, -300, 300);
-          const rdy = clamp((flock.cy - d.lastFlockY) / dt, -300, 300);
-          const a = Math.min(1, 3 * dt);
-          d.driftVX = (d.driftVX || 0) + (rdx - (d.driftVX || 0)) * a;
-          d.driftVY = (d.driftVY || 0) + (rdy - (d.driftVY || 0)) * a;
+        // WALK ON walks the dog AT the sheep and nothing else: straight
+        // for the middle of the mob, pressing whatever happens to be in
+        // front of it. It doesn't hunt out the balance point, it doesn't
+        // swing round the flock the shorter way, and it never casts
+        // itself side to side — arcing round sheep is what COME BY and
+        // AWAY are for, and a dog that flanked on its own account left
+        // the handler nothing to call and a sprite that flicked about
+        // whenever the drive got sticky. Where the push sends the flock
+        // is the handler's business now: flank the dog onto the line you
+        // want first, then walk it on.
+        let near = Infinity;
+        for (const s of flock.members) {
+          near = Math.min(near, hyp(s.x - d.x, s.y - d.y));
         }
-        d.lastFlockX = flock.cx; d.lastFlockY = flock.cy;
-        // cap the matched component to a normal working walk, not a
-        // bolt — chasing a startled scatter at full pace would just run
-        // the dog onto the fleeing sheep; the ring spring below, not the
-        // drift match, handles those moments
-        const along = clamp((d.driftVX || 0) * ux + (d.driftVY || 0) * uy, -80, 80);
-        if (Math.abs(dAng) < 0.55) {
-          // drift-matched follower: ride the flock's own gate-ward drift
-          // and add a saturating spring toward a nearest-sheep contact
-          // ring — riding the drift keeps the dog's speed near the
-          // flock's own, so its projected lead stays calm instead of
-          // spiking sheep panic on every stop-start approach. The ring is
-          // measured off the actual nearest sheep (an elongated mob's
-          // bounding radius otherwise reads "close enough" while every
-          // sheep stands outside flee range and the drive deadlocks),
-          // with a flock-spread floor so a scatter-opened gap can't read
-          // "far" and let the dog sail through a hollow mob. Everything
-          // scales with `pace`, so WALK ON taps lean the drive harder
-          // and STEADY gentles it off.
-          let near = Infinity;
-          for (const s of flock.members) {
-            near = Math.min(near, hyp(s.x - d.x, s.y - d.y));
-          }
-          // the contact ring is a slice of the dog's own reach, not a fixed
-          // 115px: a wide-presence dog that closed to the old distance would
-          // already have every sheep in front of it running
-          const pressFrac = clamp(Math.min(near - 115 * dogK.presence, rr - (hold + 20)) / 60, -0.4, 1);
-          let vx = ux * (along - pressFrac * pace), vy = uy * (along - pressFrac * pace);
-          const vlen = Math.hypot(vx, vy);
-          const floor = pace * 0.12; // nudge gate-ward, never fully freeze
-          if (vlen < floor) { vx -= ux * (floor - vlen); vy -= uy * (floor - vlen); }
-          // Under a player's whistle nobody is watching to call a flank when
-          // the drive runs out, so the dog looks after itself: stopped with
-          // sheep still loose in front of it, it casts across their back
-          // rather than standing. Not under the autopilot — there the
-          // handler calls the flank, and a dog doing both at once leans the
-          // mob off the gate line and halves what gets delivered.
-          //
-          // The cast LATCHES. Judged moment to moment it switches on and off
-          // about once a second — the dog inches, so it isn't stalled, so
-          // the cast drops, so it stops again — and that stutter is what
-          // makes the sprite flick about. Once it starts, it runs until the
-          // drive has had real work for a while, so the dog sweeps in long
-          // arcs and turns at the ends of them.
-          if (!state.auto && !state.demo) {
-            const drive = Math.hypot(vx, vy);
-            if (drive > pace * CAST_BUSY) d.driveT = (d.driveT || 0) + dt;
-            else d.driveT = 0;
-            const still = Math.hypot(d.vx, d.vy) < pace * CAST_STILL;
-            d.stallT = (still && along > -8) ? (d.stallT || 0) + dt : 0;
-            // the one hold patience keeps, because it IS a decision
-            // interval: how long the dog waits on a stalled drive before it
-            // decides, unprompted, to cast
-            if (!d.casting && d.stallT > CAST_WAIT * dogK.patience) d.casting = 1;
-            else if (d.casting && d.driveT > CAST_DONE) { d.casting = 0; d.castSide = 0; }
-            if (d.casting) {
-              if (!d.castSide) d.castSide = dAng >= 0 ? 1 : -1;
-              else if (dAng * d.castSide < -CAST_ARC) d.castSide = -d.castSide;
-              vx += -ry / rr * d.castSide * pace * CAST_GAIN;
-              vy += rx / rr * d.castSide * pace * CAST_GAIN;
-            }
-          }
-          const cl = Math.hypot(vx, vy) || 1;
-          if (cl > pace) { vx *= pace / cl; vy *= pace / cl; }
-          desx = vx; desy = vy;
-        } else {
-          const step = clamp(dAng, -0.7, 0.7);
-          // the swing round the mob must clear every sheep in the
-          // sector it sweeps through, same as a called flank: `hold`
-          // caps at 240, so on a big spread-out flock a fixed arc
-          // slices INSIDE outlying clusters — a bunch sat in a corner
-          // never feels the dog pass and just gets left there, which
-          // reads as the dog ignoring them. Widening past the farthest
-          // sheep in the swing's path sweeps those clusters back into
-          // the drive instead of orbiting them out of the game.
-          let Rw = hold + 120;
-          const sd = step > 0 ? 1 : -1;
-          for (const s of flock.members) {
-            let da = (Math.atan2(s.y - flock.cy, s.x - flock.cx) - aDog) * sd;
-            da = ((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
-            if (da < 1.25 || da > Math.PI * 2 - 0.45) {
-              Rw = Math.max(Rw, hyp(s.x - flock.cx, s.y - flock.cy) + 70);
-            }
-          }
-          const m = HEDGE + 20;
-          const ax = clamp(flock.cx + Math.cos(aDog + step) * Rw, m, state.world.w - m);
-          const ay = clamp(flock.cy + Math.sin(aDog + step) * Rw, m, state.world.h - m);
-          const tx = ax - d.x, ty = ay - d.y;
-          const tl = Math.hypot(tx, ty) || 1;
-          desx = tx / tl * pace; desy = ty / tl * pace;
-          sweep = dAng > 0 ? 1 : -1; // wall detours follow the swing
-        }
+        // ease off over the last stretch into contact, so the dog settles
+        // onto the back of the mob and escorts it rather than barging
+        // through the middle and having to turn round — which would be
+        // the very back-and-forth the straight line is here to avoid. The
+        // ring is a slice of THIS dog's own reach, not a fixed distance:
+        // a wide-presence dog stands further off and still leans on them.
+        const close = clamp((near - 115 * dogK.presence) / 60, 0, 1);
+        const tx = flock.cx - d.x, ty = flock.cy - d.y;
+        const tl = Math.hypot(tx, ty) || 1;
+        desx = tx / tl * pace * close;
+        desy = ty / tl * pace * close;
       } else if (cmd === 'cb' || cmd === 'aw') {
         // flanking run: orbit the flock just outside its edge.
         // "come by" = clockwise (as seen from above), "away to me" = counter.
@@ -3272,8 +3171,8 @@
     }
     d.workDist += dspd * dt;
     // patience is trained by NOT fidgeting: seconds the dog spent holding a
-    // line — moving, on one command, not mid-cast
-    if (dspd > 20 && !d.casting) d.workSteady += dt;
+    // line — moving, on one command
+    if (dspd > 20) d.workSteady += dt;
     updateWind(d, dspd, top, dt);
   }
 
@@ -4190,11 +4089,12 @@
     }
     state.demoStallT = 0;
     if (flock) {
-      // repositioning is a CALLED FLANK, not walk-on's cautious swing:
-      // far off the balance line the drive creeps its way round, but a
-      // proper come-by/away orbits the mob at pace. Flank the shorter
-      // way, come off it once roughly behind the flock (hysteresis so
-      // the two commands don't chatter at the boundary)
+      // repositioning is a CALLED FLANK: walk on presses straight at the
+      // mob from wherever the dog stands and does no rounding of its own,
+      // so getting onto the balance line is a come-by/away that orbits at
+      // pace. Flank the shorter way, come off it once roughly behind the
+      // flock (hysteresis so the two commands don't chatter at the
+      // boundary)
       let ux = flock.cx - P.gx, uy = flock.cy - P.gy;
       const ul = Math.hypot(ux, uy) || 1;
       const aDog = Math.atan2(d.y - flock.cy, d.x - flock.cx);
@@ -4240,8 +4140,9 @@
       // spread wide of it — and the answer is the one a handler calls: come
       // by or away, round them back up. That is the wear below, so a stall
       // triggers it just as a wide flock does. It belongs here at the
-      // handler's level rather than inside the drive: a dog casting on its
-      // own initiative leans on the flock sideways, pushes it off the gate
+      // handler's level rather than inside the drive — the same reason the
+      // player's walk on doesn't cast either: a dog swinging on its own
+      // initiative leans on the flock sideways, pushes it off the gate
       // line, and then has to be flanked back onto balance — measured at
       // half the deliveries for a tighter, undelivered flock.
       state.stallT = Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
@@ -4267,8 +4168,8 @@
       if (state.wearT >= 0 && flock.n > 1 && enter && panic < 0.7) {
         // come by carries the dog clockwise round the mob and away runs it
         // back the other way. Open the bout sweeping TOWARD the drive line —
-        // the arc whose pressure keeps folding the flock gate-ward, and the
-        // same opening the player-dog's cast picks. Opening outward (toward
+        // the arc whose pressure keeps folding the flock gate-ward.
+        // Opening outward (toward
         // the side the dog already sat on) looked harmless, but WEAR_LEG_MIN
         // holds a leg open: a bout that began out near the off-balance guard
         // had its first leg carried on past the quarter, round onto the gate
