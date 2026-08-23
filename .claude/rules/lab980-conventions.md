@@ -24,7 +24,10 @@ true in *this* repo, so it is here rather than one clone away.
 5. **Re-request a review after substantial pushes** by commenting
    `@codex review`. It reviews when a PR opens, when a draft is marked ready,
    and when it's asked — *not* on every push. A PR whose reviewed commit is
-   ten commits behind its head has not been reviewed.
+   ten commits behind its head has not been reviewed. The one push that
+   doesn't need re-reviewing is a sync of this file to canonical: its content
+   is reviewed in the lab980 PR that authors it, and asking for it again in
+   every site repo reviews the same bytes N times to learn nothing.
 6. **Which branch it targets is this repo's business** — its own `CLAUDE.md`
    says, and that answer wins over this file. Where it says nothing: target
    `main`. Sites here genuinely differ; `boxoffice` ships beta-first, so
