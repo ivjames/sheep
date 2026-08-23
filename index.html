@@ -176,7 +176,9 @@
     position: fixed;
     top: 52px;
     right: 14px;
-    z-index: 45;
+    /* z above the title overlay: on the title screen the kennel is opened
+       from the career line inside that panel, not from the (hidden) HUD */
+    z-index: 60;
     width: min(330px, calc(100vw - 28px));
     max-height: calc(100vh - 70px);
     overflow-y: auto;
@@ -211,6 +213,60 @@
     cursor: pointer;
   }
   .kennel-blurb { font-size: 11.5px; line-height: 1.35; opacity: 0.66; }
+  /* rating bar with a ceiling mark: the fill is what the dog IS, the notch
+     is what it could become. The number is never shown — finding the
+     ceiling by working the dog is the point. */
+  .kennel-bar {
+    position: relative;
+    height: 9px;
+    border-radius: 999px;
+    background: rgba(0,0,0,0.28);
+    margin: 6px 0 4px;
+    overflow: hidden;
+  }
+  .kennel-bar i {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    border-radius: 999px;
+    background: var(--gold);
+    transition: width 0.35s ease;
+  }
+  .kennel-bar u {
+    position: absolute;
+    top: -2px; bottom: -2px;
+    width: 2px;
+    background: var(--cream);
+    opacity: 0.75;
+  }
+  /* at the ceiling: the fill goes quiet, so a maxed rating reads as done
+     rather than as merely long */
+  .kennel-row.at-cap .kennel-bar i { background: #7ede6f; }
+  .kennel-spend {
+    font-family: var(--display);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--plum);
+    background: var(--gold);
+    border: 0;
+    border-radius: 999px;
+    padding: 3px 9px;
+    margin-left: 6px;
+    cursor: pointer;
+  }
+  .kennel-spend[disabled] { opacity: 0.3; cursor: default; }
+  #kennel-roster { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  #kennel-roster button {
+    font-family: var(--display);
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--cream);
+    background: rgba(255, 246, 232, 0.12);
+    border: 0;
+    border-radius: 999px;
+    padding: 5px 11px;
+    cursor: pointer;
+  }
+  #kennel-roster button.on { background: var(--gold); color: var(--plum); }
   .kennel-foot {
     display: flex;
     align-items: center;
@@ -425,9 +481,34 @@
   .big-btn .btn-label { display: flex; align-items: center; justify-content: center; gap: 9px; }
   .big-btn .btn-label svg { width: 21px; height: 21px; flex: 0 0 21px; display: block; }
   .mode-row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  /* who's on the whistle, and how far the career has got */
+  .career-line {
+    display: block;
+    margin: 0 auto 14px;
+    padding: 7px 15px;
+    font-family: var(--display);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--cream);
+    background: rgba(255, 246, 232, 0.1);
+    border: 0;
+    border-radius: 999px;
+    cursor: pointer;
+    opacity: 0.9;
+  }
+  .career-line:hover { background: rgba(255, 246, 232, 0.18); }
+  .career-line strong { color: var(--gold); }
   .keys-note { margin: 16px 0 0; font-size: 12.5px; font-weight: 700; opacity: 0.65; }
   /* dev/enthusiast affordance: the field's seed, tap to copy a shareable
      link — same styling family as .build-tag, just clickable */
+  .learned {
+    margin: 2px 0 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    opacity: 0.85;
+  }
+  .learned strong { color: var(--gold); }
   .seed-chip {
     margin: 8px 0 0;
     font-size: 11px;
@@ -485,16 +566,16 @@
   <button class="hud-chip" id="mute-btn" aria-label="Toggle sound">🔊</button>
 </div>
 
-<!-- the dog's attribute sheet: four knobs the training mechanic will move -->
+<!-- the dog's sheet: what it is now, and how far it can go -->
 <div id="kennel" class="hidden">
-  <h3>🦴 Kennel</h3>
-  <p class="kennel-note">What this dog is made of. Baseline is the dog the game shipped with — slide either way to feel the difference.</p>
+  <h3>🦴 <span id="kennel-name">Dog</span></h3>
+  <p class="kennel-note" id="kennel-sub">A green dog.</p>
   <div id="kennel-rows"></div>
   <div class="kennel-foot">
-    <button id="kennel-reset">Reset to baseline</button>
+    <button id="kennel-new">Raise a new dog</button>
     <button id="kennel-share">Copy dog link</button>
   </div>
-  <p class="kennel-note" style="margin:10px 0 0">Ratings persist, and ride in the URL: <code>?dog-speed=0.9&amp;dog-stamina=0.2</code>.</p>
+  <div id="kennel-roster"></div>
 </div>
 
 <!-- dev shortcut: jump between levels for stress-testing -->
@@ -520,6 +601,7 @@
       <div><span class="glyph"><svg viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M383.46 123.668l-4.66 17.387C430.868 155.005 467 202.095 467 256c0 53.904-36.133 100.994-88.2 114.945l4.66 17.387C443.31 372.295 485 317.962 485 256c0-61.963-41.69-116.295-101.54-132.332zM307 147.102c-38.21 31.665-62.18 50.07-92.316 59.488-30.27 9.46-65.937 10.324-129.684 10.4v78.02c63.747.076 99.415.94 129.684 10.4 30.136 9.418 54.107 27.823 92.316 59.488V147.102zm64.035 22.93l-4.658 17.388C397.46 195.748 419 223.822 419 256s-21.54 60.252-52.623 68.58l4.658 17.387C409.902 331.552 437 296.237 437 256c0-40.238-27.098-75.552-65.965-85.967zm-12.424 46.364l-4.657 17.387C364.05 236.49 371 245.547 371 256s-6.95 19.51-17.047 22.217l4.658 17.387c17.885-4.792 30.392-21.09 30.392-39.604 0-18.513-12.507-34.812-30.39-39.604zM67 216.998L60 217c-1.75 0-2.906.44-4.574 1.898-1.668 1.46-3.578 4.104-5.2 7.756C46.977 233.96 45 245 45 256s1.978 22.04 5.225 29.346c1.623 3.652 3.533 6.296 5.2 7.756C57.096 294.562 58.25 295 60 295l7 .002v-78.004zm258 17.316v43.372c3.018-.413 5.432-.966 6.975-1.737 2.39-1.196 3.554-2.3 4.8-5.104C338.022 268.04 339 263.25 339 256s-.978-12.04-2.225-14.846c-1.246-2.804-2.41-3.908-4.8-5.103-1.543-.77-3.957-1.323-6.975-1.736zM87.533 313.027L115.027 423h62.252c-3.437-10.215-11.674-22.83-20.997-38.37-11.1-18.5-22.693-41.56-24.824-71.13-12.897-.304-27.38-.428-43.927-.473z"/></svg></span><span><strong>Charge</strong> right at a sheep and the dog <strong>barks</strong> — a burst of pressure, and the only thing that moves a planted sheep.</span></div>
       <div><span class="glyph"><svg viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M93.75 81.443c-5.38 0-12.368 2.49-22.358 8.967 3.966 4.682 8.167 9.687 16.47 19.256 5.782 6.663 11.618 13.29 16.026 18.088.038.042.055.055.092.096l30.894-17.932-14.652-14.148c-11.292-9.404-18.644-13.866-25.418-14.293-.345-.022-.696-.034-1.055-.034zm120.08 15.082c-.885-.01-1.767-.006-2.643.01-10.46.193-20.2 2.23-26.742 5.424l-67.262 39.038c2.45.544 4.885 1.196 7.287 2.02 17.275 5.923 33.093 18.223 49.568 34.7l216.44 213.5 80.978-44.433L258.54 111.38c-8.656-7.84-22.49-12.908-36.693-14.394-2.677-.28-5.363-.43-8.018-.46zM58.192 102.74c-17.543 20.723-20.57 37.186-15.326 57.004.692 2.618 3.057 6.357 6.373 10.47 2.195-3.144 4.55-6.304 7.086-9.478 3.99-4.995 8.385-9.183 13.085-12.558l-.106-.2 2.768-1.61c1.354-.862 2.73-1.66 4.13-2.393l11.868-6.89c-4.175-4.618-8.94-10.017-13.803-15.622-5.956-6.864-11.732-13.62-16.074-18.723zm184.093 13.438l58.415 61.67c-46.086-5.037-56.79 13.2-69.027 34.2l-57.334-59.304 67.946-36.566zM103.702 157.23c-.714-.016-1.43-.016-2.15.002-6.976.18-14.207 2.058-22.252 5.885-3.035 2.29-5.99 5.196-8.91 8.852-25.77 32.264-30.45 59.135-25.484 83.477 4.965 24.343 20.536 46.656 37.916 66.455 13.314 15.168 28.86 23.992 48.472 27.93 19.614 3.94 43.438 2.708 71.98-3.475 33.246-7.2 66.01 8.42 95.81 27.665 26.118 16.868 50.676 37.09 70.98 49.95l8.79-18.935-217.52-214.57-.022-.022c-15.524-15.524-29.565-25.905-42.682-30.402-5.02-1.722-9.925-2.695-14.928-2.813zm367.08 210.456l-73.45 40.304-10.48 22.567 70.833-38.41 13.096-24.46z"/></svg></span><span>Prefer real trial handling? In command mode the dog works alone and you call it: <em>come by</em> (clockwise), <em>away</em> (counter), <em>walk on</em> (faster each tap), <em>steady</em> (slower), <em>lie down</em> (halt), <em>look back</em> (send it after sheep it left behind).</span></div>
     </div>
+    <button class="career-line" id="career-line"></button>
     <div class="mode-row">
       <button class="big-btn" id="start-drag-btn"><span class="btn-label"><svg viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M311.133 257.95a15.074 15.074 0 0 1-12.845 17.026l-147.248 20.61-21.33 32.522-82.637 11.57 21.33-32.568-24.547 3.44c-.278 0-.555.12-.843.165a15.218 15.218 0 0 1-2.108.144 15.074 15.074 0 0 1-2.074-30.016c.29 0 .567 0 .855-.078l24.547-3.438-29.45-25.512 82.582-11.547 29.45 25.51 147.26-20.608a15.196 15.196 0 0 1 2.107-.145 15.085 15.085 0 0 1 14.953 12.923zm-36.704-38.546a32.4 32.4 0 0 1 10.847-10.326 23.427 23.427 0 0 1 13.422-3.04 27.875 27.875 0 0 1 13.542 5.047 44.557 44.557 0 0 1 11.924 12.59 66.342 66.342 0 0 1 8.386 19.134 77.48 77.48 0 0 1 2.562 21.995 67.895 67.895 0 0 1-3.494 19.966 46.132 46.132 0 0 1-8.54 15.352 28.163 28.163 0 0 1-12.402 8.552 23.382 23.382 0 0 1-13.765.255 32.012 32.012 0 0 1-12.512-7.122 45.478 45.478 0 0 1-5.734-6.2l-32.278 4.514a131.154 131.154 0 0 0 7.1 15.973 104.566 104.566 0 0 0 18.656 25.512 69.016 69.016 0 0 0 23.893 15.806 48.373 48.373 0 0 0 27.597 2.22 53.43 53.43 0 0 0 26.31-14.876c7.898-7.853 14.42-18.258 19.112-30.514a131.997 131.997 0 0 0 8.32-41.995 153.26 153.26 0 0 0-5.48-46.92 128.758 128.758 0 0 0-18.49-39.932c-7.6-10.726-16.417-18.946-25.78-24.403a52.998 52.998 0 0 0-27.962-7.62 48.573 48.573 0 0 0-26.278 8.718 69.88 69.88 0 0 0-20.165 21.897 107.505 107.505 0 0 0-11.99 29.516A137.144 137.144 0 0 0 237.68 235l31.192-4.37a49.172 49.172 0 0 1 5.557-11.226zm198.305-34.984c-10.926-35.274-27.287-64.757-46.842-87.374-18.557-21.518-39.544-36.26-61.118-44.213-20.155-7.41-40.564-8.74-59.953-4.248-18.058 4.204-35.196 13.466-50.603 27.62-14.42 13.21-26.09 29.626-35.185 47.807a233.224 233.224 0 0 0-19.29 56.57 286.023 286.023 0 0 0-5.856 60.674l22.582-3.16a209.143 209.143 0 0 1 5.047-40.344 166.26 166.26 0 0 1 15.972-42.926c7.365-13.4 16.716-25.124 27.997-34.087 11.89-9.44 24.88-14.986 38.3-16.64 14.165-1.774 28.773.744 42.938 7.51 14.863 7.1 29.084 18.78 41.485 34.774 12.856 16.572 23.515 37.46 30.66 61.917a225.515 225.515 0 0 1 8.74 74.65c-1.254 24.05-6.4 46.422-14.72 65.656-8.042 18.58-18.857 33.887-31.824 44.88-12.313 10.47-26.345 16.915-41.463 18.656a76.226 76.226 0 0 1-41.163-7.1c-12.313-5.722-23.826-14.485-34.03-25.51a162.212 162.212 0 0 1-25.724-37.637 204.584 204.584 0 0 1-14.542-38.578l-22.484 3.106a280.965 280.965 0 0 0 19.966 57.823 228.2 228.2 0 0 0 32.168 50.092c12.99 15.186 27.82 27.83 43.914 36.793 17.18 9.574 36.027 15.064 55.705 14.865 21.263-.21 41.44-7.022 59.52-19.778 19.356-13.654 36.005-33.897 48.617-59.432 13.244-26.82 21.697-58.788 24.048-93.64a300.742 300.742 0 0 0-12.856-108.76z"/></svg>Guide the dog</span><span class="sub">it chases your finger</span></button>
       <button class="big-btn alt" id="start-cmd-btn"><span class="btn-label"><svg viewBox="0 0 512 512" aria-hidden="true"><path fill="currentColor" d="M93.75 81.443c-5.38 0-12.368 2.49-22.358 8.967 3.966 4.682 8.167 9.687 16.47 19.256 5.782 6.663 11.618 13.29 16.026 18.088.038.042.055.055.092.096l30.894-17.932-14.652-14.148c-11.292-9.404-18.644-13.866-25.418-14.293-.345-.022-.696-.034-1.055-.034zm120.08 15.082c-.885-.01-1.767-.006-2.643.01-10.46.193-20.2 2.23-26.742 5.424l-67.262 39.038c2.45.544 4.885 1.196 7.287 2.02 17.275 5.923 33.093 18.223 49.568 34.7l216.44 213.5 80.978-44.433L258.54 111.38c-8.656-7.84-22.49-12.908-36.693-14.394-2.677-.28-5.363-.43-8.018-.46zM58.192 102.74c-17.543 20.723-20.57 37.186-15.326 57.004.692 2.618 3.057 6.357 6.373 10.47 2.195-3.144 4.55-6.304 7.086-9.478 3.99-4.995 8.385-9.183 13.085-12.558l-.106-.2 2.768-1.61c1.354-.862 2.73-1.66 4.13-2.393l11.868-6.89c-4.175-4.618-8.94-10.017-13.803-15.622-5.956-6.864-11.732-13.62-16.074-18.723zm184.093 13.438l58.415 61.67c-46.086-5.037-56.79 13.2-69.027 34.2l-57.334-59.304 67.946-36.566zM103.702 157.23c-.714-.016-1.43-.016-2.15.002-6.976.18-14.207 2.058-22.252 5.885-3.035 2.29-5.99 5.196-8.91 8.852-25.77 32.264-30.45 59.135-25.484 83.477 4.965 24.343 20.536 46.656 37.916 66.455 13.314 15.168 28.86 23.992 48.472 27.93 19.614 3.94 43.438 2.708 71.98-3.475 33.246-7.2 66.01 8.42 95.81 27.665 26.118 16.868 50.676 37.09 70.98 49.95l8.79-18.935-217.52-214.57-.022-.022c-15.524-15.524-29.565-25.905-42.682-30.402-5.02-1.722-9.925-2.695-14.928-2.813zm367.08 210.456l-73.45 40.304-10.48 22.567 70.833-38.41 13.096-24.46z"/></svg>Command mode</span><span class="sub">whistle the dog around</span></button>
@@ -541,6 +623,7 @@
       <div class="stat"><span class="num" id="stat-barks">0</span><span class="lbl">barks</span></div>
       <div class="stat"><span class="num" id="stat-time">0s</span><span class="lbl">time</span></div>
     </div>
+    <p class="learned" id="clear-learned"></p>
     <button class="big-btn" id="next-btn">Next level</button>
   </div>
 </div>
@@ -584,15 +667,15 @@
       blurb: 'How far the dog\u2019s authority reaches. Scales every radius it works through \u2014 flee, notice and bark \u2014 so a big-presence dog moves the flock from further out and stands further off it.',
     },
     speed: {
-      icon: '\u26a1', label: 'Speed', lo: 0.76, hi: 1.24,
+      icon: '⚡', label: 'Speed', lo: 0.76, hi: 1.24,
       blurb: 'Top speed and acceleration, in both drive modes and at every notch of pace. A quick dog gets round a flank before the mob rolls; a slow one has to read the line earlier.',
     },
     stamina: {
-      icon: '\U0001fac1', label: 'Stamina', lo: 0.5, hi: 2.0,
+      icon: '🫁', label: 'Stamina', lo: 0.5, hi: 2.0,
       blurb: 'How long it can hold a sprint, and how fast it gets its wind back. Only real running spends it. Run the pool dry and the dog is blown: its top speed is capped until it has breathed.',
     },
     patience: {
-      icon: '\U0001f9d8', label: 'Patience', lo: 0.6, hi: 1.6,
+      icon: '🧘', label: 'Patience', lo: 0.6, hi: 1.6,
       blurb: 'Time between decisions \u2014 how often the dog stops to re-read the field. A patient dog works in long deliberate legs; an impatient one re-decides constantly and flits. Bout lengths don\u2019t change, only how finely they\u2019re steered. Command and autopilot only.',
     },
   };
@@ -612,6 +695,19 @@
   const STAM_BARK = 0.05;         // a bark is a burst of effort of its own
   const STAM_BLOWN = 0.62;        // top speed while blown...
   const STAM_WIND = 0.30;         // ...until the pool has climbed back to here
+  // ---------- training ----------
+  // Two ways a rating moves, deliberately different in size. DRIFT is what
+  // the level itself taught the dog — small, automatic, and pointed at
+  // whatever it actually spent the level doing. A POINT is a choice, worth
+  // a couple of levels' drift in one go, and it's what lets you push a dog
+  // toward the job you want it for rather than the job it happened to get.
+  const DRIFT_MAX = 0.02;         // most a rating can drift in one level
+  const POINT_STEP = 0.05;        // ...and what one spent point is worth
+  const POINT_PER_LEVEL = 1;
+  // gains taper as a rating nears its ceiling rather than stopping dead at
+  // it: the last stretch crawls, which is how you feel a ceiling coming
+  // without ever being shown the number
+  const CAP_TAPER = 0.15;
   const DOG_SPEED = 345;          // direct-drive top speed
   const DOG_ACCEL = 2400, DOG_DRAG = 6;
   const CMD_SPEED = 340;          // command-mode speed at full pace
@@ -926,6 +1022,9 @@
   // source instead; everything else stays on Math.random on purpose, so a
   // level's field never depends on how long you played the level before it.
   let rngSource = Math.random;
+  // up here with the RNG rather than down with the other scalar helpers:
+  // the career block below rolls a dog's ceilings during init, and needs it
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const rand = (a, b) => a + rngSource() * (b - a);
   const randInt = (a, b) => Math.floor(rand(a, b + 1));
 
@@ -957,7 +1056,105 @@
     for (let i = 0; i < len; i++) s += SEED_ALPHABET[Math.floor(Math.random() * SEED_ALPHABET.length)];
     return s;
   }
-  const runSeed = (urlParams.get('seed') || '').trim() || randomSeed(7);
+  // ---------- the career ----------
+  // The game's first persistent PROGRESS. Everything stored before this
+  // (camera, sim speed) was a preference — losing it cost you nothing. A
+  // career holds the kennel and the level you reached, so it's versioned
+  // from the start and a save it can't read is discarded rather than
+  // guessed at: a fresh career is a mild disappointment, a half-migrated
+  // one is a bug you can't reproduce.
+  const CAREER_KEY = 'comeby-career';
+  const CAREER_V = 1;
+  // every dog starts here, on all four — below the 0.5 baseline, so a
+  // green dog is visibly greener than the one the game shipped with,
+  // but not so green that level 1 turns into a slog while you train out
+  // of it (the early levels are small flocks and a wide gate)
+  const DOG_GREEN = 0.40;
+  // ...and every dog is bounded by ceilings it can't train past. They're
+  // rolled per dog and then NORMALISED to a fixed total, which is the
+  // whole point: a dog that could max all four would make the second dog
+  // you raise a re-grind of the first. Held to a total, every dog is a
+  // specialist, and which one it is, is what you find out by working it.
+  const CAP_LO = 0.55, CAP_HI = 1.0, CAP_SUM = 3.0;
+  const DOG_NAMES = ['Moss', 'Fly', 'Nell', 'Cap', 'Roy', 'Jess', 'Glen', 'Bess',
+    'Sweep', 'Tess', 'Gyp', 'Lad', 'Meg', 'Bill', 'Nap', 'Queen'];
+
+  // Ceilings are drawn from the dog's id through withSeed, the same way a
+  // field is drawn from its level seed — so a dog is reproducible from its
+  // id alone and nothing about it depends on when it was rolled.
+  function rollCaps(id) {
+    return withSeed('dog:' + id, () => {
+      const caps = {};
+      let sum = 0;
+      for (const k of DOG_KEYS) { caps[k] = rand(CAP_LO, CAP_HI); sum += caps[k]; }
+      // normalise to CAP_SUM, then re-clamp — the scale can push a cap out
+      // of range, and a cap below the green start would be a dog born
+      // already finished in that rating
+      for (const k of DOG_KEYS) {
+        caps[k] = clamp(caps[k] * CAP_SUM / sum, Math.max(CAP_LO, DOG_GREEN + 0.05), 1);
+      }
+      return caps;
+    });
+  }
+  function makeDog(name) {
+    const id = randomSeed(6);
+    const stats = {};
+    for (const k of DOG_KEYS) stats[k] = DOG_GREEN;
+    return { id, name: name || DOG_NAMES[Math.floor(Math.random() * DOG_NAMES.length)],
+             stats, caps: rollCaps(id), points: 0, levels: 0 };
+  }
+  function freshCareer() {
+    const d = makeDog();
+    return { v: CAREER_V, seed: randomSeed(7), level: 1, activeId: d.id, dogs: [d] };
+  }
+  // A stored career is data from outside the program's control — an older
+  // build wrote it, or a user edited it. Every field is re-derived or
+  // re-validated here rather than trusted, and anything that fails sends
+  // the whole thing back to a fresh career.
+  function loadCareer() {
+    let raw = null;
+    try { raw = JSON.parse(localStorage.getItem(CAREER_KEY) || 'null'); }
+    catch (err) { return freshCareer(); } // storage walled off, or not JSON
+    if (!raw || raw.v !== CAREER_V || !Array.isArray(raw.dogs) || !raw.dogs.length) {
+      return freshCareer();
+    }
+    const dogs = [];
+    for (const d of raw.dogs) {
+      if (!d || typeof d.id !== 'string' || !d.id) continue;
+      const stats = {}, caps = rollCaps(d.id); // caps are DERIVED, never trusted from the save
+      for (const k of DOG_KEYS) {
+        const v = d.stats && Number(d.stats[k]);
+        stats[k] = Number.isFinite(v) ? clamp(v, 0, 1) : DOG_GREEN;
+      }
+      dogs.push({
+        id: d.id,
+        name: typeof d.name === 'string' && d.name.trim() ? d.name.slice(0, 18) : 'Dog',
+        stats, caps,
+        points: Number.isFinite(Number(d.points)) ? Math.max(0, Math.floor(d.points)) : 0,
+        levels: Number.isFinite(Number(d.levels)) ? Math.max(0, Math.floor(d.levels)) : 0,
+      });
+    }
+    if (!dogs.length) return freshCareer();
+    const lv = Math.floor(Number(raw.level));
+    return {
+      v: CAREER_V,
+      seed: (typeof raw.seed === 'string' && raw.seed.trim()) || randomSeed(7),
+      level: Number.isFinite(lv) && lv >= 1 ? lv : 1,
+      activeId: dogs.some(d => d.id === raw.activeId) ? raw.activeId : dogs[0].id,
+      dogs,
+    };
+  }
+  // ?career=new starts a fresh one without clearing storage by hand —
+  // the only way back to a green dog once you've trained one
+  const career = urlParams.get('career') === 'new' ? freshCareer() : loadCareer();
+  function saveCareer() {
+    try { localStorage.setItem(CAREER_KEY, JSON.stringify(career)); }
+    catch (err) { /* storage walled off — the career just doesn't persist */ }
+  }
+
+  // the run seed is the career's, so resuming replays the same fields you
+  // were working; ?seed= still wins, for sharing and repro
+  const runSeed = (urlParams.get('seed') || '').trim() || career.seed;
   const levelSeed = (n) => runSeed + ':' + n;
   // ?level=N jumps straight to level N — invaluable for testing/repro.
   // Composes with ?seed=: same seed + same level always gives the same
@@ -967,6 +1164,9 @@
     const n = parseInt(urlParams.get('level'), 10);
     return Number.isFinite(n) && n >= 1 ? n : null;
   })();
+  // where the two title buttons drop you: the level the career reached,
+  // unless ?level= overrode it
+  const resumeLevel = () => startAtLevel || career.level;
   // ?speed=N (dev, with an in-game key — see the X handler below) runs the
   // simulation N× the wall clock. The frame loop takes N whole update()
   // passes at the real dt instead of stretching dt itself, so every
@@ -983,7 +1183,6 @@
     return u.toString();
   }
   const dist2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
-  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   // Math.hypot for the hot loops: V8's hypot pays for overflow-proof
   // accuracy this sim never needs, and it shows up at 150+ sheep
   const hyp = (x, y) => Math.sqrt(x * x + y * y);
@@ -1099,7 +1298,12 @@
            // when it runs out and clears once STAM_WIND is back, and
            // `windK` is the speed cap it costs — eased, not switched, so
            // the dog runs out of puff instead of hitting a wall
-           stam: 1, blown: false, windK: 1 },
+           stam: 1, blown: false, windK: 1,
+           // what this level taught the dog: each is integrated during play
+           // and cashed in at the gate (see trainDog). They measure WORK
+           // DONE, not time passed, so a level spent standing still teaches
+           // nothing and a hard one teaches plenty.
+           workEffort: 0, workDist: 0, workPress: 0, workSteady: 0 },
     pace: PACE_START, // command-mode speed gradient, 0 (halt) → 1 (flat out)
     handler: { x: 800, y: 560 },
     sheep: [],
@@ -1129,9 +1333,17 @@
   };
 
   // ---------- dog attributes: ratings, derived levers ----------
-  // ratings live here; dogK holds what the sim actually reads, recomputed
-  // only when a rating changes so the hot loops just read a number
-  const dogStats = { presence: 0.5, speed: 0.5, stamina: 0.5, patience: 0.5 };
+  // dogStats/dogCaps are BOUND to the active dog's own records — the same
+  // object, not a copy — so training writes straight through to the career
+  // and switching dogs is a rebind. dogK holds what the sim actually reads,
+  // recomputed only when a rating changes so the hot loops just read a
+  // number.
+  let dogStats = null, dogCaps = null;
+  // bindDog runs once during init, before any of the HUD/kennel element
+  // consts below have been evaluated. Touching them then is a TDZ throw, so
+  // the DOM refresh is gated until the UI has been wired up (see uiReady =
+  // true, just before the first frame).
+  let uiReady = false;
   const dogK = { presence: 1, speed: 1, stamina: 1, patience: 1 };
   // 0 → lo, 0.5 → exactly 1, 1 → hi
   function statK(a, r) {
@@ -1142,31 +1354,35 @@
   }
   // top speed, after the dog's own legs AND whatever wind it has left
   function dogSpeedK() { return dogK.speed * state.dog.windK; }
+  function activeDog() {
+    return career.dogs.find(d => d.id === career.activeId) || career.dogs[0];
+  }
+  function bindDog(id) {
+    if (id && career.dogs.some(d => d.id === id)) career.activeId = id;
+    const d = activeDog();
+    dogStats = d.stats;
+    dogCaps = d.caps;
+    applyDogStats();
+    saveCareer();
+    if (uiReady) { updateKennel(); updateCareerLine(); updateHud(); }
+  }
+  // Raw set, clamped only to 0..1 — the dev sliders are a tuning bench and
+  // must be able to put the sim anywhere, ceiling or not. Training goes
+  // through trainDog() instead, which is what respects the caps.
   function setDogStat(name, r) {
-    if (!DOG_ATTR[name]) return;
+    if (!DOG_ATTR[name] || !dogStats) return;
     dogStats[name] = clamp(r, 0, 1);
     applyDogStats();
-    saveDogStats();
+    saveCareer();
   }
-  function saveDogStats() {
-    try { localStorage.setItem(DOG_KEY, JSON.stringify(dogStats)); }
-    catch (err) { /* storage walled off — the ratings just don't persist */ }
-  }
-  {
-    try {
-      const raw = JSON.parse(localStorage.getItem(DOG_KEY) || 'null');
-      if (raw) for (const k of DOG_KEYS) {
-        if (Number.isFinite(raw[k])) dogStats[k] = clamp(raw[k], 0, 1);
-      }
-    } catch (err) { /* storage walled off or garbage stored — stay baseline */ }
-    // ...and the URL wins over the stored sheet, so a tuning session or a
-    // bug report can pin an exact dog: ?dog-presence=0.9&dog-stamina=0.2.
-    // Prefixed because bare ?speed= is already the sim-speed toggle.
-    for (const k of DOG_KEYS) {
-      const q = parseFloat(urlParams.get(DOG_PARAM + k));
-      if (Number.isFinite(q)) dogStats[k] = clamp(q, 0, 1);
-    }
-    applyDogStats();
+  bindDog(career.activeId);
+  // the URL still wins over the stored sheet, so a tuning session or a bug
+  // report can pin an exact dog: ?dog-presence=0.9&dog-stamina=0.2. It
+  // writes through to the active dog like any other change — prefixed
+  // because bare ?speed= is already the sim-speed toggle.
+  for (const k of DOG_KEYS) {
+    const q = parseFloat(urlParams.get(DOG_PARAM + k));
+    if (Number.isFinite(q)) setDogStat(k, q);
   }
 
   // ---------- hillside ----------
@@ -2026,6 +2242,8 @@
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
     state.dog.stam = 1; state.dog.blown = false; state.dog.windK = 1; // a level starts fresh
+    state.dog.workEffort = 0; state.dog.workDist = 0;
+    state.dog.workPress = 0; state.dog.workSteady = 0;
     state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
     state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.workHold = 0;
     state.pace = PACE_START;
@@ -2042,6 +2260,10 @@
 
   function startLevel(n) {
     state.level = n;
+    // the career follows wherever you go, dev level-jumps included — a jump
+    // IS where you are, and special-casing it would only make the save
+    // disagree with the screen
+    if (career.level !== n) { career.level = n; saveCareer(); }
     state.mode = 'ready'; // field is laid out but the clock waits for the Ready click
     // a random-sized flock, growing fast with the levels — the big mobs
     // are the fun part, so get there quickly, and there's no cap: the
@@ -2786,6 +3008,10 @@
         }
       }
     }
+    d.workDist += dspd * dt;
+    // patience is trained by NOT fidgeting: seconds the dog spent holding a
+    // line — moving, on one command, not mid-cast
+    if (dspd > 20 && !d.casting) d.workSteady += dt;
     updateWind(d, dspd, top, dt);
   }
 
@@ -2802,6 +3028,7 @@
     if (state.mode !== 'playing') { d.stam = 1; d.blown = false; d.windK = 1; return; }
     const over = top > 1 ? (spd / top - STAM_EASY) / (1 - STAM_EASY) : 0;
     const effort = clamp(over, 0, 1) ** 2;
+    d.workEffort += effort * dt; // what it cost is what it teaches
     if (effort > 0) d.stam -= effort * dt / (STAM_POOL * dogK.stamina);
     else d.stam += STAM_REGEN * dogK.stamina * (0.55 + 0.45 * (1 - clamp(spd / (top || 1), 0, 1))) * dt;
     d.stam = clamp(d.stam, 0, 1);
@@ -3187,6 +3414,10 @@
               s.fearT = Math.max(s.fearT, FEAR_HOLD * (k - STARTLE_K) / (1 - STARTLE_K));
             }
             s.panic = Math.max(s.panic, Math.min(1, k * 1.15));
+            // presence is trained by pressure actually LANDED — one scalar
+            // add on the k this loop already computed, so it costs nothing
+            // and can't drift out of step with what the sheep felt
+            d.workPress += k * dt;
             fx += (ddx / dd) * k * 520 * mult;
             fy += (ddy / dd) * k * 520 * mult;
           }
@@ -3378,6 +3609,8 @@
   function levelClear() {
     state.mode = 'clear';
     sfx.win();
+    const gained = trainDog();
+    renderLearned(gained);
     statSheep.textContent = state.sheep.length;
     statBarks.textContent = state.barksUsed;
     statTime.textContent = Math.round(state.levelTime) + 's';
@@ -3390,6 +3623,90 @@
     clearOverlay.classList.remove('hidden');
     cmdUi.style.display = 'none';
     if (state.auto) state.autoWaitT = 2.2; // let the card read, then play on
+  }
+
+  // ---------- training ----------
+  // A rating moves toward its ceiling, never past it, and the closer it
+  // gets the less each gain is worth: the last CAP_TAPER of the range gives
+  // a shrinking fraction of what it would lower down. That taper is the
+  // whole feedback channel for "same start, different ceilings" — a dog
+  // whose gains have gone soft in one rating is telling you where its limit
+  // is, without a number ever being shown.
+  function grow(key, amount) {
+    if (!dogStats || amount <= 0) return 0;
+    const cap = dogCaps[key], from = dogStats[key];
+    if (from >= cap) return 0;
+    const room = cap - from;
+    const scale = room < CAP_TAPER ? room / CAP_TAPER : 1;
+    const to = Math.min(cap, from + amount * scale);
+    dogStats[key] = to;
+    return to - from;
+  }
+  // What the level taught. Each accumulator is normalised into a rough 0..1
+  // share of "a solid level's worth" so the drift doesn't simply scale with
+  // how long you took — a slow level is not a better teacher than a brisk
+  // one, and left un-normalised that's exactly what it would be.
+  function trainDog() {
+    const d = state.dog, gained = {};
+    const secs = Math.max(8, state.levelTime);       // a floor, so a 3-second dev clear can't spike
+    const n = Math.max(1, state.sheep.length);
+    const share = {
+      // seconds at full effort, against a fifth of the level spent sprinting
+      stamina: d.workEffort / (secs * 0.2),
+      // ground covered, against a steady two-thirds-pace level
+      speed: d.workDist / (secs * DOG_SPEED * 0.66),
+      // sheep-seconds of landed pressure, against pressing a third of the
+      // flock at half strength throughout
+      presence: d.workPress / (secs * n * 0.17),
+      // seconds spent holding a line, against three-quarters of the level
+      patience: d.workSteady / (secs * 0.75),
+    };
+    for (const k of DOG_KEYS) {
+      gained[k] = grow(k, DRIFT_MAX * clamp(share[k], 0, 1));
+    }
+    applyDogStats(); // the ratings moved; the sim reads dogK, not dogStats
+    const dog = activeDog();
+    dog.levels++;
+    dog.points += POINT_PER_LEVEL;
+    saveCareer();
+    if (uiReady) updateKennel();
+    return gained;
+  }
+  function spendPoint(key) {
+    const dog = activeDog();
+    if (!dog.points || !DOG_ATTR[key]) return;
+    const got = grow(key, POINT_STEP);
+    if (got <= 0) return; // already at the ceiling — don't burn the point
+    dog.points--;
+    applyDogStats();
+    saveCareer();
+    updateKennel();
+    toast(DOG_ATTR[key].icon + ' ' + dog.name + ': ' + DOG_ATTR[key].label.toLowerCase() +
+      (got < POINT_STEP * 0.5 ? ' — barely. Near its limit.' : ' up'));
+  }
+
+  // What the level taught, on the clear card. Without this the drift is
+  // invisible — 0.02 on a bar nobody is looking at — and an invisible
+  // mechanic may as well not be there. Ratings that moved are named, with
+  // the size of the move shown as arrows rather than a number, and a rating
+  // that has gone soft against its ceiling says so in words: that's the
+  // only place the game ever hints at where a dog's limit is.
+  function renderLearned(gained) {
+    const dog = activeDog();
+    const parts = [];
+    for (const k of DOG_KEYS) {
+      const g = gained[k] || 0;
+      if (g < 0.0005) continue;
+      const arrows = g > DRIFT_MAX * 0.66 ? '▲▲▲' : g > DRIFT_MAX * 0.33 ? '▲▲' : '▲';
+      const soft = dogCaps[k] - dogStats[k] < CAP_TAPER;
+      parts.push(DOG_ATTR[k].icon + ' ' + DOG_ATTR[k].label.toLowerCase() + ' ' +
+        arrows + (soft ? ' (nearing its limit)' : ''));
+    }
+    learnedEl.innerHTML = parts.length
+      ? '<strong>' + dog.name + ' learned:</strong> ' + parts.join(' · ') +
+        '<br>+' + POINT_PER_LEVEL + ' to spend in the kennel 🦴'
+      : '<strong>' + dog.name + '</strong> took nothing from that one. ' +
+        '+' + POINT_PER_LEVEL + ' to spend in the kennel 🦴';
   }
 
   // ---------- autopilot (title demo) ----------
@@ -5055,6 +5372,15 @@
   const clearTitle = document.getElementById('clear-title');
   const clearTag = document.getElementById('clear-tag');
   const clearSeedEl = document.getElementById('clear-seed');
+  const learnedEl = document.getElementById('clear-learned');
+  const careerLineEl = document.getElementById('career-line');
+  function updateCareerLine() {
+    const d = activeDog();
+    careerLineEl.innerHTML = '🐕 <strong>' + d.name + '</strong>' +
+      (d.levels ? ' · ' + d.levels + (d.levels === 1 ? ' level' : ' levels') + ' worked' : ' · green') +
+      ' — level ' + resumeLevel() +
+      (d.points ? ' · <strong>' + d.points + ' to spend</strong>' : '') + ' 🦴';
+  }
   let lastTimeShown = -1, lastStamShown = -1;
   const stamChip = document.getElementById('stam-chip');
   const stamFill = document.getElementById('stam-fill');
@@ -5209,49 +5535,86 @@
   });
 
   // ---------- the kennel ----------
-  // The attribute sheet, live: drag a slider and the sim reads the new
-  // value on the very next frame — no level restart, nothing cached. It's
-  // the bench the training mechanic will be tuned against, so it shows the
-  // raw multiplier each rating lands on next to the rating itself.
+  // The dog's sheet: what it is now, drawn as a bar, and what it could
+  // become, drawn as a notch on the same bar. The ceiling is never given as
+  // a number — working the dog until the gains slow is how you learn what
+  // you've got. Under ?dev=1 each row also gets its raw slider back, which
+  // is the bench the ratings are balanced on.
   const kennel = document.getElementById('kennel');
   const kennelBtn = document.getElementById('kennel-btn');
   const kennelRows = document.getElementById('kennel-rows');
-  const kennelInputs = {};
-  const kennelVals = {};
+  const kennelName = document.getElementById('kennel-name');
+  const kennelSub = document.getElementById('kennel-sub');
+  const kennelRoster = document.getElementById('kennel-roster');
+  const devMode = urlParams.get('dev') === '1';
+  const kennelRowEls = {}, kennelFills = {}, kennelCaps = {},
+        kennelSpends = {}, kennelInputs = {};
   for (const key of DOG_KEYS) {
     const a = DOG_ATTR[key];
     const row = document.createElement('div');
     row.className = 'kennel-row';
     row.innerHTML =
       '<div class="kennel-head"><span>' + a.icon + '</span><span>' + a.label + '</span>' +
-      '<span class="kennel-val"></span></div>' +
-      '<input type="range" min="0" max="1" step="0.01" aria-label="' + a.label + '">' +
+      '<span class="kennel-val"></span>' +
+      '<button class="kennel-spend" aria-label="Train ' + a.label + '">+</button></div>' +
+      '<div class="kennel-bar"><i></i><u></u></div>' +
+      (devMode ? '<input type="range" min="0" max="1" step="0.01" aria-label="' + a.label + '">' : '') +
       '<div class="kennel-blurb">' + a.blurb + '</div>';
-    const input = row.querySelector('input');
-    input.addEventListener('input', () => {
-      setDogStat(key, parseFloat(input.value));
-      paintKennel();
-    });
-    kennelInputs[key] = input;
-    kennelVals[key] = row.querySelector('.kennel-val');
+    const spend = row.querySelector('.kennel-spend');
+    spend.addEventListener('click', () => { spendPoint(key); });
+    if (devMode) {
+      const input = row.querySelector('input');
+      input.addEventListener('input', () => { setDogStat(key, parseFloat(input.value)); updateKennel(); });
+      kennelInputs[key] = input;
+    }
+    kennelRowEls[key] = row;
+    kennelFills[key] = row.querySelector('.kennel-bar i');
+    kennelCaps[key] = row.querySelector('.kennel-bar u');
+    kennelSpends[key] = spend;
+    row.querySelector('.kennel-val').dataset.key = key;
     kennelRows.appendChild(row);
   }
-  function paintKennel() {
+  function updateKennel() {
+    if (!dogStats) return;
+    const d = activeDog();
+    kennelName.textContent = d.name;
+    kennelSub.textContent = d.levels
+      ? d.levels + (d.levels === 1 ? ' level worked' : ' levels worked') +
+        (d.points ? ' · ' + d.points + ' to spend' : '')
+      : 'A green dog — nothing worked yet.';
     for (const key of DOG_KEYS) {
-      const r = dogStats[key];
-      kennelInputs[key].value = r;
-      // the rating as the training mechanic will count it, and beside it
-      // the multiplier the sim actually applies — 1.00× is the baseline
-      kennelVals[key].textContent =
-        Math.round(r * 100) + ' · ' + dogK[key].toFixed(2) + '\u00d7' +
-        (Math.abs(r - 0.5) < 0.005 ? ' base' : '');
+      const r = dogStats[key], cap = dogCaps[key];
+      const atCap = r >= cap - 0.005;
+      kennelFills[key].style.width = (r * 100).toFixed(1) + '%';
+      kennelCaps[key].style.left = (cap * 100).toFixed(1) + '%';
+      kennelRowEls[key].classList.toggle('at-cap', atCap);
+      kennelSpends[key].disabled = !d.points || atCap;
+      kennelSpends[key].textContent = atCap ? '✓' : '+';
+      // the multiplier the sim actually applies is dev-only detail; the
+      // game reads the bar
+      const val = kennelRowEls[key].querySelector('.kennel-val');
+      val.textContent = devMode
+        ? Math.round(r * 100) + ' · ' + dogK[key].toFixed(2) + '\u00d7 · cap ' + Math.round(cap * 100)
+        : '';
+      if (devMode) kennelInputs[key].value = r;
+    }
+    kennelRoster.innerHTML = '';
+    for (const dog of career.dogs) {
+      const b = document.createElement('button');
+      b.textContent = dog.name;
+      if (dog.id === career.activeId) b.className = 'on';
+      b.addEventListener('click', () => {
+        bindDog(dog.id);
+        toast('🐕 ' + dog.name + ' is on the whistle');
+      });
+      kennelRoster.appendChild(b);
     }
   }
-  paintKennel();
-  document.getElementById('kennel-reset').addEventListener('click', () => {
-    for (const key of DOG_KEYS) setDogStat(key, 0.5);
-    paintKennel();
-    toast('🦴 Back to the baseline dog');
+  document.getElementById('kennel-new').addEventListener('click', () => {
+    const d = makeDog();
+    career.dogs.push(d);
+    bindDog(d.id);
+    toast('🐕 ' + d.name + ' joins the kennel — green, and nobody knows what of yet');
   });
   // a shareable dog, the same way the seed chip shares a field
   document.getElementById('kennel-share').addEventListener('click', () => {
@@ -5266,21 +5629,24 @@
       toast('🔗 ' + url);
     }
   });
-  kennelBtn.addEventListener('click', () => {
+  function toggleKennel() {
     kennel.classList.toggle('hidden');
     levelPicker.classList.add('hidden');
-    if (!kennel.classList.contains('hidden')) paintKennel();
-  });
+    if (!kennel.classList.contains('hidden')) updateKennel();
+  }
+  kennelBtn.addEventListener('click', toggleKennel);
+  careerLineEl.addEventListener('click', toggleKennel);
   document.addEventListener('pointerdown', (e) => {
-    if (kennel.contains(e.target) || kennelBtn.contains(e.target)) return;
+    if (kennel.contains(e.target) || kennelBtn.contains(e.target) ||
+        careerLineEl.contains(e.target)) return;
     kennel.classList.add('hidden');
   });
 
   const startDragBtn = document.getElementById('start-drag-btn');
   const startCmdBtn = document.getElementById('start-cmd-btn');
   const nextBtn = document.getElementById('next-btn');
-  startDragBtn.addEventListener('click', () => { ensureAudio(); state.input = 'drag'; startLevel(1); });
-  startCmdBtn.addEventListener('click', () => { ensureAudio(); state.input = 'cmd'; startLevel(1); });
+  startDragBtn.addEventListener('click', () => { ensureAudio(); state.input = 'drag'; startLevel(resumeLevel()); });
+  startCmdBtn.addEventListener('click', () => { ensureAudio(); state.input = 'cmd'; startLevel(resumeLevel()); });
   nextBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
   const readyOverlay = document.getElementById('ready-overlay');
   const readyTitle = document.getElementById('ready-title');
@@ -5340,6 +5706,11 @@
     state.dog.cmd = 'walk';
     state.pace = 0.4;
   }
+  // every element the kennel and career line touch now exists, so the
+  // refresh bindDog() had to skip during init can run for real
+  uiReady = true;
+  updateKennel();
+  updateCareerLine();
   // ?level=N (see "run seed" above) jumps straight past the title into
   // that level's Ready card instead of the attract-mode demo.
   if (startAtLevel) startLevel(startAtLevel);
@@ -5461,7 +5832,8 @@
   };
 
   // debug/test handle
-  window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv, runSeed };
+  window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv, runSeed,
+    career, activeDog, bindDog, makeDog, rollCaps, trainDog, spendPoint, setDogStat, dogK, saveCareer };
 })();
 </script>
 </body>

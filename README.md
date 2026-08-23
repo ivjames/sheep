@@ -69,24 +69,48 @@ made of, and each drives one concrete lever in the sim:
 
 Ratings run 0–1 and **0.5 is the baseline** — the dog the game shipped with.
 The two halves of each range map separately so a rating of exactly 0.5 lands on
-a multiplier of exactly 1.00×, which means a baseline dog plays bit-for-bit the
-game it always did and the ratings can be re-tuned without disturbing it.
+a multiplier of exactly 1.00×, so that dog plays bit-for-bit the game it always
+did and the ratings can be re-tuned without disturbing it.
 
 Stamina is the only one that moves during a level. Only real sprinting spends
 it — a drive, a creep and a steady flank are all free — and a bark costs a
 burst of its own. The HUD bar shows what's left, and the dog sweats when it's
 running short.
 
-These are the knobs a **training/growth mechanic** turns; nothing here decides
-how they'd be *earned*. Keeping the two apart means the progression can be
-designed and redesigned without re-tuning the dog.
+## Raising a dog
 
-- Dev shortcut: the HUD 🦴 chip opens the **kennel** — live sliders for all
-  four, showing the rating and the raw multiplier it lands on. Changes apply on
-  the next frame, no restart.
-- Ratings persist in `localStorage` and ride in the URL as
-  `?dog-presence=0.9&dog-stamina=0.2` (prefixed, because bare `?speed=` is
-  already the sim-speed toggle). "Copy dog link" in the kennel builds one.
+Every dog starts **green** — all four ratings at 0.40, below the baseline — and
+every dog has its own **ceilings** it can't train past. The ceilings are rolled
+per dog and then held to a fixed total, so no dog can max all four: each one is
+a specialist, and *which* specialist is what you find out by working it. They're
+never shown as numbers. You read them off the notch on each bar in the kennel,
+and off gains going soft as a rating nears its limit.
+
+Two things move a rating, deliberately different in size:
+
+- **Drift** — what the level itself taught. The dog's work is measured while you
+  play (effort spent sprinting, ground covered, pressure actually landed on
+  sheep, seconds spent holding a line) and at the gate each rating drifts by up
+  to 0.02 toward whatever the dog actually *did*. A level of hard running builds
+  stamina; a level worked patiently at range builds presence and patience.
+- **Points** — one per level clear, worth 0.05, spent where you choose in the
+  kennel. This is how you push a dog toward the job you want it for rather than
+  the job it happened to get.
+
+The clear card names what the level taught, and says when a rating is nearing
+its limit. Open the **kennel** from the 🦴 HUD chip in game, or from the dog
+line on the title screen, to spend points, switch dogs, or raise a new one.
+
+Progress is a **career save** — your kennel, the level you reached, and the run
+seed, so resuming replays the same fields you were working. `?career=new` starts
+over. A save the build can't read is discarded rather than guessed at.
+
+- Dev: `?dev=1` puts the raw sliders back on every kennel row, showing the
+  rating, the multiplier it lands on and the dog's actual ceiling. That's the
+  bench the ratings get balanced on.
+- Ratings also ride in the URL as `?dog-presence=0.9&dog-stamina=0.2` (prefixed,
+  because bare `?speed=` is already the sim-speed toggle). "Copy dog link" in the
+  kennel builds one.
 
 ## Rules
 
@@ -156,7 +180,6 @@ the fill switched to `currentColor`.
 
 ## Roadmap ideas
 
-- Training the dog: a way to *earn* the four ratings above over a career
 - Sheepdog trial scoring: points for lines, penalties for scattering
 - Split gates / multi-pen levels ("shed five into the left pen")
 - Hazards: a stream with a bridge, mud that slows the flock
