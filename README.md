@@ -55,6 +55,90 @@ Pick one on the title screen, swap any time mid-game with the HUD toggle:
 sheep and the dog barks on its own as it closes in — a burst of extra
 pressure in a ring, and the only thing that shifts a planted sheep.
 
+## The dog
+
+Not every collie is the same animal. Four ratings describe what *this* dog is
+made of, and each drives one concrete lever in the sim:
+
+| Rating | What it moves |
+|---|---|
+| 🎯 **Presence** | Every radius the dog works through — how far sheep flee from it, notice it, and feel its bark — and how far off the flock it stands to drive. |
+| ⚡ **Speed** | Top speed and acceleration, in both drive modes and at every notch of pace. The charge a bark needs scales with it, so a slow dog can still bark. |
+| 🫁 **Stamina** | How quickly it's ready to go *again*. Running is nearly free — a collie is built for that — but every **burst** costs: getting up to speed, and wrenching a hard turn at it. Spend the pool and the dog wants a breather before it can go properly again. |
+| 🧘 **Patience** | Time between decisions — how often the dog stops to re-read the field. Bout lengths are unchanged; only how finely they're steered. A patient dog works in long deliberate legs, an impatient one re-decides constantly. Command and autopilot only. |
+
+Ratings run 0–1 and **0.5 is the baseline** — the dog the game shipped with.
+The two halves of each range map separately so a rating of exactly 0.5 lands on
+a multiplier of exactly 1.00×, so that dog plays bit-for-bit the game it always
+did and the ratings can be re-tuned without disturbing it.
+
+Stamina is the only one that moves during a level, and what spends it is
+**change of motion, not speed**. Holding a run costs a collie almost nothing —
+that is what the breed is for — so the cost sits on bursts: the measure is how
+much the dog's velocity changes, which is zero for cruising dead straight and
+highest for a standing start or a hard turn at pace. Recovery needs a real
+easing off, not just a straight line. The HUD bar shows what's left, and the
+dog sweats when it's running short.
+
+A dog at the baseline rating gets through an ordinary level without ever being
+winded; it is the *unfit* dog that can't go again, which is where the rating
+earns its keep.
+
+## Raising a dog
+
+Every dog starts **green** — all four ratings at 0.40, below the baseline — and
+every dog has its own **ceilings** it can't train past. The ceilings are rolled
+per dog and then held to a fixed total, so no dog can max all four: each one is
+a specialist, and *which* specialist is what you find out by working it. They're
+never shown as numbers. You read them off the notch on each bar in the kennel,
+and off gains going soft as a rating nears its limit.
+
+Two things move a rating, deliberately different in size:
+
+- **Drift** — what the level itself taught. The dog's work is measured while you
+  play (bursts thrown, ground covered, pressure actually landed on sheep,
+  seconds spent holding a line) and at the gate each rating drifts by up to 0.02
+  toward whatever the dog actually *did*. A level of hard stop-start work builds
+  stamina; a level worked patiently at range builds presence and patience. The
+  measures are flock-size independent, so a late level trains as well as an
+  early one.
+- **Points** — one per level clear, spent where you choose in the kennel. This
+  is how you push a dog toward the job you want it for rather than the job it
+  happened to get. A stat with a **drill** spends its point by going and doing
+  the drill, and how well the dog does sets the gain; the rest spend on the
+  spot for a flat 0.05.
+
+### Drills
+
+A drill is a field with a different objective, not a second game — same dog,
+same sheep, same everything, but the pen is replaced by a **ring marked on the
+grass with no fences**, so sheep wander back out and gathering is something you
+keep doing rather than something you finish.
+
+**🫁 The Gather** trains stamina. Four lots scattered wide; get every one inside
+the ring *at the same time*. There is **no clock** — what's measured is how much
+of the run the dog spent blown, which is the stat measuring itself. A fit dog
+that takes its time still scores better than an unfit one that hurries, so it
+is never a speed test in disguise.
+
+Every drill can be run as **practice**, free and unscored, so you can learn one
+without spending a point on it.
+
+The clear card names what the level taught, and says when a rating is nearing
+its limit. Open the **kennel** from the 🦴 HUD chip in game, or from the dog
+line on the title screen, to spend points, switch dogs, or raise a new one.
+
+Progress is a **career save** — your kennel, the level you reached, and the run
+seed, so resuming replays the same fields you were working. `?career=new` starts
+over. A save the build can't read is discarded rather than guessed at.
+
+- Dev: `?dev=1` puts the raw sliders back on every kennel row, showing the
+  rating, the multiplier it lands on and the dog's actual ceiling. That's the
+  bench the ratings get balanced on.
+- Ratings also ride in the URL as `?dog-presence=0.9&dog-stamina=0.2` (prefixed,
+  because bare `?speed=` is already the sim-speed toggle). "Copy dog link" in the
+  kennel builds one.
+
 ## Rules
 
 - Levels are zoomed out — the whole field fits on screen. Each level has a
