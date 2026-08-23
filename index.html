@@ -4135,8 +4135,48 @@
         if (dist2(m.x, m.y, P.gx, P.gy) < GATE_PULL * GATE_PULL) mouth++;
       }
       if (mouth >= flock.n * 0.7) {
-        // most of the worked lot is in the funnel — stand off and let the
-        // gate's own pull drain it; if it jams, walk back in gently
+        // ...and standing off is only the answer when there is nothing
+        // else to be getting on with. The mouth crowd drains itself, so
+        // another lot still out in the grass is work the dog can do for
+        // free while the gate files this one in unattended: the first
+        // call is LOOK BACK, the same one a handler makes, and the
+        // parking below is the fallback for when the crowd at the mouth
+        // really is all that's left. Lying down with sheep loose on the
+        // field is the dog wasting the one thing the funnel just bought
+        // it.
+        //
+        // Two conditions keep that retarget from turning into a whistle
+        // loop between two crowds that BOTH want leaving alone. The
+        // candidate must have sheep OUTSIDE the funnel — a second lot
+        // sitting in the pull is draining on its own account, exactly
+        // like this one, and fetching it would only shove it back off
+        // the gate. And it must sit FARTHER from the gate than the lot
+        // being worked, so every call walks the dog out toward the back
+        // of the field and can't bounce it between two lots forever.
+        // Farthest-from-gate is also the lot issueLookBack itself picks,
+        // so this judges the target the call will actually take rather
+        // than a different one.
+        let cand = null;
+        for (const c of clusterLoose()) {
+          if (c === flock) continue;
+          if (!cand || dist2(c.cx, c.cy, P.gx, P.gy) > dist2(cand.cx, cand.cy, P.gx, P.gy)) cand = c;
+        }
+        if (cand && dist2(cand.cx, cand.cy, P.gx, P.gy) > dist2(flock.cx, flock.cy, P.gx, P.gy)) {
+          for (const m of cand.members) {
+            if (dist2(m.x, m.y, P.gx, P.gy) >= GATE_PULL * GATE_PULL) {
+              // clear the stall clock here rather than leaning on
+              // issueLookBack to do it: the reset there is inside its
+              // `state.auto` branch, and the title demo runs this same
+              // brain with auto false
+              state.demoStallT = 0;
+              issueLookBack();
+              return;
+            }
+          }
+        }
+        // most of the worked lot is in the funnel and there is nobody
+        // else to fetch — stand off and let the gate's own pull drain
+        // it; if it jams, walk back in gently
         state.demoStallT += tick;
         state.wearSide = 0; state.wearT = 0;
         if (state.demoStallT < 5) {
