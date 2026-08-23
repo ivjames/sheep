@@ -163,7 +163,13 @@ over. A save the build can't read is discarded rather than guessed at.
   the bold, unflockable extreme: they barely feel the dog, stray from the
   flock, and **plant their hooves** (huffing steam) and refuse to move. A
   bark — the dog charging right up to them — startles them loose.
-- Trees and rocks block movement. The hedge keeps everyone on the field.
+- Trees and rocks block movement — a tree at its trunk, so the shadow
+  under it is walkable turf. The hedge keeps everyone on the field.
+- The dog **picks its line around them**: it looks a stride up its own
+  path and, if a trunk stands in the corridor it needs, turns by exactly
+  the angle that clears it. From far off that's a lean, up close a
+  swerve, and between two trees it threads the gap — rather than
+  arriving at the trunk and scraping round it.
 
 ## Tech
 

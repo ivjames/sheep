@@ -1224,16 +1224,29 @@
     return a + clamp(d, -rate, rate);
   }
 
+  // A tree blocks at its trunk. Its canopy is overhead and the ellipse under
+  // it is paint on the grass, but the blocking circle used to sit on the
+  // tree's anchor point, which put its southern edge 18px past the foot of
+  // the trunk — right across the shadow. Walking up to a tree from the front
+  // meant stopping short of it in open turf. Lifting the circle onto the
+  // middle of the trunk keeps the same footprint under the canopy while its
+  // bottom edge lands exactly where the trunk meets the ground: `cy` is the
+  // blocking center, `y` stays the drawing anchor. Rocks stand on the ground
+  // they're drawn on, so for them the two are the same point.
+  const TREE_LIFT = 18;
+  const makeObstacle = (x, y, r, kind, v) =>
+    ({ x, y, cy: y - (kind === 'tree' ? TREE_LIFT : 0), r, kind, v });
+
   // push a moving circle out of any obstacle it overlaps, sliding along the edge
   function collideObstacles(e, r) {
     for (const o of state.obstacles) {
-      const dx = e.x - o.x, dy = e.y - o.y;
+      const dx = e.x - o.x, dy = e.y - o.cy;
       const min = r + o.r, dd = dx * dx + dy * dy;
       if (dd < min * min) {
         const d = Math.sqrt(dd);
         const nx = d > 0.001 ? dx / d : 1, ny = d > 0.001 ? dy / d : 0;
         e.x = o.x + nx * min;
-        e.y = o.y + ny * min;
+        e.y = o.cy + ny * min;
         const dot = e.vx * nx + e.vy * ny;
         if (dot < 0) { e.vx -= dot * nx; e.vy -= dot * ny; }
       }
@@ -1293,7 +1306,7 @@
       if (cd < probe && cd > 0.001) { nx += cx / cd; ny += cy / cd; }
     }
     for (const o of state.obstacles) {
-      const cx = d.x - o.x, cy = d.y - o.y;
+      const cx = d.x - o.x, cy = d.y - o.cy;
       const cd = Math.hypot(cx, cy);
       if (cd < o.r + probe && cd > 0.001) { nx += cx / cd; ny += cy / cd; }
     }
@@ -1316,6 +1329,63 @@
     }
     const tl = Math.hypot(tx, ty) || 1;
     return { x: tx / tl * sp, y: ty / tl * sp };
+  }
+
+  // Look-ahead obstacle avoidance: bend the dog's line round a trunk BEFORE
+  // it gets there. slideDes above only wakes at the dog's nose, which is by
+  // definition too late — the dog arrives at the tree, then scrapes around
+  // it, and that's what reads as running into things. Here it looks about a
+  // stride up its own line of travel, and if a trunk stands in the corridor
+  // it needs, it turns by exactly the angle that clears it and no more.
+  //
+  // That angle is free: a trunk grown by the dog's own width subtends a
+  // half-angle asin(R/dist) from where the dog stands, so aiming at the edge
+  // of that cone grazes past it and any wider heading is already clear.
+  // Because the turn shrinks to nothing as the line comes clear, there's no
+  // released-from-avoidance snap and no fixed detour radius to orbit — from
+  // far off it's a lean, up close it's a swerve. Rounding the nearest trunk
+  // can swing the new line into a second one, so it re-checks a few times;
+  // in a gap between two trees that settles into threading it.
+  const AVOID_LOOK = 0.85;                 // seconds of travel looked ahead
+  const AVOID_MIN = 80, AVOID_MAX = 260;   // ...floored and capped, in px
+  const AVOID_PAD = 10;                    // shoulder room past the dog's radius
+  const AVOID_TURN = 1.15;                 // never turn so far it stops making ground
+  function avoidDes(d, dx, dy, sweep, reach) {
+    const sp = Math.hypot(dx, dy);
+    if (sp < 1 || !state.obstacles.length) return { x: dx, y: dy };
+    // a tree past the spot the dog is headed for isn't in its way
+    const look = Math.min(clamp(sp * AVOID_LOOK, AVOID_MIN, AVOID_MAX),
+                          reach === undefined ? Infinity : reach);
+    let a = Math.atan2(dy, dx), turned = 0;
+    for (let pass = 0; pass < 3; pass++) {
+      const ux = Math.cos(a), uy = Math.sin(a);
+      let near = Infinity, th = 0, phi = 0;
+      for (const o of state.obstacles) {
+        const rx = o.x - d.x, ry = o.cy - d.y;
+        const along = rx * ux + ry * uy;
+        if (along <= 0 || along >= near) continue;   // behind, or a farther one already picked
+        const dd = Math.hypot(rx, ry);
+        const R = o.r + DOG_R + AVOID_PAD;
+        if (dd <= R || dd - R > look) continue;      // touching it (slideDes has it), or still too far off
+        const half = Math.asin(R / dd);
+        const off = Math.atan2(ux * ry - uy * rx, along);
+        if (Math.abs(off) >= half) continue;         // this line already clears it
+        near = along; th = off; phi = half;
+      }
+      if (near === Infinity) break;
+      // which shoulder to pass on: a flank keeps the handedness its sweep
+      // already committed to, so this and slideDes never pull opposite ways.
+      // Otherwise pass on the side the dog's line already favors — that's
+      // the shorter way round, and it moves smoothly, so a dog bearing dead
+      // on doesn't flicker between the two.
+      const side = sweep ? -sweep : (th >= 0 ? 1 : -1);
+      const want = clamp(turned + th - side * phi, -AVOID_TURN, AVOID_TURN);
+      if (want === turned) break;                    // capped out: let the contact slide take it
+      a += want - turned;
+      turned = want;
+    }
+    if (!turned) return { x: dx, y: dy };
+    return { x: Math.cos(a) * sp, y: Math.sin(a) * sp };
   }
 
   // ---------- game state ----------
@@ -2214,7 +2284,7 @@
         if (!penClear(x, y, 150)) continue;
         if (dist2(x, y, P.gx, P.gy) < 260 * 260) continue;
         if (!state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + r + 110) ** 2)) continue;
-        state.obstacles.push({ x, y, r, kind, v: Math.floor(rand(0, 2)) });
+        state.obstacles.push(makeObstacle(x, y, r, kind, Math.floor(rand(0, 2))));
         break;
       }
     }
@@ -2353,7 +2423,7 @@
           const x = rand(HEDGE + 90, w - HEDGE - 90), y = rand(HEDGE + 90, h - HEDGE - 90);
           if (dist2(x, y, cx, cy) < (R + 190) ** 2) continue;
           if (!state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + r + 110) ** 2)) continue;
-          state.obstacles.push({ x, y, r, kind, v: Math.floor(rand(0, 2)) });
+          state.obstacles.push(makeObstacle(x, y, r, kind, Math.floor(rand(0, 2))));
           break;
         }
       }
@@ -2948,8 +3018,15 @@
         const td = Math.hypot(tx, ty);
         if (td < 8 && guide.id === null) guide.has = false; // got there
         const sp = Math.min(top, td * 3.4);
-        d.vx += ((td > 0.01 ? tx / td * sp : 0) - d.vx) * 9 * dt;
-        d.vy += ((td > 0.01 ? ty / td * sp : 0) - d.vy) * 9 * dt;
+        let wx = td > 0.01 ? tx / td * sp : 0, wy = td > 0.01 ? ty / td * sp : 0;
+        // the chase picks its line round the trees on the way, rather than
+        // finding them with its nose. The direct drive above is left alone:
+        // there your hand is the steering, and a dog second-guessing it
+        // would just fight you.
+        const av = avoidDes(d, wx, wy, 0, td);
+        wx = av.x; wy = av.y;
+        d.vx += (wx - d.vx) * 9 * dt;
+        d.vy += (wy - d.vy) * 9 * dt;
       } else {
         d.vx -= d.vx * DOG_DRAG * dt;
         d.vy -= d.vy * DOG_DRAG * dt;
@@ -3132,7 +3209,8 @@
         sweep = dir;
       } // lie: desired stays 0
       if (desx || desy) {
-        const sw = slideDes(d, desx, desy, sweep);
+        const av = avoidDes(d, desx, desy, sweep);
+        const sw = slideDes(d, av.x, av.y, sweep);
         desx = sw.x; desy = sw.y;
       }
       d.vx += (desx - d.vx) * 4 * dt;
