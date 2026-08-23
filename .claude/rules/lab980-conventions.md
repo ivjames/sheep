@@ -11,23 +11,36 @@ true in *this* repo, so it is here rather than one clone away.
 2. **Open a pull request.** The PR is the review record, and skipping it to
    save a round trip loses it. If your harness defaults to "don't open a PR
    unless asked", this file is the standing ask: open one.
-3. **Which branch it targets, and whether you merge it yourself, is this
-   repo's business** — its own `CLAUDE.md` says, and that answer wins over
-   this file. Where it says nothing: target `main` and leave the merge to a
-   human. Sites here genuinely differ (`boxoffice` ships beta-first, so
-   feature PRs go to `staging` and there is no reviewer to wait for), and a
-   platform file that pretended otherwise would just be wrong in a way that
-   contradicts the repo you're standing in.
-4. **Watch the PR on a five-minute poll**, not the hourly one a harness will
+3. **Codex reviews it, not a person.** Nobody is waiting to look at your PR, so
+   a PR left open "pending review" is a PR that will sit there forever. The
+   loop is: open it, let the bot review, address what it finds, merge it
+   yourself. `boxoffice` has said this in its own `CLAUDE.md` for a while —
+   it's true everywhere here.
+4. **Verify each finding before you fix it.** The bot is usually right and
+   occasionally not, and a fix pushed on its say-so that changes correct code
+   is worse than the bug it imagined. Read the actual script or file it names
+   first. When it *is* right, push the fix and resolve the thread; when it
+   isn't, say why on the thread rather than silently ignoring it.
+5. **Re-request a review after substantial pushes** by commenting
+   `@codex review`. It reviews when a PR opens, when a draft is marked ready,
+   and when it's asked — *not* on every push. A PR whose reviewed commit is
+   ten commits behind its head has not been reviewed.
+6. **Which branch it targets is this repo's business** — its own `CLAUDE.md`
+   says, and that answer wins over this file. Where it says nothing: target
+   `main`. Sites here genuinely differ; `boxoffice` ships beta-first, so
+   feature PRs go to `staging` and reach `main` by promotion.
+7. **Watch the PR on a five-minute poll**, not the hourly one a harness will
    default to. GitHub's events — CI, review comments, conflict notices — do the
    real work and nearly all arrive within about four minutes of a push; the
    poll exists only to catch the case events can't express, which is that
    nothing happened at all. An hourly poll on a four-minute loop leaves a
-   stalled PR untouched for fifty-six minutes out of sixty.
-5. **Merging does not put anything live.** Deploying is a separate
-   command run on the droplet (or, where a site auto-deploys a branch, a push
-   that has actually completed), and a session working from a laptop or the
-   cloud usually cannot reach the droplet at all. Say plainly that a change is merged
+   stalled PR untouched for fifty-six minutes out of sixty. Stop polling when
+   the PR merges — which, per 3, is something you do, not something you wait
+   for.
+8. **Merging does not put anything live.** Deploying is a separate command run
+   on the droplet (or, where a site auto-deploys a branch, a push that has
+   actually completed), and a session working from a laptop or the cloud
+   usually cannot reach the droplet at all. Say plainly that a change is merged
    but not yet deployed rather than implying it shipped.
 
 ## Deploying
