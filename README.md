@@ -64,7 +64,7 @@ made of, and each drives one concrete lever in the sim:
 |---|---|
 | 🎯 **Presence** | Every radius the dog works through — how far sheep flee from it, notice it, and feel its bark — and how far off the flock it stands to drive. |
 | ⚡ **Speed** | Top speed and acceleration, in both drive modes and at every notch of pace. The charge a bark needs scales with it, so a slow dog can still bark. |
-| 🫁 **Stamina** | How long it holds a sprint and how fast it gets its wind back. Run the pool dry and the dog is **blown** — top speed capped until it has breathed. |
+| 🫁 **Stamina** | How quickly it's ready to go *again*. Running is nearly free — a collie is built for that — but every **burst** costs: getting up to speed, and wrenching a hard turn at it. Spend the pool and the dog wants a breather before it can go properly again. |
 | 🧘 **Patience** | Time between decisions — how often the dog stops to re-read the field. Bout lengths are unchanged; only how finely they're steered. A patient dog works in long deliberate legs, an impatient one re-decides constantly. Command and autopilot only. |
 
 Ratings run 0–1 and **0.5 is the baseline** — the dog the game shipped with.
@@ -72,10 +72,17 @@ The two halves of each range map separately so a rating of exactly 0.5 lands on
 a multiplier of exactly 1.00×, so that dog plays bit-for-bit the game it always
 did and the ratings can be re-tuned without disturbing it.
 
-Stamina is the only one that moves during a level. Only real sprinting spends
-it — a drive, a creep and a steady flank are all free — and a bark costs a
-burst of its own. The HUD bar shows what's left, and the dog sweats when it's
-running short.
+Stamina is the only one that moves during a level, and what spends it is
+**change of motion, not speed**. Holding a run costs a collie almost nothing —
+that is what the breed is for — so the cost sits on bursts: the measure is how
+much the dog's velocity changes, which is zero for cruising dead straight and
+highest for a standing start or a hard turn at pace. Recovery needs a real
+easing off, not just a straight line. The HUD bar shows what's left, and the
+dog sweats when it's running short.
+
+A dog at the baseline rating gets through an ordinary level without ever being
+winded; it is the *unfit* dog that can't go again, which is where the rating
+earns its keep.
 
 ## Raising a dog
 

@@ -672,7 +672,7 @@
     },
     stamina: {
       icon: '🫁', label: 'Stamina', lo: 0.5, hi: 2.0,
-      blurb: 'How long it can hold a sprint, and how fast it gets its wind back. Only real running spends it. Run the pool dry and the dog is blown: its top speed is capped until it has breathed.',
+      blurb: 'How quickly it\u2019s ready to go again. Running is nearly free \u2014 a collie is built for that \u2014 but every burst costs: getting up to speed, and wrenching a hard turn at it. Spend the pool and the dog wants a breather before it can go properly again.',
     },
     patience: {
       icon: '🧘', label: 'Patience', lo: 0.6, hi: 1.6,
@@ -689,12 +689,33 @@
   // Sized so a baseline dog can hold a sprint far longer than any single
   // run at the flock takes: the mechanic is a ceiling on flat-out running,
   // not a clock ticking through every level.
-  const STAM_POOL = 22;           // seconds of sprint from full
-  const STAM_REGEN = 0.11;        // pool fractions per second, resting
-  const STAM_EASY = 0.55;         // fraction of top speed that costs nothing
-  const STAM_BARK = 0.05;         // a bark is a burst of effort of its own
-  const STAM_BLOWN = 0.62;        // top speed while blown...
-  const STAM_WIND = 0.30;         // ...until the pool has climbed back to here
+  // What spends the pool is CHANGE of motion, not speed. A collie's default
+  // gait is fast — holding a run is what the breed is for, and charging it
+  // by the second modelled a sighthound: big top end, small tank. What
+  // actually separates a fit dog from an unfit one is turnaround, so the
+  // cost sits on bursts (accelerating, and hard turns at speed) and the
+  // rating's main job is how fast the wind comes back.
+  //
+  // The measure is |Δv| per frame over top speed, which is zero for cruising
+  // dead straight at any speed, and 1.0 for one standing start to flat out.
+  // BURST_COST is what that one start costs, as a fraction of the pool.
+  const BURST_COST = 0.07;
+  const BURST_CAP = 0.25;         // most one frame can charge — a collision must not read as a sprint
+  // pool per second at flat out. Meant as a token trickle and first written
+  // at 1/60, which measured as the DOMINANT drain over a two-minute level —
+  // a dog running dead straight went from full to blown on it alone, which
+  // is the sighthound model creeping back in through the back door.
+  const STAM_SUSTAIN = 1 / 300;
+  // pool fractions per second, standing. Set against BURST_COST rather than
+  // picked: at 0.17 a 1.5s pause paid back a quarter of the pool, so
+  // stop-start work — the most expensive thing a dog can do — came out
+  // free. This makes one standing start cost about one second of standing
+  // still, and leaves ~3s to be usable again, ~13s to be full.
+  const STAM_REGEN = 0.075;
+  const STAM_BREATHE = 0.6;       // ...tapering to nothing at this share of top speed: you must ease off
+  const STAM_BARK = 0.05;         // a bark is thrown from the chest
+  const STAM_BLOWN = 0.75;        // top speed while blown — a breather, not a punishment...
+  const STAM_WIND = 0.22;         // ...and it clears as soon as this much is back
   // ---------- training ----------
   // Two ways a rating moves, deliberately different in size. DRIFT is what
   // the level itself taught the dog — small, automatic, and pointed at
@@ -1298,7 +1319,7 @@
            // when it runs out and clears once STAM_WIND is back, and
            // `windK` is the speed cap it costs — eased, not switched, so
            // the dog runs out of puff instead of hitting a wall
-           stam: 1, blown: false, windK: 1,
+           stam: 1, blown: false, windK: 1, lastVX: 0, lastVY: 0, breathers: 0,
            // what this level taught the dog: each is integrated during play
            // and cashed in at the gate (see trainDog). They measure WORK
            // DONE, not time passed, so a level spent standing still teaches
@@ -2242,6 +2263,7 @@
     state.dog.cmd = 'lie';
     state.dog.barkCd = 0;
     state.dog.stam = 1; state.dog.blown = false; state.dog.windK = 1; // a level starts fresh
+    state.dog.lastVX = 0; state.dog.lastVY = 0; state.dog.breathers = 0;
     state.dog.workEffort = 0; state.dog.workDist = 0;
     state.dog.workPress = 0; state.dog.workSteady = 0;
     state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
@@ -3015,24 +3037,45 @@
     updateWind(d, dspd, top, dt);
   }
 
-  // The dog's wind. Effort is what it is doing ABOVE an easy working pace,
-  // squared so the cost is concentrated at the sprinting end: a drive, a
-  // creep and a steady flank are all free, and it is holding flat out that
-  // spends the pool. Empty and the dog is blown — top speed capped until it
-  // has breathed STAM_WIND back — and the cap eases in and out rather than
-  // switching, so a dog running out of puff slows like one.
+  // The dog's wind. Bursts spend it; cruising very nearly doesn't.
+  //
+  // |Δv| is the honest measure of a burst because it catches BOTH ways a dog
+  // spends itself — getting up to speed, and wrenching a hard turn while
+  // already there — and it is naturally zero for the thing a collie does all
+  // day, which is run in a straight line. A frame's charge is capped: a
+  // collision resolves as a large velocity change in one step, and an
+  // untrapped one would read as a sprint the dog never ran.
+  //
+  // Run the pool out and the dog needs a BREATHER: its top speed is capped
+  // while it gets its wind back, easing in and out rather than switching, so
+  // it slows like a dog rather than hitting a wall. The cap is mild and
+  // clears quickly — a fit collie is never far from ready, and it's the
+  // UNFIT one that can't go again, which is where the rating lives.
   //
   // Deliberately NOT applied while the level clock is stopped: the pre-level
-  // graze and the title demo would otherwise blow a dog nobody was driving.
+  // graze and the title demo would otherwise wind a dog nobody was driving.
   function updateWind(d, spd, top, dt) {
-    if (state.mode !== 'playing') { d.stam = 1; d.blown = false; d.windK = 1; return; }
-    const over = top > 1 ? (spd / top - STAM_EASY) / (1 - STAM_EASY) : 0;
-    const effort = clamp(over, 0, 1) ** 2;
-    d.workEffort += effort * dt; // what it cost is what it teaches
-    if (effort > 0) d.stam -= effort * dt / (STAM_POOL * dogK.stamina);
-    else d.stam += STAM_REGEN * dogK.stamina * (0.55 + 0.45 * (1 - clamp(spd / (top || 1), 0, 1))) * dt;
-    d.stam = clamp(d.stam, 0, 1);
-    if (d.stam <= 0) d.blown = true;
+    if (state.mode !== 'playing' || dt <= 0) {
+      if (state.mode !== 'playing') { d.stam = 1; d.blown = false; d.windK = 1; d.breathers = 0; }
+      d.lastVX = d.vx; d.lastVY = d.vy;
+      return;
+    }
+    const dv = top > 1
+      ? Math.min(BURST_CAP, hyp(d.vx - (d.lastVX || 0), d.vy - (d.lastVY || 0)) / top)
+      : 0;
+    d.lastVX = d.vx; d.lastVY = d.vy;
+    // a burst is the unit of work here, so it's also the unit of training
+    d.workEffort += dv;
+    const cost = dv * BURST_COST + STAM_SUSTAIN * clamp(spd / (top || 1), 0, 1) * dt;
+    // Resting is the whole other half of the stat, and it has to be a real
+    // easing off: recovery runs from standing up to STAM_BREATHE of top and
+    // is nothing above it. With a floor under it instead, a blown dog got
+    // its wind back fastest by holding a straight sprint — it would have
+    // outrun its own fatigue, which is exactly backwards.
+    const rest = clamp(1 - spd / (top * STAM_BREATHE || 1), 0, 1);
+    const back = STAM_REGEN * dogK.stamina * rest * dt;
+    d.stam = clamp(d.stam - cost / dogK.stamina + back, 0, 1);
+    if (d.stam <= 0 && !d.blown) { d.blown = true; d.breathers = (d.breathers || 0) + 1; }
     else if (d.blown && d.stam >= STAM_WIND) d.blown = false;
     const want = d.blown ? STAM_BLOWN : 1;
     d.windK += (want - d.windK) * Math.min(1, 2.5 * dt);
@@ -3651,15 +3694,21 @@
     const secs = Math.max(8, state.levelTime);       // a floor, so a 3-second dev clear can't spike
     const n = Math.max(1, state.sheep.length);
     const share = {
-      // seconds at full effort, against a fifth of the level spent sprinting
-      stamina: d.workEffort / (secs * 0.2),
+      // bursts thrown, against a busy level's rate. Measured rather than
+      // guessed: autopilot levels throw 0.38-0.50 bursts a second, so the
+      // first guess of 0.25 saturated every time and the card said "maxed"
+      // whatever the dog did. 0.75 leaves a normal level mid-range, with
+      // room above for a harder one.
+      stamina: d.workEffort / (secs * 0.75),
       // ground covered, against a steady two-thirds-pace level
       speed: d.workDist / (secs * DOG_SPEED * 0.66),
       // sheep-seconds of landed pressure, against pressing a third of the
       // flock at half strength throughout
       presence: d.workPress / (secs * n * 0.17),
-      // seconds spent holding a line, against three-quarters of the level
-      patience: d.workSteady / (secs * 0.75),
+      // the share of the level spent holding a line — self-normalising, and
+      // only a dog that never fidgets reaches 1. The old 0.75 coefficient
+      // put a routine level at 0.86-1.09, i.e. always maxed.
+      patience: d.workSteady / secs,
     };
     for (const k of DOG_KEYS) {
       gained[k] = grow(k, DRIFT_MAX * clamp(share[k], 0, 1));
