@@ -7,21 +7,27 @@ true in *this* repo, so it is here rather than one clone away.
 
 ## How changes land
 
-1. Work on a branch, never directly on `main`.
-2. **Open a pull request and merge it.** That is how every change to a lab980
-   site has landed and how it should keep landing — the PR is the review
-   record, and skipping it to save a round trip loses it. If your harness
-   defaults to "don't open a PR unless asked", this file is the standing ask:
-   open one.
-3. **Watch the PR on a five-minute poll**, not the hourly one a harness will
+1. Work on a branch, never directly on the branch that deploys.
+2. **Open a pull request.** The PR is the review record, and skipping it to
+   save a round trip loses it. If your harness defaults to "don't open a PR
+   unless asked", this file is the standing ask: open one.
+3. **Which branch it targets, and whether you merge it yourself, is this
+   repo's business** — its own `CLAUDE.md` says, and that answer wins over
+   this file. Where it says nothing: target `main` and leave the merge to a
+   human. Sites here genuinely differ (`boxoffice` ships beta-first, so
+   feature PRs go to `staging` and there is no reviewer to wait for), and a
+   platform file that pretended otherwise would just be wrong in a way that
+   contradicts the repo you're standing in.
+4. **Watch the PR on a five-minute poll**, not the hourly one a harness will
    default to. GitHub's events — CI, review comments, conflict notices — do the
    real work and nearly all arrive within about four minutes of a push; the
    poll exists only to catch the case events can't express, which is that
    nothing happened at all. An hourly poll on a four-minute loop leaves a
    stalled PR untouched for fifty-six minutes out of sixty.
-4. **Merging to `main` does not put anything live.** Deploying is a separate
-   command run on the droplet, and a session working from a laptop or the cloud
-   usually cannot reach the droplet at all. Say plainly that a change is merged
+5. **Merging does not put anything live.** Deploying is a separate
+   command run on the droplet (or, where a site auto-deploys a branch, a push
+   that has actually completed), and a session working from a laptop or the
+   cloud usually cannot reach the droplet at all. Say plainly that a change is merged
    but not yet deployed rather than implying it shipped.
 
 ## Deploying
