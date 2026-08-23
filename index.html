@@ -1224,24 +1224,34 @@
     return a + clamp(d, -rate, rate);
   }
 
-  // A tree blocks at its trunk. Its canopy is overhead and the ellipse under
-  // it is paint on the grass, but the blocking circle used to sit on the
-  // tree's anchor point, which put its southern edge 18px past the foot of
-  // the trunk — right across the shadow. Walking up to a tree from the front
-  // meant stopping short of it in open turf. Lifting the circle onto the
-  // middle of the trunk keeps the same footprint under the canopy while its
-  // bottom edge lands exactly where the trunk meets the ground: `cy` is the
-  // blocking center, `y` stays the drawing anchor. Rocks stand on the ground
-  // they're drawn on, so for them the two are the same point.
-  const TREE_LIFT = 18;
+  // What each obstacle actually stands on. Both kinds used to block on a
+  // circle sitting square on their drawing anchor, and both reached well
+  // past the thing you can see — out over the ground shadow, which is paint
+  // on the grass, not an object. Walking up to either from the front stopped
+  // you short of it in open turf. `cy`/`cr` are the blocking circle; `x`/`y`
+  // stay the drawing anchor and `r` stays what obstacle placement and the
+  // shadow are measured with, so no seeded field is relaid.
+  const BLOCK = {
+    // a tree blocks at its trunk — the canopy is overhead, and the old
+    // circle's southern edge fell 18px past the foot of the trunk. On the
+    // middle of the trunk it keeps the same footprint under the canopy
+    // while its bottom edge lands exactly where the trunk meets the ground.
+    tree: { dy: -18, r: 32 },
+    // a rock is a lump 38 across and 26 deep sitting a little above its
+    // anchor, so unlike a tree it has no canopy to hide a badly placed
+    // circle: reaching 11px past the stone in front is as wrong as leaving
+    // a gap behind it. A slightly smaller circle on the middle of the
+    // stone fits it within a few px all the way round.
+    rock: { dy: -5, r: 17 },
+  };
   const makeObstacle = (x, y, r, kind, v) =>
-    ({ x, y, cy: y - (kind === 'tree' ? TREE_LIFT : 0), r, kind, v });
+    ({ x, y, r, cy: y + BLOCK[kind].dy, cr: BLOCK[kind].r, kind, v });
 
   // push a moving circle out of any obstacle it overlaps, sliding along the edge
   function collideObstacles(e, r) {
     for (const o of state.obstacles) {
       const dx = e.x - o.x, dy = e.y - o.cy;
-      const min = r + o.r, dd = dx * dx + dy * dy;
+      const min = r + o.cr, dd = dx * dx + dy * dy;
       if (dd < min * min) {
         const d = Math.sqrt(dd);
         const nx = d > 0.001 ? dx / d : 1, ny = d > 0.001 ? dy / d : 0;
@@ -1308,7 +1318,7 @@
     for (const o of state.obstacles) {
       const cx = d.x - o.x, cy = d.y - o.cy;
       const cd = Math.hypot(cx, cy);
-      if (cd < o.r + probe && cd > 0.001) { nx += cx / cd; ny += cy / cd; }
+      if (cd < o.cr + probe && cd > 0.001) { nx += cx / cd; ny += cy / cd; }
     }
     const { w, h } = state.world;
     if (d.x < HEDGE + probe) nx += 1;
@@ -1365,7 +1375,7 @@
         const along = rx * ux + ry * uy;
         if (along <= 0 || along >= near) continue;   // behind, or a farther one already picked
         const dd = Math.hypot(rx, ry);
-        const R = o.r + DOG_R + AVOID_PAD;
+        const R = o.cr + DOG_R + AVOID_PAD;
         if (dd <= R || dd - R > look) continue;      // touching it (slideDes has it), or still too far off
         const half = Math.asin(R / dd);
         const off = Math.atan2(ux * ry - uy * rx, along);
