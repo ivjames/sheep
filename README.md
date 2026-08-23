@@ -96,10 +96,12 @@ and off gains going soft as a rating nears its limit.
 Two things move a rating, deliberately different in size:
 
 - **Drift** — what the level itself taught. The dog's work is measured while you
-  play (effort spent sprinting, ground covered, pressure actually landed on
-  sheep, seconds spent holding a line) and at the gate each rating drifts by up
-  to 0.02 toward whatever the dog actually *did*. A level of hard running builds
-  stamina; a level worked patiently at range builds presence and patience.
+  play (bursts thrown, ground covered, pressure actually landed on sheep,
+  seconds spent holding a line) and at the gate each rating drifts by up to 0.02
+  toward whatever the dog actually *did*. A level of hard stop-start work builds
+  stamina; a level worked patiently at range builds presence and patience. The
+  measures are flock-size independent, so a late level trains as well as an
+  early one.
 - **Points** — one per level clear, worth 0.05, spent where you choose in the
   kennel. This is how you push a dog toward the job you want it for rather than
   the job it happened to get.

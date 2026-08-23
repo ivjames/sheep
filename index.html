@@ -3692,7 +3692,6 @@
   function trainDog() {
     const d = state.dog, gained = {};
     const secs = Math.max(8, state.levelTime);       // a floor, so a 3-second dev clear can't spike
-    const n = Math.max(1, state.sheep.length);
     const share = {
       // bursts thrown, against a busy level's rate. Measured rather than
       // guessed: autopilot levels throw 0.38-0.50 bursts a second, so the
@@ -3702,9 +3701,15 @@
       stamina: d.workEffort / (secs * 0.75),
       // ground covered, against a steady two-thirds-pace level
       speed: d.workDist / (secs * DOG_SPEED * 0.66),
-      // sheep-seconds of landed pressure, against pressing a third of the
-      // flock at half strength throughout
-      presence: d.workPress / (secs * n * 0.17),
+      // Landed pressure per second. NOT per sheep: dividing by flock size
+      // looked like the obvious normalisation and was a straight bias
+      // against big flocks, because the dog can only press what is inside
+      // its reach — the numerator is bounded by the radius, not by how many
+      // animals are on the field. Measured across a 5.6x range of flock
+      // size (10 to 56 sheep), pressure per second holds flat at 0.70-0.80
+      // while pressure per sheep-second falls 5x, so presence trained worse
+      // and worse the further into the game you got.
+      presence: d.workPress / (secs * 1.5),
       // the share of the level spent holding a line — self-normalising, and
       // only a dog that never fidgets reaches 1. The old 0.75 coefficient
       // put a routine level at 0.86-1.09, i.e. always maxed.
