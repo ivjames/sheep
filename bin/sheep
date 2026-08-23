@@ -184,7 +184,11 @@ cmd_status() {
   local page code build
   page="$(curl -s --max-time 10 -w '\n%{http_code}' "https://$FQDN/" || true)"
   code="$(printf '%s' "$page" | tail -1)"
-  build="$(printf '%s' "$page" | grep -o "const BUILD = '[^']*'" | cut -d"'" -f2)"
+  # head -1: this page polls its own build stamp, so it carries a matching
+  # regex literal and grep returns two lines — `status` printed a two-line
+  # phantom build. `|| true` so a page with no stamp doesn't kill cmd_status
+  # under `set -euo pipefail` before it prints the HTTP code or the cert.
+  build="$(printf '%s' "$page" | grep -o "const BUILD = '[^']*'" | cut -d"'" -f2 | head -1 || true)"
   printf 'live:      https://%s/  ->  HTTP %s  (build %s)\n' \
     "$FQDN" "${code:-unreachable}" "${build:-unknown}"
   local pem="/etc/letsencrypt/live/$FQDN/cert.pem"
