@@ -42,12 +42,17 @@ sheep status      # HEAD, live probe, cert days remaining
 
 Full runbook, including first-time bring-up: `DEPLOY.md`.
 
-Check what is actually live before claiming a deploy happened — `sheep
-status` on the box, or from anywhere:
+Check what is actually live before claiming a deploy happened. `sheep status`
+on the box reports it; from anywhere, ask for the status code and the deployed
+commit rather than eyeballing the page — a 200 only proves the endpoint
+answered, not which build it served:
 
 ```bash
-curl -s https://sheep.lab980.com/ | head -20
+curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://sheep.lab980.com/
+curl -s https://sheep.lab980.com/ | grep -o "const BUILD = '[^']*'"
 ```
+
+(`deploy` stamps that constant; the repo file says `'dev'`.)
 
 ## Things worth knowing
 
