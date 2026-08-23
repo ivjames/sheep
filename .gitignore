@@ -1,2 +1,7 @@
-# Claude Code session scratch (agent worktrees, local settings)
-.claude/
+# Claude Code session scratch (agent worktrees, local settings) — but NOT
+# .claude/rules/, which carries the lab980 conventions the scaffold owns and
+# which has to be in git to reach anyone. Note the `.claude/*` form: git will
+# not descend into a directory excluded as `.claude/`, so a negation inside it
+# is never even considered.
+.claude/*
+!.claude/rules/
