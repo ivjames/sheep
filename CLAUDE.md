@@ -49,10 +49,12 @@ answered, not which build it served:
 
 ```bash
 curl -s -o /dev/null -w 'HTTP %{http_code}\n' https://sheep.lab980.com/
-curl -s https://sheep.lab980.com/ | grep -o "const BUILD = '[^']*'"
+curl -s https://sheep.lab980.com/ | grep -o "const BUILD = '[^']*'" | head -1
 ```
 
-(`deploy` stamps that constant; the repo file says `'dev'`.)
+(`deploy` stamps that constant; the repo file says `'dev'`. The `head -1`
+is load-bearing: the page's own update-checker contains a matching regex
+literal, so an unfiltered grep reports a phantom second build.)
 
 ## Things worth knowing
 
