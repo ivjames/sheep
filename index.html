@@ -2954,7 +2954,13 @@
     return clusters;
   }
 
-  function flockInfo() {
+  // `handler` says a brain is choosing — the autopilot or the title demo —
+  // and a brain is allowed to weigh the drive when it picks up a fresh lot.
+  // The player's dog is not: it works whatever it is nearest and leaves the
+  // choosing to whoever is whistling (LOOK BACK is that call). Same reason
+  // walk on no longer hunts the balance point — a dog that quietly took the
+  // lot the pen wanted next was doing the handler's reading for them.
+  function flockInfo(handler) {
     const clusters = clusterLoose();
     if (!clusters.length) return null;
     const d = state.dog;
@@ -2974,12 +2980,19 @@
         }
         if (best < 300 * 300 || state.workHold > 0) pick = near;
       }
-      // ...otherwise commit to the group farthest from the gate, and
-      // give the commitment time to be worked before it can be re-judged
+      // ...otherwise commit to a fresh lot, and give the commitment time
+      // to be worked before it can be re-judged. Under the autopilot that
+      // lot is the one farthest from the gate — the handler's own reading
+      // of what needs fetching first. Under a player's whistle it's simply
+      // the nearest: the dog takes the sheep in front of it and never
+      // re-picks its work to suit the drive.
       if (!pick) {
         const P = state.pen;
+        let best = -Infinity;
         for (const c of clusters) {
-          if (!pick || dist2(c.cx, c.cy, P.gx, P.gy) > dist2(pick.cx, pick.cy, P.gx, P.gy)) pick = c;
+          const score = handler ? dist2(c.cx, c.cy, P.gx, P.gy)
+                                : -dist2(c.cx, c.cy, d.x, d.y);
+          if (score > best) { best = score; pick = c; }
         }
         state.workHold = WORK_HOLD;
       }
@@ -3040,7 +3053,7 @@
     } else {
       // command mode: the dog works the flock on its own
       const pace = paceSpeed(state.pace);
-      const flock = flockInfo();
+      const flock = flockInfo(state.auto || state.demo);
       let cmd = d.cmd;
       if (!flock && (cmd === 'cb' || cmd === 'aw' || cmd === 'walk')) cmd = 'lie';
       if (cmd === 'walk') {
@@ -3051,9 +3064,11 @@
         // itself side to side — arcing round sheep is what COME BY and
         // AWAY are for, and a dog that flanked on its own account left
         // the handler nothing to call and a sprite that flicked about
-        // whenever the drive got sticky. Where the push sends the flock
-        // is the handler's business now: flank the dog onto the line you
-        // want first, then walk it on.
+        // whenever the drive got sticky. Nor does it shop for a better
+        // lot to press — flockInfo() hands a player's dog whatever it is
+        // nearest, not whatever the pen wants next. Where the push sends
+        // the flock is the handler's business now: flank the dog onto the
+        // line you want first, then walk it on.
         let near = Infinity;
         for (const s of flock.members) {
           near = Math.min(near, hyp(s.x - d.x, s.y - d.y));
@@ -4015,7 +4030,7 @@
     }
     if (!n) return;
     panic /= n;
-    const flock = flockInfo();
+    const flock = flockInfo(true); // the autopilot IS the handler
     // Stand off while the funnel drains — judged against the lot the dog
     // is WORKING, not the whole field. Counted field-wide, a mob draining
     // at the mouth held the dog parked at the gate while stragglers sat
