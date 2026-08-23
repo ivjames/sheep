@@ -254,6 +254,13 @@
     cursor: pointer;
   }
   .kennel-spend[disabled] { opacity: 0.3; cursor: default; }
+  /* practice sits beside the scored run, quieter — it costs nothing and
+     pays nothing, so it shouldn't compete for the eye */
+  .kennel-spend.kennel-prac {
+    background: rgba(255, 246, 232, 0.14);
+    color: var(--cream);
+    font-weight: 600;
+  }
   #kennel-roster { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
   #kennel-roster button {
     font-family: var(--display);
@@ -550,7 +557,7 @@
 
 <div id="hud">
   <button class="hud-chip" id="level-chip" aria-label="Jump to level">Level 1</button>
-  <div class="hud-chip">🐑 <span id="sheep-count" style="font-variant-numeric:tabular-nums">0/0</span> <span class="wide-only">penned</span></div>
+  <div class="hud-chip">🐑 <span id="sheep-count" style="font-variant-numeric:tabular-nums">0/0</span> <span class="wide-only" id="sheep-word">penned</span></div>
   <div class="hud-chip">⏱ <span id="time-chip" style="font-variant-numeric:tabular-nums">0:00</span></div>
   <!-- dev: frame-rate meter, color-coded by budget -->
   <div class="hud-chip" id="fps-chip"><span id="fps-dot">●</span><span class="wide-only"> <span id="fps-val" style="font-variant-numeric:tabular-nums">--</span> fps</span></div>
@@ -725,6 +732,10 @@
   const DRIFT_MAX = 0.02;         // most a rating can drift in one level
   const POINT_STEP = 0.05;        // ...and what one spent point is worth
   const POINT_PER_LEVEL = 1;
+  // what a drill pays. The floor is deliberately above nothing: a scored run
+  // costs a point, and a hard-won gather on a green dog that spent half of
+  // it blown is still a morning's work.
+  const DRILL_MIN = 0.02, DRILL_MAX = 0.08;
   // gains taper as a rating nears its ceiling rather than stopping dead at
   // it: the last stretch crawls, which is how you feel a ceiling coming
   // without ever being shown the number
@@ -1351,6 +1362,9 @@
     funnelViz: false, // overlay chip / F key: heat-map projection of the gate funnel
     groupViz: false,  // overlay chip / F key: group bounds + density heat + centroids
     bakePending: false, // a land bake is chunking across frames — see startBake()
+    // the drill in progress: null is the ordinary game, and every path that
+    // doesn't name it explicitly behaves exactly as it always did
+    drill: null,
   };
 
   // ---------- dog attributes: ratings, derived levers ----------
@@ -2252,6 +2266,18 @@
       });
     }
 
+    resetFieldState();
+    });
+  }
+
+  // Everything a fresh field resets that isn't the field itself: the handler
+  // and dog to their marks, the dog's wind and its work accumulators, the
+  // autopilot's working state, and the per-level counters. Shared by
+  // layoutField and layoutDrill so a drill can never drift out of step with
+  // a level over what "a fresh start" means.
+  function resetFieldState() {
+    const { w, h } = state.world;
+    const P = state.pen;
     // handler stands off to one side of the gate; the dog starts at heel
     const tx = -P.out.y, ty = P.out.x;
     state.handler.x = clamp(P.gx + P.out.x * 150 + tx * (P.gw / 2 + 90), HEDGE + 40, w - HEDGE - 40);
@@ -2277,10 +2303,121 @@
     state.levelTime = 0;
     state.barksUsed = 0;
     state.demo = false;
+  }
+
+  // ---------- drills ----------
+  // A drill is not a second game. `mode === 'playing'` is what gates the
+  // stamina pool, the pressure ring, the clock, input and the whole update
+  // path, so a drill that runs AS a playing field inherits the sim, the
+  // camera, the rendering, the dog and the sheep unchanged.
+  //
+  // The trick that buys that is the pen. state.pen is only a shape, and its
+  // `segs` are its walls — so a drill hands over the same shape with NO
+  // walls: a ring marked on the grass. flockInfo's group-picking, the
+  // autopilot and the collision helpers all keep working against it, and
+  // the wall-less ring is also what makes the drill a drill: sheep wander
+  // back out of it, so gathering is something you keep doing rather than
+  // something you finish.
+  const DRILLS = {
+    gather: {
+      key: 'gather', stat: 'stamina', name: 'The Gather',
+      blurb: 'Four lots, scattered wide. Get every one of them inside the ring at the same time — ' +
+             'and they will not stay there. No clock: what is measured is how much of it you spend blown.',
+      knots: 4, per: 3, ring: 175, spread: 0.82,
+    },
+  };
+  function layoutDrill(cfg, seedStr) {
+    withSeed(seedStr, () => {
+      const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
+      state.world.w = Math.round(Math.sqrt(FIELD_AREA * ar));
+      state.world.h = Math.round(state.world.w / ar);
+      makeDecor();
+      const { w, h } = state.world;
+      const cx = w / 2, cy = h / 2, R = cfg.ring;
+      // the ring: a pen's shape with none of its fences. `inner` is what the
+      // containment test reads, `rect` is its bounding box (penClear and the
+      // obstacle placement below use that unchanged), and `gate` is a
+      // degenerate zero-length segment at the centre so nothing that reaches
+      // for a gate mid-point finds a stale one somewhere else on the field.
+      state.pen = {
+        side: -1, ring: R,
+        rect: { x0: cx - R, y0: cy - R, x1: cx + R, y1: cy + R },
+        segs: [], gate: { x1: cx, y1: cy, x2: cx, y2: cy }, out: { x: 0, y: -1 }, gw: 0,
+        cx, cy, gx: cx, gy: cy, inner: null,
+      };
+      state.obstacles = [];
+      for (let i = 0; i < 3; i++) {
+        const kind = rand(0, 1) < 0.6 ? 'tree' : 'rock';
+        const r = kind === 'tree' ? 32 : 20;
+        for (let tries = 0; tries < 40; tries++) {
+          const x = rand(HEDGE + 90, w - HEDGE - 90), y = rand(HEDGE + 90, h - HEDGE - 90);
+          if (dist2(x, y, cx, cy) < (R + 190) ** 2) continue;
+          if (!state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + r + 110) ** 2)) continue;
+          state.obstacles.push({ x, y, r, kind, v: Math.floor(rand(0, 2)) });
+          break;
+        }
+      }
+      // the lots: evenly spaced round the ring at `spread` of the way to the
+      // wall, so no single lot is a short trip and the run is a circuit
+      state.sheep = [];
+      const a0 = rand(0, Math.PI * 2);
+      const reach = Math.min(w, h) / 2 - HEDGE - 90;
+      for (let k = 0; k < cfg.knots; k++) {
+        const a = a0 + k * Math.PI * 2 / cfg.knots;
+        const kx = clamp(cx + Math.cos(a) * reach * cfg.spread, HEDGE + 80, w - HEDGE - 80);
+        const ky = clamp(cy + Math.sin(a) * reach * cfg.spread, HEDGE + 80, h - HEDGE - 80);
+        for (let i = 0; i < cfg.per; i++) {
+          state.sheep.push({
+            x: kx + rand(-42, 42), y: ky + rand(-42, 42), vx: 0, vy: 0, facing: -1,
+            dir: rand(0, Math.PI * 2), penned: false, settle: null,
+            defiant: false, ...rollTemper(false),
+            panic: 0, fearT: 0, fright: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
+            wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
+            alert: 1, lookT: rand(1, 9), lookHold: 0,
+          });
+        }
+      }
+      resetFieldState();
+      // ...and the dog starts at the ring, not off a gate it hasn't got
+      state.dog.x = cx; state.dog.y = cy + R + 40;
+      state.handler.x = cx; state.handler.y = cy + R + 80;
+      state.dog.dir = -Math.PI / 2;
     });
   }
 
+  // A scored run spends the point up front. Practice spends nothing and pays
+  // nothing — you should be able to learn a drill without it costing you the
+  // only deliberate growth you get per level.
+  function startDrill(key, scored) {
+    const cfg = DRILLS[key];
+    if (!cfg) return false;
+    const dog = activeDog();
+    if (scored && !dog.points) return false;
+    if (scored) { dog.points--; saveCareer(); }
+    state.drill = { key, cfg, scored, t: 0, blownT: 0, inside: 0, best: 0, score: 0, done: false };
+    state.level = state.level; // a drill is not a level: the career's place is untouched
+    state.mode = 'ready';
+    layoutDrill(cfg, runSeed + ':drill:' + key + ':' + (drillRunN++));
+    hud.style.display = 'flex';
+    titleOverlay.classList.add('hidden');
+    clearOverlay.classList.add('hidden');
+    kennel.classList.add('hidden');
+    readyTitle.textContent = cfg.name;
+    readyTag.textContent = cfg.blurb;
+    readySeedEl.textContent = scored
+      ? '🦴 A scored run — one point spent on ' + DOG_ATTR[cfg.stat].label.toLowerCase()
+      : '🌱 Practice — costs nothing, teaches nothing';
+    readySeedEl.onclick = null;
+    readyOverlay.classList.remove('top');
+    readyOverlay.classList.remove('hidden');
+    applyInputMode();
+    updateHud();
+    return true;
+  }
+  let drillRunN = 0;
+
   function startLevel(n) {
+    state.drill = null; // a level is never a drill
     state.level = n;
     // the career follows wherever you go, dev level-jumps included — a jump
     // IS where you are, and special-casing it would only make the save
@@ -2683,6 +2820,17 @@
   // also cached per sub-step — updateDog and the autopilot both ask.
   let simStep = 0; // counts update() sub-steps — see update()
   const clusterCache = { step: -1, clusters: [] };
+  // a sheep the dog should stop treating as work: penned in a level, or
+  // already standing in the ring in a drill. This is a TARGETING judgement
+  // only — a drill's win test reads live containment every frame and nothing
+  // latches, so a gathered sheep that wanders back out becomes work again
+  // the moment it does.
+  function parked(s) {
+    if (s.penned) return true;
+    if (!state.drill) return false;
+    const P = state.pen;
+    return dist2(s.x, s.y, P.cx, P.cy) <= (P.ring - SHEEP_R) ** 2;
+  }
   function clusterLoose() {
     if (clusterCache.step === simStep) return clusterCache.clusters;
     const LINK = 170; // sheep this close hang together as one group
@@ -2690,7 +2838,7 @@
     const seen = new Set();
     const clusters = [];
     for (const s0 of state.sheep) {
-      if (s0.penned || seen.has(s0)) continue;
+      if (parked(s0) || seen.has(s0)) continue;
       seen.add(s0);
       const q = [s0];
       const members = [];
@@ -2703,7 +2851,11 @@
             const cell = grid.get(gridKey(gx + ci, gy + cj));
             if (!cell) continue;
             for (const o of cell) {
-              if (!seen.has(o) && dist2(a.x, a.y, o.x, o.y) < LINK * LINK) {
+              // parked() as well as seen: without it a gathered sheep gets
+              // flood-filled back into the cluster of whichever loose lot
+              // strays near the ring, and the dog is handed a target it has
+              // already delivered
+              if (!seen.has(o) && !parked(o) && dist2(a.x, a.y, o.x, o.y) < LINK * LINK) {
                 seen.add(o);
                 q.push(o);
               }
@@ -3133,6 +3285,10 @@
   // than ignoring the pen outright, so the funnel still works on the
   // stubborn end instead of leaving each one a single-sheep shoving match
   function gateSuction(s) {
+    // a drill's ring is a mark on the grass, not a doorway — nothing about
+    // it says "in here" to a sheep, and the whole drill would be over in
+    // seconds if it did
+    if (state.drill) return null;
     const ease = 0.4 + 0.6 * clamp(1 - (state.level - 1) / 4, 0, 1);
     // a panicked sheep isn't reasoning about doorways — it's running.
     // The gate only draws a sheep with its head together, so a calmly
@@ -3610,8 +3766,10 @@
       }
 
       // through the gate: a sheep counts the moment its center crosses
-      // the pen line — not once its whole body is a fence-width inside
-      const pr = state.pen.rect;
+      // the pen line — not once its whole body is a fence-width inside.
+      // A drill has no gate and nothing latches: see checkDrill, which
+      // tests containment fresh every frame instead.
+      const pr = state.drill ? null : state.pen.rect;
       if (!grazing && pr && s.x > pr.x0 + 4 && s.x < pr.x1 - 4 && s.y > pr.y0 + 4 && s.y < pr.y1 - 4) {
         s.penned = true;
         s.panic = 0;
@@ -3652,6 +3810,7 @@
   function levelClear() {
     state.mode = 'clear';
     sfx.win();
+    if (state.drill) return drillClear();
     const gained = trainDog();
     renderLearned(gained);
     statSheep.textContent = state.sheep.length;
@@ -3666,6 +3825,45 @@
     clearOverlay.classList.remove('hidden');
     cmdUi.style.display = 'none';
     if (state.auto) state.autoWaitT = 2.2; // let the card read, then play on
+  }
+
+  // The drill's own tick. Two jobs: keep the score, and test the win.
+  //
+  // The score is the whole reason this drill has no clock. What a stamina
+  // drill wants to know is not "how fast" — a clock would only make the
+  // drill a speed test wearing stamina's name — but "how much of this did
+  // the dog spend unable to go properly". That reads straight off the blown
+  // state, it is exactly the thing the rating governs, and it needs no
+  // pressure on the player at all: take as long as you like, and a fit dog
+  // still scores better than an unfit one over the same work.
+  //
+  // Counting BREATHERS TAKEN was the obvious alternative and is wrong: it
+  // counts entries into the blown state, so a dog that blows once and never
+  // recovers scores the same 1 as a dog that blew once and got its wind
+  // back. Time spent blown ranks both honestly.
+  function checkDrill(dt) {
+    const D = state.drill;
+    if (!D || state.gateClosing) return;
+    D.t += dt;
+    if (state.dog.blown) D.blownT += dt;
+    const P = state.pen, R = P.ring - SHEEP_R;
+    let inside = 0;
+    for (const s of state.sheep) {
+      if (dist2(s.x, s.y, P.cx, P.cy) <= R * R) inside++;
+    }
+    D.inside = inside;
+    D.best = Math.max(D.best, inside);
+    if (inside >= state.sheep.length) finishDrill();
+  }
+  // score is the share of the run NOT spent blown, so 1.0 is a run the dog
+  // was never winded on and the gain runs DRILL_MIN..DRILL_MAX across it
+  function finishDrill() {
+    const D = state.drill;
+    state.gateClosing = true; // reuses the level-clear settle, without a gate to swing
+    state.gateT = 1;
+    state.clearWait = 0.7;
+    D.score = clamp(1 - D.blownT / Math.max(1, D.t), 0, 1);
+    D.done = true;
   }
 
   // ---------- training ----------
@@ -3739,6 +3937,40 @@
       (got < POINT_STEP * 0.5 ? ' — barely. Near its limit.' : ' up'));
   }
 
+  // A finished drill: pay it, and show the working. The card reuses the
+  // level-clear furniture — three stats and a line underneath — so a drill
+  // reads as the same kind of event as a level rather than a side mode.
+  function drillClear() {
+    const D = state.drill, cfg = D.cfg, dog = activeDog();
+    const stat = DOG_ATTR[cfg.stat];
+    const pct = Math.round(D.score * 100);
+    let got = 0;
+    if (D.scored) {
+      got = grow(cfg.stat, DRILL_MIN + (DRILL_MAX - DRILL_MIN) * D.score);
+      applyDogStats();
+      saveCareer();
+      if (uiReady) updateKennel();
+    }
+    clearTitle.textContent = cfg.name + ' — gathered';
+    clearTag.textContent = D.blownT < 0.5
+      ? 'Never once out of breath. That is a dog that can go again.'
+      : pct > 60 ? 'Blowing at the end of it, but it held together.'
+      : 'Hard work for this dog. It spent most of that getting its wind back.';
+    statSheep.textContent = state.sheep.length;
+    statBarks.textContent = state.barksUsed;
+    statTime.textContent = Math.round(D.t) + 's';
+    learnedEl.innerHTML = D.scored
+      ? '<strong>' + dog.name + ':</strong> ' + pct + '% of the run with wind in hand · ' +
+        stat.icon + ' ' + stat.label.toLowerCase() +
+        (got < 0.0005 ? ' is at its ceiling — nothing left to give'
+                      : ' ' + (got > DRILL_MAX * 0.66 ? '▲▲▲' : got > DRILL_MAX * 0.4 ? '▲▲' : '▲'))
+      : '<strong>Practice.</strong> ' + pct + '% of the run with wind in hand — nothing spent, nothing learnt.';
+    clearSeedEl.textContent = '';
+    clearSeedEl.onclick = null;
+    clearOverlay.classList.remove('hidden');
+    cmdUi.style.display = 'none';
+  }
+
   // What the level taught, on the clear card. Without this the drift is
   // invisible — 0.02 on a bar nobody is looking at — and an invisible
   // mechanic may as well not be there. Ratings that moved are named, with
@@ -3804,7 +4036,12 @@
     // landed in workX, then this branch returned before ever consulting
     // it. Per-lot, a dog sent back for the leftovers keeps working them
     // while the mouth crowd files in on its own.
-    if (flock) {
+    // ...but only where there IS a gate to drain. A drill's ring exerts no
+    // pull, so nothing files in on its own: measured, the dog parked 180px
+    // off the ring and stood there for over two minutes waiting for a
+    // funnel that was never going to move, while three lots sat out in the
+    // grass. With no suction the answer is always to go and fetch them.
+    if (flock && !state.drill) {
       let mouth = 0;
       for (const m of flock.members) {
         if (dist2(m.x, m.y, P.gx, P.gy) < GATE_PULL * GATE_PULL) mouth++;
@@ -3954,6 +4191,9 @@
       state.autoWaitT -= dt;
       if (state.autoWaitT <= 0) {
         if (state.mode === 'ready') beginLevel();
+        // a finished drill was never a level: rolling on to level+1 from its
+        // clear card would advance the career for a run that didn't play one
+        else if (state.drill) { state.drill = null; startLevel(career.level); }
         else startLevel(state.level + 1);
       }
     }
@@ -3978,6 +4218,7 @@
     if (!demo && !state.gateClosing) state.levelTime += dt; // the clock stops at the last sheep
     updateDog(dt);
     updateSheep(dt);
+    checkDrill(dt);
     if (state.gateClosing) {
       if (state.gateT < 1) {
         state.gateT = Math.min(1, state.gateT + dt / 0.9);
@@ -4006,6 +4247,10 @@
     // stamina moves every frame but the bar only needs whole percent, so
     // quantize and dedupe — same trick as the clock, and it keeps a style
     // write off the hot path when the dog is just trotting
+    if (state.drill && state.drill.inside !== lastHeldShown) {
+      lastHeldShown = state.drill.inside;
+      sheepCount.textContent = state.drill.inside + '/' + state.sheep.length;
+    }
     const sq = Math.round(state.dog.stam * 100);
     if (sq !== lastStamShown) {
       lastStamShown = sq;
@@ -4937,8 +5182,11 @@
     // in sync with the finished land, once state.bakePending clears.
     const inGame = (state.mode === 'playing' || state.mode === 'clear' || state.mode === 'ready') && !state.bakePending;
 
-    // pen: trodden dirt + gate glow (fence rails draw above the actors)
-    if (inGame) {
+    // pen: trodden dirt + gate glow (fence rails draw above the actors).
+    // Skipped in a drill: rect is the ring's bounding box, so the dirt drew
+    // as a square patch around a circle, and the gate is a degenerate point
+    // at the centre, so the chevrons stacked up in the middle of the field.
+    if (inGame && !state.drill) {
       const P = state.pen;
       // lighter tread than the old hut-sized pen: this one is a third of
       // the field, and full-strength dirt would swallow the pasture
@@ -5105,6 +5353,29 @@
         ctx.fillText(String(c.n), cp.x, cp.y - ah - 5);
       }
       ctx.restore();
+    }
+
+    // the drill's gathering ring: a rope circle on the ground, sampled in
+    // world space through camPt like the influence ring below, so it bows
+    // with the ridge and tilts with the turf. It fills as the lots come in,
+    // which is the drill's only progress readout — there being no clock to
+    // watch instead.
+    if (state.drill && !state.bakePending) {
+      const P = state.pen, RING_N = 64;
+      const held = state.drill.inside / Math.max(1, state.sheep.length);
+      ctx.beginPath();
+      for (let i = 0; i <= RING_N; i++) {
+        const a = Math.PI * 2 * i / RING_N;
+        const q = camPt(P.cx + Math.cos(a) * P.ring, P.cy + Math.sin(a) * P.ring);
+        i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y);
+      }
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(247, 201, 72, ' + (0.05 + 0.13 * held).toFixed(3) + ')';
+      ctx.fill();
+      ctx.strokeStyle = held >= 1 ? 'rgba(126, 222, 111, 0.95)'
+        : 'rgba(247, 201, 72, ' + (0.4 + 0.5 * held).toFixed(3) + ')';
+      ctx.lineWidth = 3.5 * camScale(P.cx, P.cy);
+      ctx.stroke();
     }
 
     // dog influence ring (a faint pressure aura helps read the herding range) —
@@ -5344,8 +5615,10 @@
     for (const e of ents) e.draw();
 
     // gate flags: small and high off the ground at the two fixed gate-frame
-    // corners, not worth depth-sorting against the flock — left on top
-    if (inGame) {
+    // corners, not worth depth-sorting against the flock — left on top.
+    // A drill's "gate" is a degenerate point at the ring's centre, so it
+    // gets none: there would be two flags stacked in the middle of the field.
+    if (inGame && !state.drill) {
       const P = state.pen;
       for (const [fx, fy] of [[P.gate.x1, P.gate.y1], [P.gate.x2, P.gate.y2]]) {
         const fp = camPt(fx, fy), fk = camScale(fx, fy);
@@ -5435,7 +5708,8 @@
       ' — level ' + resumeLevel() +
       (d.points ? ' · <strong>' + d.points + ' to spend</strong>' : '') + ' 🦴';
   }
-  let lastTimeShown = -1, lastStamShown = -1;
+  let lastTimeShown = -1, lastStamShown = -1, lastHeldShown = -1;
+  const sheepWord = document.getElementById('sheep-word');
   const stamChip = document.getElementById('stam-chip');
   const stamFill = document.getElementById('stam-fill');
 
@@ -5457,9 +5731,16 @@
   }
 
   function updateHud() {
-    levelChip.textContent = 'Level ' + state.level;
-    const penned = state.sheep.filter(s => s.penned).length;
+    levelChip.textContent = state.drill ? state.drill.cfg.name : 'Level ' + state.level;
+    // in a drill nothing is penned — what the chip counts is how many are
+    // being HELD in the ring right now, which can go down as well as up
+    const penned = state.drill
+      ? state.drill.inside
+      : state.sheep.filter(s => s.penned).length;
     sheepCount.textContent = penned + '/' + state.sheep.length;
+    // nothing is penned in a drill — they are being HELD, and the count can
+    // go down as well as up
+    sheepWord.textContent = state.drill ? 'held' : 'penned';
     // the label word hides on phones (.wide-only) — icon carries the mode
     modeBtn.innerHTML = state.input === 'drag'
       ? '🎯<span class="wide-only"> guide</span>'
@@ -5615,7 +5896,21 @@
       (devMode ? '<input type="range" min="0" max="1" step="0.01" aria-label="' + a.label + '">' : '') +
       '<div class="kennel-blurb">' + a.blurb + '</div>';
     const spend = row.querySelector('.kennel-spend');
-    spend.addEventListener('click', () => { spendPoint(key); });
+    // a stat with a drill trains by going and doing it; one without still
+    // spends the point on the spot, so this ships without stranding the
+    // three drills that don't exist yet
+    const drillKey = Object.keys(DRILLS).find(k => DRILLS[k].stat === key);
+    spend.addEventListener('click', () => {
+      if (drillKey) { ensureAudio(); startDrill(drillKey, true); }
+      else spendPoint(key);
+    });
+    if (drillKey) {
+      const prac = document.createElement('button');
+      prac.className = 'kennel-spend kennel-prac';
+      prac.textContent = 'practise';
+      prac.addEventListener('click', () => { ensureAudio(); startDrill(drillKey, false); });
+      row.querySelector('.kennel-head').appendChild(prac);
+    }
     if (devMode) {
       const input = row.querySelector('input');
       input.addEventListener('input', () => { setDogStat(key, parseFloat(input.value)); updateKennel(); });
@@ -5642,8 +5937,12 @@
       kennelFills[key].style.width = (r * 100).toFixed(1) + '%';
       kennelCaps[key].style.left = (cap * 100).toFixed(1) + '%';
       kennelRowEls[key].classList.toggle('at-cap', atCap);
+      const drillKey = Object.keys(DRILLS).find(k => DRILLS[k].stat === key);
       kennelSpends[key].disabled = !d.points || atCap;
-      kennelSpends[key].textContent = atCap ? '✓' : '+';
+      kennelSpends[key].textContent = atCap ? '✓' : drillKey ? 'train' : '+';
+      kennelSpends[key].title = drillKey
+        ? DRILLS[drillKey].name + ' — spends a point, pays by how you do'
+        : 'Spend a point here';
       // the multiplier the sim actually applies is dev-only detail; the
       // game reads the bar
       const val = kennelRowEls[key].querySelector('.kennel-val');
@@ -5701,7 +6000,13 @@
   const nextBtn = document.getElementById('next-btn');
   startDragBtn.addEventListener('click', () => { ensureAudio(); state.input = 'drag'; startLevel(resumeLevel()); });
   startCmdBtn.addEventListener('click', () => { ensureAudio(); state.input = 'cmd'; startLevel(resumeLevel()); });
-  nextBtn.addEventListener('click', () => { ensureAudio(); startLevel(state.level + 1); });
+  nextBtn.addEventListener('click', () => {
+    ensureAudio();
+    // a drill was never a level, so finishing one drops you back at the
+    // level you were on rather than advancing the career past it
+    if (state.drill) { state.drill = null; startLevel(career.level); }
+    else startLevel(state.level + 1);
+  });
   const readyOverlay = document.getElementById('ready-overlay');
   const readyTitle = document.getElementById('ready-title');
   const readyTag = document.getElementById('ready-tag');
@@ -5887,7 +6192,8 @@
 
   // debug/test handle
   window.__cb = { state, startLevel, issueCommand, tryBark, setCamera, camPt, camInv, runSeed,
-    career, activeDog, bindDog, makeDog, rollCaps, trainDog, spendPoint, setDogStat, dogK, saveCareer };
+    career, activeDog, bindDog, makeDog, rollCaps, trainDog, spendPoint, setDogStat, dogK, saveCareer,
+    startDrill, DRILLS, layoutDrill };
 })();
 </script>
 </body>

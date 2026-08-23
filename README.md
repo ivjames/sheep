@@ -102,9 +102,27 @@ Two things move a rating, deliberately different in size:
   stamina; a level worked patiently at range builds presence and patience. The
   measures are flock-size independent, so a late level trains as well as an
   early one.
-- **Points** — one per level clear, worth 0.05, spent where you choose in the
-  kennel. This is how you push a dog toward the job you want it for rather than
-  the job it happened to get.
+- **Points** — one per level clear, spent where you choose in the kennel. This
+  is how you push a dog toward the job you want it for rather than the job it
+  happened to get. A stat with a **drill** spends its point by going and doing
+  the drill, and how well the dog does sets the gain; the rest spend on the
+  spot for a flat 0.05.
+
+### Drills
+
+A drill is a field with a different objective, not a second game — same dog,
+same sheep, same everything, but the pen is replaced by a **ring marked on the
+grass with no fences**, so sheep wander back out and gathering is something you
+keep doing rather than something you finish.
+
+**🫁 The Gather** trains stamina. Four lots scattered wide; get every one inside
+the ring *at the same time*. There is **no clock** — what's measured is how much
+of the run the dog spent blown, which is the stat measuring itself. A fit dog
+that takes its time still scores better than an unfit one that hurries, so it
+is never a speed test in disguise.
+
+Every drill can be run as **practice**, free and unscored, so you can learn one
+without spending a point on it.
 
 The clear card names what the level taught, and says when a rating is nearing
 its limit. Open the **kennel** from the 🦴 HUD chip in game, or from the dog
