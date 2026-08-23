@@ -3066,24 +3066,18 @@
         // the handler nothing to call and a sprite that flicked about
         // whenever the drive got sticky. Nor does it shop for a better
         // lot to press — flockInfo() hands a player's dog whatever it is
-        // nearest, not whatever the pen wants next. Where the push sends
-        // the flock is the handler's business now: flank the dog onto the
-        // line you want first, then walk it on.
-        let near = Infinity;
-        for (const s of flock.members) {
-          near = Math.min(near, hyp(s.x - d.x, s.y - d.y));
-        }
-        // ease off over the last stretch into contact, so the dog settles
-        // onto the back of the mob and escorts it rather than barging
-        // through the middle and having to turn round — which would be
-        // the very back-and-forth the straight line is here to avoid. The
-        // ring is a slice of THIS dog's own reach, not a fixed distance:
-        // a wide-presence dog stands further off and still leans on them.
-        const close = clamp((near - 115 * dogK.presence) / 60, 0, 1);
+        // nearest, not whatever the pen wants next. And it does NOT stop
+        // itself: no contact ring, no easing off as it closes. A dog told
+        // to walk on walks on, right through the middle of them if that's
+        // where the call is left standing — knowing when to take the
+        // pressure off is LIE DOWN, or STEADY, and calling it in time is
+        // the skill. Where the push sends the flock is the handler's
+        // business too: flank the dog onto the line you want first, then
+        // walk it on.
         const tx = flock.cx - d.x, ty = flock.cy - d.y;
         const tl = Math.hypot(tx, ty) || 1;
-        desx = tx / tl * pace * close;
-        desy = ty / tl * pace * close;
+        desx = tx / tl * pace;
+        desy = ty / tl * pace;
       } else if (cmd === 'cb' || cmd === 'aw') {
         // flanking run: orbit the flock just outside its edge.
         // "come by" = clockwise (as seen from above), "away to me" = counter.

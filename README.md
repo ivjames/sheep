@@ -40,7 +40,7 @@ Pick one on the title screen, swap any time mid-game with the HUD toggle:
   | **Come by** | flank clockwise | circles the flock clockwise, swinging wide around strays |
   | **Steady** | halt | stops — pace drops to zero |
   | **Away** (to me) | flank counter-clockwise | circles the other way |
-  | **Walk on** | drive | walks straight at the middle of the flock and leans on it — no swinging or rounding of its own, that's what the flanks are for; each tap adds pace |
+  | **Walk on** | drive | walks straight at the middle of the flock and keeps walking — no swinging or rounding of its own (that's what the flanks are for), and it never eases off on its own either: taking the pressure off is your **lie down**. Each tap adds pace |
   | **Easy** | slow down | each tap sheds pace |
   | **To me** | call off | comes off the sheep toward the gate post |
   | **That'll do** | done | returns to the post and lies down |
