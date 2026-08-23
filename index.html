@@ -592,8 +592,8 @@
       blurb: 'How long it can hold a sprint, and how fast it gets its wind back. Only real running spends it. Run the pool dry and the dog is blown: its top speed is capped until it has breathed.',
     },
     patience: {
-      icon: '\U0001f9d8', label: 'Patience', lo: 0.55, hi: 1.8,
-      blurb: 'How long it will hold a decision. Sticks with a group, sees a wear sweep out, waits out a jam at the gate mouth, and needs a committed charge before it barks. An impatient dog reacts sooner but flits.',
+      icon: '\U0001f9d8', label: 'Patience', lo: 0.6, hi: 1.6,
+      blurb: 'Time between decisions \u2014 how often the dog stops to re-read the field. A patient dog works in long deliberate legs; an impatient one re-decides constantly and flits. Bout lengths don\u2019t change, only how finely they\u2019re steered. Command and autopilot only.',
     },
   };
   const DOG_KEYS = Object.keys(DOG_ATTR);
@@ -1132,21 +1132,13 @@
   // ratings live here; dogK holds what the sim actually reads, recomputed
   // only when a rating changes so the hot loops just read a number
   const dogStats = { presence: 0.5, speed: 0.5, stamina: 0.5, patience: 0.5 };
-  const dogK = { presence: 1, speed: 1, stamina: 1, patience: 1, tick: 1, barkGate: 1 };
+  const dogK = { presence: 1, speed: 1, stamina: 1, patience: 1 };
   // 0 → lo, 0.5 → exactly 1, 1 → hi
   function statK(a, r) {
     return r <= 0.5 ? a.lo + (1 - a.lo) * (r * 2) : 1 + (a.hi - 1) * ((r - 0.5) * 2);
   }
   function applyDogStats() {
     for (const k of DOG_KEYS) dogK[k] = statK(DOG_ATTR[k], dogStats[k]);
-    // the autopilot's decision beat takes a gentler share of patience than
-    // the holds do: stretched the full way, a patient dog re-reads the
-    // field so rarely that it stops tracking a moving flock at all
-    dogK.tick = 1 + (dogK.patience - 1) * 0.45;
-    // ...and the charge a bark needs is a narrower band still — patience
-    // here is only the difference between a dog that yaps whenever it
-    // happens to pass a sheep and one that means it
-    dogK.barkGate = 1 + (dogK.patience - 1) * 0.3;
   }
   // top speed, after the dog's own legs AND whatever wind it has left
   function dogSpeedK() { return dogK.speed * state.dog.windK; }
@@ -2519,7 +2511,7 @@
         for (const c of clusters) {
           if (!pick || dist2(c.cx, c.cy, P.gx, P.gy) > dist2(pick.cx, pick.cy, P.gx, P.gy)) pick = c;
         }
-        state.workHold = WORK_HOLD * dogK.patience;
+        state.workHold = WORK_HOLD;
       }
     } else {
       pick = clusters[0];
@@ -2653,6 +2645,9 @@
             else d.driveT = 0;
             const still = Math.hypot(d.vx, d.vy) < pace * CAST_STILL;
             d.stallT = (still && along > -8) ? (d.stallT || 0) + dt : 0;
+            // the one hold patience keeps, because it IS a decision
+            // interval: how long the dog waits on a stalled drive before it
+            // decides, unprompted, to cast
             if (!d.casting && d.stallT > CAST_WAIT * dogK.patience) d.casting = 1;
             else if (d.casting && d.driveT > CAST_DONE) { d.casting = 0; d.castSide = 0; }
             if (d.casting) {
@@ -2778,15 +2773,14 @@
     // charging bark: rush straight at a sheep and the dog lets one off.
     // The speed it takes is a fraction of THIS dog's top speed, not a flat
     // number — pinned flat, a slow dog could never bark at all and a fast
-    // one barked at a canter. How straight the charge has to be is the
-    // patience rating's business: a patient dog wants to mean it.
+    // one barked at a canter.
     if (d.barkCd <= 0 && dspd > BARK_CHARGE_SPEED * sk) {
       for (const s of state.sheep) {
         if (s.penned) continue;
         const dx = s.x - d.x, dy = s.y - d.y;
         const dd = Math.hypot(dx, dy);
         if (dd < BARK_CHARGE_RANGE && dd > 0.01 &&
-            (d.vx * dx + d.vy * dy) / (dspd * dd) > clamp(0.55 * dogK.barkGate, 0.3, 0.9)) {
+            (d.vx * dx + d.vy * dy) / (dspd * dd) > 0.55) {
           tryBark();
           break;
         }
@@ -3408,10 +3402,17 @@
   function autopilot(dt) {
     state.demoT -= dt;
     if (state.demoT > 0) return;
-    // one beat, read once: `tick` is both the interval to the next decision
+    // One beat, read once: `tick` is both the interval to the next decision
     // and the step every timer below advances by, so stretching it for a
-    // patient dog can't leave the two disagreeing about how much time passed
-    const tick = AUTO_TICK * dogK.tick;
+    // patient dog can't leave the two disagreeing about how much time passed.
+    //
+    // And stretching it is the WHOLE of what patience does. Every hold below
+    // is a threshold in seconds that these same timers count up to, so a
+    // longer beat leaves each bout the same length in seconds and only
+    // changes how often the dog stops to re-read the field — which is what
+    // patience means. Scaling the holds as well (as this first did) made
+    // patience a second, blunter difficulty knob on top of that.
+    const tick = AUTO_TICK * dogK.patience;
     state.demoT = tick;
     const d = state.dog;
     const P = state.pen;
@@ -3442,7 +3443,7 @@
         // gate's own pull drain it; if it jams, walk back in gently
         state.demoStallT += tick;
         state.wearSide = 0; state.wearT = 0;
-        if (state.demoStallT < 5 * dogK.patience) {
+        if (state.demoStallT < 5) {
           if (d.cmd !== 'lie') { d.cmd = 'lie'; state.pace = 0; }
         } else {
           d.cmd = 'walk';
@@ -3509,11 +3510,11 @@
       // half the deliveries for a tighter, undelivered flock.
       state.stallT = Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
         ? state.stallT + tick : 0;
-      const stalled = state.stallT >= STALL_HOLD * dogK.patience;
+      const stalled = state.stallT >= STALL_HOLD;
       state.wearT += tick;
-      if (state.wearSide && state.wearT > WEAR_BOUT * dogK.patience) {
+      if (state.wearSide && state.wearT > WEAR_BOUT) {
         state.wearSide = 0;
-        state.wearT = -WEAR_REST * dogK.patience; // drive at least this long before the next bout
+        state.wearT = -WEAR_REST; // drive at least this long before the next bout
       }
       // spread-or-stalled only decides whether to START a bout — once one is
       // under way it runs on its own account to WEAR_BOUT (that's the bound,
