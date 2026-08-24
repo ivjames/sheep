@@ -6846,6 +6846,12 @@
       if (mix.music <= 0) mix.music = 0.5;
       if (mix.sfx <= 0) mix.sfx = 0.5;
     }
+    // Turning sound back on can be the session's first gesture: M is live on
+    // the title screen, and a mix saved master-muted comes back that way, so
+    // there may be no context and no band yet. applyMix() has nothing to push
+    // at until the outputs exist — and a keypress is a gesture, so this is a
+    // moment the context can be unlocked in.
+    if (silent && (chLevel('music') > 0 || chLevel('sfx') > 0)) ensureAudio();
     applyMix();
     return !silent;
   }
