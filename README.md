@@ -187,8 +187,9 @@ over. A save the build can't read is discarded rather than guessed at.
 
 ## Tech
 
-- Single `index.html` — vanilla JS, canvas rendering, WebAudio synth SFX
-  (whistles, barks, bleats — no audio assets). No build step, no dependencies.
+- Single `index.html` — vanilla JS, canvas rendering, WebAudio effects
+  (synth whistles and stomps, plus CC0 clips for barks, bleats and the gate,
+  embedded as base64). No build step, no dependencies.
 - Works on desktop and mobile browsers; DPR-aware, fit-to-screen world sized
   to the device aspect, tap-to-guide steering, gamepad support,
   `prefers-reduced-motion` respected.
@@ -208,6 +209,13 @@ over. A save the build can't read is discarded rather than guessed at.
   two-stage, exactly invertible camera — the hillside ridge lift, then a
   perspective tilt — so pointer input still lands on the right patch of
   grass in every angle. The choice is remembered in `localStorage`.
+- Sound: two channels mixed apart — the **band** (Kevin MacLeod tracks
+  streamed from `music/`) and the **effects** (every synth voice and sampled
+  clip, gathered onto one WebAudio gain). The HUD 🔊 chip opens a mixer with
+  a level and an on/off per channel, so the music can be turned down without
+  losing the whistles; `M` still silences everything in one key, and the
+  title screen has its own 🔊 door for the music that plays there. The mix is
+  remembered in `localStorage`.
 - Dev shortcut: the HUD level chip is a button — click it to jump between
   levels by tens (1, 10, 20 … 100) for stress-testing big flocks.
 - Dev shortcut: sim speed — the `X` key cycles **1× → 2× → 4×** (or open with
