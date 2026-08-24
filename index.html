@@ -807,6 +807,21 @@
   const PANIC_FLOOR = 0.35;       // ...and below this it no longer takes, so a startle dies out in ~5 rings
   const MERGE_REACH = 520;        // a stray feels the pull of the NEAREST sheep out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
+  // A flank's standoff: how far outside the flock's edge the dog orbits,
+  // and the floor under the flock radius that orbit is measured from. These
+  // are reach, not clearance — the orbit radius IS the distance the sweep
+  // presses from, so they have to move with the flee range that fieldReach
+  // scales, or the same flank lands different pressure on different field
+  // sizes. Left fixed, the clearance sits 45% of the way out to the range
+  // at reachK 0.81 where it sits 36% at stock and 33% at reachK 1.10, so a
+  // flank works softer on a small field and harder on a big one (k = 0.554
+  // / 0.638 / 0.672); scaled, it is 0.638 at every size.
+  //
+  // What is measured from sheep positions — `need`, flock.r — is flock
+  // geometry and does NOT scale: sheep and their spacing keep their size
+  // whatever the field does.
+  const FLANK_CLEAR = 85;         // orbit this far outside the swept sector's outermost sheep
+  const FLANK_MIN = 70;           // ...around at least this much flock
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
   // flock growth: linear and untouched up to FLOCK_SOFT, then easing onto
@@ -3183,7 +3198,7 @@
         // orbit radius: wide enough to clear every sheep in the sector the
         // dog is sweeping into, so a flank swings out and around a strayed
         // outlier instead of slicing inside it toward the flock's middle
-        let need = 70;
+        let need = fieldReach(FLANK_MIN);
         for (const s of flock.members) {
           let da = (Math.atan2(s.y - flock.cy, s.x - flock.cx) - a) * dir;
           da = ((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
@@ -3196,7 +3211,8 @@
         // ease toward the needed radius: with a big scattered flock,
         // strays entering and leaving the sweep sector make it jump, and
         // a smoothed radius walks the aim point instead of teleporting it
-        d.orbitR = d.orbitR ? d.orbitR + (need + 85 - d.orbitR) * Math.min(1, 4 * dt) : need + 85;
+        const want = need + fieldReach(FLANK_CLEAR);
+        d.orbitR = d.orbitR ? d.orbitR + (want - d.orbitR) * Math.min(1, 4 * dt) : want;
         const R = d.orbitR;
         // chase a point on the orbit a little ahead of the sweep (canvas
         // y grows downward, so increasing angle is clockwise on screen).
@@ -4290,7 +4306,7 @@
         // past: the arc gives way to the ground the dog is about to cover,
         // down to a floor that keeps a fast orbit sweeping a real width
         // rather than dithering on the line.
-        const step = paceSpeed(state.pace) / (flock.r + 85) * tick;
+        const step = paceSpeed(state.pace) / (flock.r + fieldReach(FLANK_CLEAR)) * tick;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
         state.wearLegArc += step;
         if (!state.wearSide) { state.wearSide = dAng >= 0 ? -1 : 1; state.wearT = 0; state.stallT = 0; state.wearLegArc = 0; }
