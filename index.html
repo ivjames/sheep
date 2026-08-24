@@ -4495,15 +4495,30 @@
   // lookup rather than a mix per draw — this runs twenty-odd times a frame and
   // has no business building colour strings in the draw path.
   const FLEECE = (() => {
-    const mix = (a, b, t) => '#' + [0, 1, 2].map(i =>
-      Math.round(a[i] + (b[i] - a[i]) * t).toString(16).padStart(2, '0')).join('');
+    const ramp = (a, b, t) => [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * t));
+    const hex = (c) => '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
     const out = [];
     for (let i = 0; i < 16; i++) {
       const t = i / 15;
+      const wool = ramp([0xf6, 0xf1, 0xe6], [0xd9, 0xc6, 0xa8], t);
+      const shade = ramp([0xdd, 0xd3, 0xbf], [0xb8, 0xa2, 0x84], t);
       out.push({
-        wool:  mix([0xf6, 0xf1, 0xe6], [0xd9, 0xc6, 0xa8], t),
-        shade: mix([0xdd, 0xd3, 0xbf], [0xb8, 0xa2, 0x84], t),
-        skin:  mix([0x3b, 0x3b, 0x46], [0x4a, 0x3b, 0x30], t),
+        wool:  hex(wool),
+        shade: hex(shade),
+        skin:  hex(ramp([0x3b, 0x3b, 0x46], [0x4a, 0x3b, 0x30], t)),
+        // Two more stops, for the fleece's radial gradient (see fleeceGrad).
+        // Derived from THIS bucket's own wool and shade rather than picked as
+        // colours, so the lighting stays inside the palette's existing value
+        // step at every temperament — a fixed rim colour would go muddy on
+        // the dark buckets and invisible on the pale ones.
+        //
+        // 0.55 is set from the magnified game-size ladder, not from a zoomed
+        // view: the gradient only ever crosses ~24px of barrel, and the
+        // values that looked right blown up (0.25–0.40) vanished outright at
+        // the size the game is actually played at. Past ~0.70 the belly stops
+        // reading as shaded wool and starts reading as dirty wool.
+        woolMid: hex(ramp(wool, shade, 0.12)),
+        woolRim: hex(ramp(wool, shade, 0.55)),
       });
     }
     return out;
@@ -4519,7 +4534,7 @@
   //
   // Off unless ?perf=1, and then it's driven by tapping the fps chip, so it
   // works on a tablet with no keyboard. A normal player never has a way in.
-  //   normal   — the shipping art: the fleece as nine antialiased fills
+  //   normal   — the shipping art: the fleece as two antialiased fills
   //   bake     — the fleece as one blit from the baked strip
   //   nofleece — no fleece at all: the fleece's share of the frame
   //   nosheep  — no flock at all: every sheep's whole share of the frame,
@@ -4532,7 +4547,8 @@
   // 'auto' spends it on the one question that decides both speed and quality
   // together: the strip is baked at BODY_BAKE× the reference sheep, so while
   // a sheep draws at or below that, the blit is a DOWNSCALE — sharp, and
-  // cheaper than nine antialiased fills. Drawn larger, the blit would upscale
+  // cheaper than the two antialiased fills (one of them a gradient — see
+  // paintFleece for what that costs). Drawn larger, the blit would upscale
   // and soften the bump outlines, which is exactly the detail the fleece is
   // carrying, so the vector art takes over. Phones sit far below the line and
   // get the fast path; a big desktop canvas sits above it and keeps the crisp
@@ -4549,8 +4565,9 @@
 
   // ---------- baked fleece ----------
   // The barrel, its bumps and the tail puff are the sheep's largest and
-  // costliest piece — nine antialiased fills covering most of its pixels —
-  // and the only piece that depends on nothing but heading and temperament.
+  // costliest piece — two antialiased fills covering most of its pixels, one
+  // of them under a gradient — and the only piece that depends on nothing
+  // but heading and temperament.
   // `alert` moves the head; `bob` swings the legs; neither touches the wool.
   //
   // Heading collapses to ONE parameter. The drawing reads it only through
@@ -4574,29 +4591,117 @@
     const ry = 8.8 + (1 - side), rx = 6.2 + 5.6 * side;
     return { rx, ry, cx: 0.4, cy: 7.4 - ry - 0.3 };
   };
-  // the fleece at u = 1, drawn about the sheep's ground origin
-  function paintFleece(g, side, rear, wool, shade) {
+  // Each subpath needs its own moveTo: arc()/ellipse() draw a straight line
+  // from the current point when a subpath is already open, so tracing the
+  // lobes back to back without one strings them together with chords across
+  // the fleece.
+  const arcAt = (g, x, y, r) => { g.moveTo(x + r, y); g.arc(x, y, r, 0, Math.PI * 2); };
+  const ellipseAt = (g, x, y, rx, ry) => {
+    g.moveTo(x + rx, y); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+  };
+
+  // One gradient per fleece bucket, built lazily in u = 1 units and reused
+  // for every sheep at every size and heading — paintFleece's callers fill
+  // under their own scale(u, u), so the gradient scales with the geometry
+  // instead of needing a rebuild per sheep. Building it live would allocate
+  // a gradient object per sheep per frame, which at a 260-strong flock is
+  // the kind of garbage that shows up as jitter rather than as a lower
+  // frame rate.
+  //
+  // The light hangs straight OVERHEAD — both circles centred on x = 0 — and
+  // that is a correctness constraint, not a taste one. drawSheepTop draws
+  // every left-facing sheep through a scale(sx, 1) mirror, so anything with
+  // a sideways bias in here is mirrored along with it: a highlight raked in
+  // from the west would arrive from the east on half the flock, and would
+  // flip across the barrel the instant a sheep turned through head-on. On
+  // x = 0 the mirror is a no-op and the light holds still. Overhead is also
+  // the honest reading for an animal in an open field — the pasture's own
+  // west-raking slope shading is terrain lit at a distance, which is a
+  // different thing from a sheep under the sky.
+  //
+  // Both circles sit just above the barrel's crown, so the falloff runs
+  // top-to-bottom rather than ringing the silhouette like a vignette.
+  //
+  // One cached gradient can serve every heading because bodyGeom pins the
+  // barrel's BELLY, not its centre: cy = 7.4 − ry − 0.3, so cy + ry is 7.1
+  // whatever `side` does. A head-on sheep is a taller barrel grown upward
+  // from the same ground line, so the belly — where the ramp has actually
+  // travelled far enough to see — lands on the same stop at every heading,
+  // and the crown stays inside the flat top of the ramp either way. The
+  // shading therefore doesn't pulse as a sheep turns.
+  const fleeceGrads = new WeakMap(); // context → per-bucket gradient
+  function fleeceGrad(g, ti) {
+    let byTi = fleeceGrads.get(g);
+    if (!byTi) { byTi = []; fleeceGrads.set(g, byTi); }
+    if (byTi[ti]) return byTi[ti];
+    const { ry, cy } = bodyGeom(1);
+    const pal = FLEECE[ti];
+    const topY = cy - ry * 0.9;
+    const grad = g.createRadialGradient(0, topY, 0, 0, topY, ry * 2.4);
+    grad.addColorStop(0, pal.wool);
+    grad.addColorStop(0.55, pal.woolMid);
+    grad.addColorStop(1, pal.woolRim);
+    byTi[ti] = grad;
+    return grad;
+  }
+
+  // the fleece at u = 1, drawn about the sheep's ground origin.
+  //
+  // The lit lobes — barrel, six bumps and the tail puff — are traced as ONE
+  // path and filled once, rather than as eight overlapping fills. The reason
+  // is lighting, not speed: it is the only way to light the fleece as one
+  // object. A radial gradient per circle gives every bump its own highlight
+  // and its own falloff, and six lit balls in a heap read as a cluster of
+  // pom-poms rather than as one animal — the same failure as evenly spaced
+  // bumps reading as scallops (see FLEECE_BUMPS). Unioned, one light falls
+  // across the whole silhouette and the bumps stay a contour, which is the
+  // only job they had.
+  //
+  // It is emphatically NOT a saving, and it was written here as one until
+  // the ablation said otherwise. Measured at 260 sheep against the nine
+  // flat fills this replaced (Chromium, software raster):
+  //
+  //             u=1     u=2     u=2.4    u=3
+  //   2 flat    0.93x   1.21x   1.17x    1.23x
+  //   2 + grad  1.02x   1.62x   1.67x    1.71x
+  //
+  // Collapsing the overdraw does pay at small sizes and stops paying by u=2
+  // — one complex path costs more to scan-convert than several simple ones
+  // once it covers real area — and gradient pixels cost more than flat ones
+  // everywhere. What keeps that off the frame is the bake: `auto` blits the
+  // strip while a sheep draws at or under BODY_BAKE, and in the strip this
+  // gradient is paid once per fleece colour, ever. The 1.6x is only for
+  // sheep drawn LARGER than the strip — where the vector art takes over
+  // anyway — so it lands on the biggest sheep in a spectator-camera near
+  // row, and never on a phone. Raising BODY_BAKE to 3 would move the
+  // threshold past that operating point for ~7MB more strip; that is a
+  // separate tuning call, deliberately not bundled in here.
+  //
+  // The union relies on nonzero winding: every subpath is wound the same way
+  // (arc/ellipse default to clockwise), so overlaps accumulate to ≥1 and
+  // merge. Wind one backwards and its overlaps would punch holes instead.
+  function paintFleece(g, side, rear, ti) {
     const { rx, ry, cx, cy } = bodyGeom(side);
+    const pal = FLEECE[ti];
     // darker rim behind, lit fleece in front — the rim offset fades out
     // approaching head/tail-on so a round cloud stays round instead of
-    // reading as a lopsided crescent
-    g.fillStyle = shade;
+    // reading as a lopsided crescent. The rim stays FLAT and stays a plain
+    // ellipse: it is a silhouette separator, and gradient-shading it too
+    // would put a second light direction on one animal.
+    g.fillStyle = pal.shade;
     g.beginPath();
-    g.ellipse(cx - 0.7 * side, cy, rx, ry, 0, 0, Math.PI * 2);
+    ellipseAt(g, cx - 0.7 * side, cy, rx, ry);
     g.fill();
-    g.fillStyle = wool;
+    // the lit coat, as one union under one gradient
+    g.fillStyle = fleeceGrad(g, ti);
     g.beginPath();
-    g.ellipse(cx + 0.6 * side, cy - 0.4, rx * 0.94, ry * 0.9, 0, 0, Math.PI * 2);
-    g.fill();
+    ellipseAt(g, cx + 0.6 * side, cy - 0.4, rx * 0.94, ry * 0.9);
     for (const [bx, by, br] of FLEECE_BUMPS) {
-      g.beginPath();
-      g.arc(cx + bx * rx, cy + by * ry, ry * br, 0, Math.PI * 2);
-      g.fill();
+      arcAt(g, cx + bx * rx, cy + by * ry, ry * br);
     }
     // tail: a puff set clearly PAST the barrel's edge, so the silhouette
     // itself reads as a tail from behind rather than a smudge on the fleece
-    g.beginPath();
-    g.arc(cx - rx * 1.04, cy + ry * 0.3, 2.9 + 1.2 * rear, 0, Math.PI * 2);
+    arcAt(g, cx - rx * 1.04, cy + ry * 0.3, 2.9 + 1.2 * rear);
     g.fill();
   }
   // one cell box covering every sample, so the strip indexes uniformly
@@ -4631,14 +4736,13 @@
     c.width = w * BODY_DIRS;
     c.height = h;
     const g = c.getContext('2d');
-    const pal = FLEECE[ti];
     for (let i = 0; i < BODY_DIRS; i++) {
       const a = -Math.PI / 2 + (i / (BODY_DIRS - 1)) * Math.PI;
       g.save();
       g.translate(i * w, 0);
       g.scale(BODY_BAKE, BODY_BAKE);
       g.translate(-FLEECE_BOX.x0, -FLEECE_BOX.y0);
-      paintFleece(g, Math.cos(a), Math.max(0, -Math.sin(a)), pal.wool, pal.shade);
+      paintFleece(g, Math.cos(a), Math.max(0, -Math.sin(a)), ti);
       g.restore();
     }
     s = { c, w, h };
@@ -4650,7 +4754,7 @@
     const u = size / 30;
     const ti = Math.max(0, Math.min(15, Math.round(temper * 15)));
     const pal = FLEECE[ti];
-    const wool = pal.wool, skin = pal.skin; // shade is only used by the bake
+    const wool = pal.wool, skin = pal.skin; // the poll fringe is wool too
     const eyeCol = '#fff8ec';
 
     const fx = Math.cos(dir), fy = Math.sin(dir);
@@ -4770,11 +4874,13 @@
       ctx.globalAlpha = 1;
     }
 
-    // The wool barrel, its bumps and the tail puff. Normally nine antialiased
-    // fills; under the `bake` draw mode, one blit from the strip baked above.
-    // Which is faster depends entirely on the device's rasteriser — a blit
-    // wins on a GPU-backed canvas and loses on a software one — so this is a
-    // switch to be measured per device, not a decision baked into the source.
+    // The wool barrel, its bumps and the tail puff. Normally two antialiased
+    // fills — a flat rim and the lit coat as one unioned path under one
+    // gradient; under the `bake` draw mode, one blit from the strip baked
+    // above. Which is faster depends entirely on the device's rasteriser — a
+    // blit wins on a GPU-backed canvas and loses on a software one — so this
+    // is a switch to be measured per device, not a decision baked into the
+    // source.
     const bakeFits = drawMode === 'bake' ||
                      (drawMode === 'auto' && actorScale * u <= BODY_BAKE);
     if (bakeFits) {
@@ -4785,29 +4891,17 @@
                     FLEECE_BOX.x0 * u, FLEECE_BOX.y0 * u,
                     (strip.w / BODY_BAKE) * u, (strip.h / BODY_BAKE) * u);
     } else if (drawMode !== 'nofleece') {
-      // darker rim behind, lit fleece in front — the rim offset fades out
-      // approaching head/tail-on so a round cloud stays round instead of
-      // reading as a lopsided crescent
-      ctx.fillStyle = pal.shade;
-      ctx.beginPath();
-      ctx.ellipse(bodyCx - 0.7 * u * side, bodyCy, bodyRx, bodyRy, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = wool;
-      ctx.beginPath();
-      ctx.ellipse(bodyCx + 0.6 * u * side, bodyCy - 0.4 * u, bodyRx * 0.94, bodyRy * 0.9, 0, 0, Math.PI * 2);
-      ctx.fill();
-      for (const [bx, by, br] of FLEECE_BUMPS) {
-        ctx.beginPath();
-        ctx.arc(bodyCx + bx * bodyRx, bodyCy + by * bodyRy, bodyRy * br, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // tail: a puff set clearly behind the rump so it reads from the back.
-      // The puff has to sit PAST the barrel's edge to break the silhouette —
-      // tucked inside it, all you see is its shaded core as a disc floating
-      // on the fleece, which reads as a smudge rather than a tail
-      ctx.beginPath();
-      ctx.arc(bodyCx - bodyRx * 1.04, bodyCy + bodyRy * 0.3, (2.9 + 1.2 * rear) * u, 0, Math.PI * 2);
-      ctx.fill();
+      // The live fleece and the baked one are now literally the same code,
+      // drawn under a scale instead of through a second copy of the geometry
+      // multiplied out by u. They used to be two transcriptions of one
+      // drawing, which is a standing invitation for the blit and the vector
+      // art to drift apart — and the `auto` mode swaps between them mid-play
+      // as a sheep walks toward the camera, so any drift shows up as the
+      // fleece popping. Under scale(u, u) they cannot differ.
+      ctx.save();
+      ctx.scale(u, u);
+      paintFleece(ctx, side, rear, ti);
+      ctx.restore();
     }
     // no shaded core inside the puff: shade on wool is barely a value step,
     // so a concentric disc reads as a smudge on the fleece rather than a
