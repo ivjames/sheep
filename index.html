@@ -654,7 +654,7 @@
   // Stamped by `sheep deploy` with the deployed commit; 'dev' in the repo.
   const BUILD = 'dev';
   const HEDGE = 26;               // world border thickness
-  const FIELD_AREA = 1650000;     // world w*h — sized to viewport aspect per level
+  const FIELD_AREA = 1650000;     // reference world w*h — scaled per flock, see fieldAreaFor
   // ---------- dog attributes ----------
   // The dog is not a fixed animal. Four ratings describe what THIS dog is
   // made of, and each one drives one concrete lever in the sim, so a dog
@@ -817,6 +817,45 @@
   // from the defiant share (which keeps climbing to its third of the flock)
   // rather than from more animals.
   const FLOCK_SOFT = 150, FLOCK_MAX = 260;
+  // ...and the field is sized to the flock that has to be worked on it. A
+  // fixed field is two wrong sizes at once: level 1's handful of sheep
+  // rattle around in a pasture they never fill, while a late-game mob
+  // spawns with a scatter radius (60 + 4·count, in layoutField) wider than
+  // the open ground it lands on — which is why that spawn already has a
+  // shove-it-back-out clause for sheep that land inside the pen.
+  //
+  // The scaling is deliberately gentle, and both ends of it are pinned by
+  // something real rather than by taste:
+  //
+  // - Growing it is bounded by MEMORY. fieldCanvas, hillCanvas and
+  //   landCanvas are all sized off the world plus a margin that itself
+  //   scales with w, so their cost is proportional to world AREA — and per
+  //   the note on CAMS, the shipped worst-case camera already costs ~92MB,
+  //   with iOS Safari's crash range starting somewhere past ~264MB. True
+  //   constant density would put a FLOCK_MAX field at ~30x a level-1 one,
+  //   which is not a field, it is a crash. FIELD_BIG grows the biggest
+  //   field's area by a fifth instead — about 18MB on that same worst
+  //   case, a small bite out of the headroom rather than a bet against it.
+  // - Shrinking it is bounded by the dog's REACH. DOG_AWARE, BARK_RANGE
+  //   and MERGE_REACH are fixed world distances, so a field small enough
+  //   makes the dog omnipresent and leaves no herding to do. At
+  //   FIELD_SMALL the short side still runs ~735 world units at the
+  //   widest aspect — 2.2x DOG_AWARE, 1.4x MERGE_REACH — which is snug on
+  //   purpose for a nine-sheep level and is as far down as this should go.
+  //
+  // Between those the factor is linear in log(count) — one even step per
+  // doubling of the flock — so the field grows smoothly across the whole
+  // range instead of sitting pinned against a clamp for most of a career.
+  // Stock size (factor 1.0) lands around a 70-sheep flock, i.e. the high
+  // teens; below that the field is snugger than it used to be and above it
+  // a little roomier.
+  const FLOCK_SMALL = 8;                      // about what level 1 rolls
+  const FIELD_SMALL = 0.62, FIELD_BIG = 1.22; // field area, in stock fields
+  function fieldAreaFor(count) {
+    const t = clamp(Math.log(Math.max(count, 1) / FLOCK_SMALL) /
+                    Math.log(FLOCK_MAX / FLOCK_SMALL), 0, 1);
+    return FIELD_AREA * (FIELD_SMALL + (FIELD_BIG - FIELD_SMALL) * t);
+  }
   const GATE_W = 112;             // gate width at level 1...
   const GATE_MIN = 68;            // ...narrowing 4px a level down to this
   const GATE_PULL = 390;          // sheep this near the gate mouth drift on in
@@ -2140,6 +2179,10 @@
     // smaller, margin). Using hill.m here would leave an unpainted ring
     // waiting to be exposed the moment the player switches to a harder tilt.
     const M = hill.mMax;
+    // decor is scattered per unit area, not per field: dividing by the
+    // reference FIELD_AREA (rather than by this field's own) is what keeps
+    // the pasture's texture the same density on a small field and a big
+    // one, now that fieldAreaFor makes those two different sizes.
     const k = ((w + 2 * M) * (h + 2 * M)) / FIELD_AREA;
     // pre-render the pasture once per level: flat green with soft-edged
     // patches of lighter and darker grass — pasture, not a mowed pitch.
@@ -2270,9 +2313,12 @@
   function layoutField(count, defiantCount, obCount, seedStr) {
     withSeed(seedStr, () => {
     // Zoomed-out pasture: the whole field fits on screen, sized to this
-    // device's aspect so it fills the viewport.
+    // device's aspect so it fills the viewport — and to the flock, so a
+    // dozen sheep get a paddock and a mob gets somewhere to spread out
+    // (fieldAreaFor).
     const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
-    state.world.w = Math.round(Math.sqrt(FIELD_AREA * ar));
+    const area = fieldAreaFor(count);
+    state.world.w = Math.round(Math.sqrt(area * ar));
     state.world.h = Math.round(state.world.w / ar);
     makeDecor();
     makePen();
@@ -2402,6 +2448,12 @@
   };
   function layoutDrill(cfg, seedStr) {
     withSeed(seedStr, () => {
+      // A drill keeps the stock field rather than sizing to its flock. Its
+      // lot count is fixed, so flock-scaling would only ever hand it one
+      // constant size anyway — and the exercise is tuned against these
+      // distances: `reach` below is measured off the world's short side, so
+      // shrinking the field would quietly walk the lots in toward the ring
+      // and make the gather an easier drill than the one that was scored.
       const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
       state.world.w = Math.round(Math.sqrt(FIELD_AREA * ar));
       state.world.h = Math.round(state.world.w / ar);
