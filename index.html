@@ -2869,7 +2869,14 @@
   // ---------- input ----------
   const keys = {};
   const CMD_KEYS = { 1: 'cb', 2: 'lie', 3: 'aw', 4: 'walk', 5: 'steady', 6: 'back' };
+  // A focused value control owns its own keys: the mixer's sliders take the
+  // arrows, and the game must neither swallow them nor steer the dog with
+  // them while one has focus. Buttons are deliberately NOT excluded — a HUD
+  // chip keeps focus after a click, and space and the arrows have to keep
+  // working for the player who just tapped one.
+  const typing = (el) => !!el && ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName);
   addEventListener('keydown', (e) => {
+    if (typing(e.target)) return;
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key)) e.preventDefault();
     keys[e.key.toLowerCase()] = true;
     // under the autopilot the pad is live in any input mode (LOOK BACK
@@ -2891,6 +2898,8 @@
       toast(toggleAllSound() ? '🔇 Sound off' : '🔊 Sound on');
     }
   });
+  // keyup stays unconditional: a key held down before focus moved to a
+  // slider has to clear wherever it is released, or the dog keeps running
   addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
   // iOS Safari can still pop the text-selection magnifier on a double
