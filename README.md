@@ -65,7 +65,7 @@ made of, and each drives one concrete lever in the sim:
 | 🎯 **Presence** | Every radius the dog works through — how far sheep flee from it, notice it, and feel its bark — and how far off the flock it stands to drive. |
 | ⚡ **Speed** | Top speed and acceleration, in both drive modes and at every notch of pace. The charge a bark needs scales with it, so a slow dog can still bark. |
 | 🫁 **Stamina** | How quickly it's ready to go *again*. Running is nearly free — a collie is built for that — but every **burst** costs: getting up to speed, and wrenching a hard turn at it. Spend the pool and the dog wants a breather before it can go properly again. |
-| 🧘 **Patience** | Time between decisions — how often the dog stops to re-read the field. Bout lengths are unchanged; only how finely they're steered. A patient dog works in long deliberate legs, an impatient one re-decides constantly. Command and autopilot only. |
+| 🧘 **Patience** | How much room the dog leaves a job before it interferes. On a drive it stands off: a patient dog presses to the edge of the flock and then holds, letting the pressure it has already put on do the moving, where an impatient one walks on into them and splits the lot it was driving. It also decides less often — long deliberate legs rather than flitting. Bout lengths are unchanged; only how finely they're steered. Command and autopilot only. |
 
 Ratings run 0–1 and **0.5 is the baseline** — the dog the game shipped with.
 The two halves of each range map separately so a rating of exactly 0.5 lands on
