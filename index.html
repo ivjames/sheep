@@ -2378,7 +2378,7 @@
       }
       state.sheep.push({
         x, y, vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false, settle: null,
-        defiant: tempers[i], ...rollTemper(tempers[i]),
+        defiant: tempers[i], ...rollTemper(tempers[i]), points: rollPoints(),
         panic: 0, fearT: 0, fright: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
         // heads start up — the flock has just noticed you — then settle to
@@ -2496,7 +2496,7 @@
           state.sheep.push({
             x: kx + rand(-42, 42), y: ky + rand(-42, 42), vx: 0, vy: 0, facing: -1,
             dir: rand(0, Math.PI * 2), penned: false, settle: null,
-            defiant: false, ...rollTemper(false),
+            defiant: false, ...rollTemper(false), points: rollPoints(),
             panic: 0, fearT: 0, fright: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
             wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
             alert: 1, lookT: rand(1, 9), lookHold: 0,
@@ -4505,7 +4505,6 @@
       out.push({
         wool:  hex(wool),
         shade: hex(shade),
-        skin:  hex(ramp([0x3b, 0x3b, 0x46], [0x4a, 0x3b, 0x30], t)),
         // Two more stops, for the fleece's radial gradient (see fleeceGrad).
         // Derived from THIS bucket's own wool and shade rather than picked as
         // colours, so the lighting stays inside the palette's existing value
@@ -4523,6 +4522,47 @@
     }
     return out;
   })();
+
+  // Face, ears and legs — the points — are BREED, not temperament. A Cheviot
+  // is white in the face whatever it thinks of the dog, and rolling the
+  // points off `bold` would only have made the fleece say the same thing
+  // twice; keeping them independent means a flock reads as a flock of
+  // individual animals rather than as one gradient sorted by biddability.
+  //
+  // The weighting is what a shepherding video actually shows: white faces
+  // and white legs are the clear majority, and a black-faced sheep is the
+  // one your eye picks out across the field. Rolled once at spawn.
+  //
+  // A pale-pointed sheep is the whole reason `rim` exists. The skull sits
+  // mostly INSIDE the barrel's silhouette — headX is 7u out and the barrel
+  // reaches past 12u — so the one thing the old dark head was quietly doing
+  // was separating itself from the wool behind it. A white head on cream
+  // fleece is a head that isn't there. `rim` is a flat backing shape a hair
+  // larger than the head, filled underneath it: an outline that costs one
+  // fill, and that leaves no seams where the muzzle and ear overlap the
+  // skull the way stroking the same path would. The dark points need no
+  // such help and carry no rim, so they pay nothing for this.
+  //
+  // Eyes flip with the face for the same reason — the pale eye that reads on
+  // a black face disappears on a white one — and dark eyes in a white face
+  // is what a sheep looks like anyway.
+  const POINTS = [
+    // nose: flesh-pink, because that is the nose a white-faced sheep has.
+    // A black nose belongs to a black face — the two go together in the
+    // breed, and painting one onto a Cheviot to buy contrast would be
+    // buying it with something that isn't a sheep. Pink is a weaker anchor
+    // than black would have been, which is why the rim below carries the
+    // separation rather than the nose. The black face needs no nose drawn
+    // at all: it would be the colour of the head it sits on.
+    { skin: '#ece3d0', rim: '#b3a794', nose: '#d59a8e', eye: '#2a2620', w: 0.75 }, // white-faced
+    { skin: '#3b3b46', rim: null,      nose: null,      eye: '#fff8ec', w: 0.25 }, // black-faced
+  ];
+  const POINTS_CDF = (() => { let acc = 0; return POINTS.map(p => (acc += p.w)); })();
+  function rollPoints() {
+    const r = rand(0, POINTS_CDF[POINTS_CDF.length - 1]);
+    for (let i = 0; i < POINTS_CDF.length; i++) if (r < POINTS_CDF[i]) return i;
+    return POINTS.length - 1;
+  }
 
   // ---------- draw modes (dev) ----------
   // A frame-cost probe you can run ON the device that's actually dropping
@@ -4750,12 +4790,13 @@
     return s;
   }
 
-  function drawSheepTop(x, y, size, dir, temper, bob, moving, alert) {
+  function drawSheepTop(x, y, size, dir, temper, bob, moving, alert, pi) {
     const u = size / 30;
     const ti = Math.max(0, Math.min(15, Math.round(temper * 15)));
     const pal = FLEECE[ti];
-    const wool = pal.wool, skin = pal.skin; // the poll fringe is wool too
-    const eyeCol = '#fff8ec';
+    const pts = POINTS[pi] || POINTS[0];
+    const wool = pal.wool;                  // the poll fringe is wool too
+    const skin = pts.skin, rimCol = pts.rim, noseCol = pts.nose, eyeCol = pts.eye;
 
     const fx = Math.cos(dir), fy = Math.sin(dir);
     const side = Math.abs(fx);           // 1 = full profile, 0 = head/tail-on
@@ -4769,6 +4810,11 @@
     // grazing sheep barely rock when idle; a trot supplies its own motion,
     // so the standing sway is a faint remnant of the old top-down waddle
     if (!moving) ctx.translate(Math.sin(bob * 0.6) * 0.5 * u, 0);
+
+    // how far the pale-points backing stands out past the head it sits
+    // under. Sized in u so it tracks the sheep rather than the screen: it
+    // has to survive the small end, where the whole head is a few pixels.
+    const RIM = 0.7 * u;
 
     const footY = 12 * u;
     const bellyY = 7.4 * u;                           // short legs — the barrel nearly sits on the ground
@@ -4915,10 +4961,20 @@
 
     if (headAlpha > 0.01) {
       ctx.globalAlpha = headAlpha * farEar;
+      const fEarX = earBackX - earLat, fEarY = headY - (0.6 * side + 0.5 * splay) * u;
+      const fEarRx = (2.4 - 0.2 * splay) * u, fEarRot = -0.5 * side - 0.3 * splay;
+      // the far ear stands out over the fleece when the sheep squares up, so
+      // it needs the same backing the skull does — and its own fill, because
+      // it is the one part of the head on its own alpha
+      if (rimCol) {
+        ctx.fillStyle = rimCol;
+        ctx.beginPath();
+        ctx.ellipse(fEarX, fEarY, fEarRx + RIM, 1.25 * u + RIM, fEarRot, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.fillStyle = skin;
       ctx.beginPath();
-      ctx.ellipse(earBackX - earLat, headY - (0.6 * side + 0.5 * splay) * u,
-                  (2.4 - 0.2 * splay) * u, 1.25 * u, -0.5 * side - 0.3 * splay, 0, Math.PI * 2);
+      ctx.ellipse(fEarX, fEarY, fEarRx, 1.25 * u, fEarRot, 0, Math.PI * 2);
       ctx.fill();
       ctx.globalAlpha = headAlpha;
 
@@ -4936,20 +4992,49 @@
       // The muzzle's offset rides on `side` so it reaches zero head-on —
       // otherwise a sheep looking straight at you keeps its nose stuck out
       // sideways and reads as still being in profile.
+      const skRx = (4.6 - 2.2 * face) * u, skRy = (3.4 + 1.1 * face) * u;
+      const muX = headX + 3.3 * u * side * (0.35 + 0.65 * side);
+      const muY = headY + (0.7 + 0.9 * face) * u;
+      const muRx = (2.5 - 0.5 * face) * u, muRy = (1.9 - 0.3 * face) * u;
+      const nEarX = earBackX + earLat, nEarY = headY + (0.6 * side - 0.5 * splay) * u;
+      const nEarRx = (2.4 - 0.2 * splay) * u, nEarRot = 0.5 * side + 0.3 * splay;
+      // Pale points: skull, muzzle and near ear get ONE flat backing shape,
+      // a hair larger than all three and filled once beneath them. Unioned
+      // under nonzero winding (each subpath opened with its own moveTo and
+      // wound the same way), so the places they overlap each other don't
+      // show as seams. This is the separator that keeps a white head off
+      // cream wool; see POINTS.
+      if (rimCol) {
+        ctx.fillStyle = rimCol;
+        ctx.beginPath();
+        ctx.moveTo(headX + skRx + RIM, headY);
+        ctx.ellipse(headX, headY, skRx + RIM, skRy + RIM, 0, 0, Math.PI * 2);
+        ctx.moveTo(muX + muRx + RIM, muY);
+        ctx.ellipse(muX, muY, muRx + RIM, muRy + RIM, 0, 0, Math.PI * 2);
+        ctx.moveTo(nEarX + (nEarRx + RIM) * Math.cos(nEarRot),
+                   nEarY + (nEarRx + RIM) * Math.sin(nEarRot));
+        ctx.ellipse(nEarX, nEarY, nEarRx + RIM, 1.25 * u + RIM, nEarRot, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.fillStyle = skin;
       ctx.beginPath();
-      ctx.ellipse(headX, headY, (4.6 - 2.2 * face) * u, (3.4 + 1.1 * face) * u, 0, 0, Math.PI * 2);
+      ctx.ellipse(headX, headY, skRx, skRy, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.beginPath();
-      ctx.ellipse(headX + 3.3 * u * side * (0.35 + 0.65 * side), headY + (0.7 + 0.9 * face) * u,
-                  (2.5 - 0.5 * face) * u, (1.9 - 0.3 * face) * u, 0, 0, Math.PI * 2);
+      ctx.ellipse(muX, muY, muRx, muRy, 0, 0, Math.PI * 2);
       ctx.fill();
+      // the nose, on the faces that have one worth drawing
+      if (noseCol) {
+        ctx.fillStyle = noseCol;
+        ctx.beginPath();
+        ctx.ellipse(muX + muRx * 0.42 * side, muY, 0.8 * u, (0.65 + 0.25 * face) * u, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = skin;
+      }
 
       // near ear, over the head
-      ctx.fillStyle = skin;
       ctx.beginPath();
-      ctx.ellipse(earBackX + earLat, headY + (0.6 * side - 0.5 * splay) * u,
-                  (2.4 - 0.2 * splay) * u, 1.25 * u, 0.5 * side + 0.3 * splay, 0, Math.PI * 2);
+      ctx.ellipse(nEarX, nEarY, nEarRx, 1.25 * u, nEarRot, 0, Math.PI * 2);
       ctx.fill();
 
       // eyes: one in profile, a symmetric PAIR once the sheep squares up. They
@@ -5657,7 +5742,7 @@
       ctx.ellipse(s.x, s.y + 13, 15, 5, 0, 0, Math.PI * 2);
       ctx.fill();
       drawSheepTop(s.x, s.y - hop, 29.4 + 2.6 * s.bold, s.dir, s.bold, s.bob,
-        hyp(s.vx, s.vy) > 12, s.alert);
+        hyp(s.vx, s.vy) > 12, s.alert, s.points);
       if (s.planted) {
         drawDoodle('huff', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
       } else if (!s.penned && s.panic > 0.75) {
