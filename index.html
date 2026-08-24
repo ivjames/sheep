@@ -4235,14 +4235,14 @@
       // pressing whatever the ring says, and HOLD_PUSH of driving has to
       // pass before it may hold again. Without that, a flock that cannot
       // move leaves the dog standing off it for the rest of the level.
-      let holding = state.holdT > 0;
+      let holding = state.holdT > 0, released = false;
       if (state.holdT < 0) {
         state.holdT = Math.min(0, state.holdT + tick); // owed drive, counting up to 0
         holding = false;
       } else if (!plantedHere && nearD < ring * (holding ? HOLD_CLEAR : 1)) {
         state.holdT += tick;
         holding = state.holdT <= HOLD_BOUT;
-        if (!holding) state.holdT = -HOLD_PUSH;
+        if (!holding) { state.holdT = -HOLD_PUSH; released = true; }
       } else {
         state.holdT = 0;
         holding = false;
@@ -4270,18 +4270,21 @@
       // initiative leans on the flock sideways, pushes it off the gate
       // line, and then has to be flanked back onto balance — measured at
       // half the deliveries for a tighter, undelivered flock.
-      // ...but the question the stall test asks — is the drive jammed? — only
-      // means anything about a dog that was being asked to drive. A dog
-      // standing off is stopped on purpose, and so is one that came into
-      // this tick under a LIE DOWN: it is not stopped against the sheep, it
-      // simply hasn't been told to move yet. Counting either as a stall used
-      // to turn the stand-off into its own opposite. `holding` covers the
-      // hold while it runs; d.cmd covers the tick that ENDS one, where the
-      // dog is still stationary from the hold but is about to be sent on —
-      // and at the top of the patience range one tick is longer than
-      // STALL_HOLD, so that single tick was enough to trip the test and put
-      // the dog into a sweep instead of the drive a bounded hold owes it.
-      state.stallT = !holding && d.cmd !== 'lie' &&
+      // ...but a dog standing off is stopped on purpose, and mustn't read as
+      // a jammed drive: left counting, the hold would trip the stall test and
+      // turn every stand-off into a wear sweep. `holding` covers the hold
+      // while it runs. The tick that ENDS a bounded hold needs saying
+      // separately — `holding` has gone false there but the dog is still
+      // stationary from the hold, and at the top of the patience range one
+      // tick is longer than STALL_HOLD, so that single tick could trip the
+      // test on its own and put the dog into a sweep instead of the drive a
+      // bounded hold owes it. Only THAT tick, though, and only if the dog
+      // really was lying: the ordinary slow ticks around a hold are the
+      // stall clock working as intended — a drive that keeps stopping is
+      // what a gathering sweep is for, and blanking the clock after every
+      // lie-down (as this first did) cost more in splits than the sweep it
+      // was suppressing ever caused.
+      state.stallT = !holding && !(released && d.cmd === 'lie') &&
         Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
         ? state.stallT + tick : 0;
       const stalled = state.stallT >= STALL_HOLD;
