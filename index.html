@@ -2378,7 +2378,7 @@
       }
       state.sheep.push({
         x, y, vx: 0, vy: 0, facing: -1, dir: rand(0, Math.PI * 2), penned: false, settle: null,
-        defiant: tempers[i], ...rollTemper(tempers[i]), points: rollPoints(),
+        defiant: tempers[i], ...rollTemper(tempers[i]), ...rollCoat(),
         panic: 0, fearT: 0, fright: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
         wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
         // heads start up — the flock has just noticed you — then settle to
@@ -2496,7 +2496,7 @@
           state.sheep.push({
             x: kx + rand(-42, 42), y: ky + rand(-42, 42), vx: 0, vy: 0, facing: -1,
             dir: rand(0, Math.PI * 2), penned: false, settle: null,
-            defiant: false, ...rollTemper(false), points: rollPoints(),
+            defiant: false, ...rollTemper(false), ...rollCoat(),
             panic: 0, fearT: 0, fright: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
             wanderA: rand(0, Math.PI * 2), wanderT: rand(0, 2), bob: rand(0, Math.PI * 2),
             alert: 1, lookT: rand(1, 9), lookHold: 0,
@@ -4484,84 +4484,215 @@
   // (grazing, not a dog's alert-up head). The pose is authored right-facing
   // and mirrored, never rotated, so it reads correctly from every heading
   // with no sprite-sheet popping.
-  // Fleece scales with temperament rather than flagging one category of sheep:
-  // a biddable ewe is cream, a stubborn one dun, and everything between reads
-  // as between. `temper` is the sheep's own `bold`, the same 0..1 that already
-  // sets how close the dog must press, how willing it is at the gate and how
-  // hard it is to panic — so the flock's colour is a readout of how much work
-  // each animal is going to be, visible before you touch it.
+  // ---------- coat colour ----------
+  // Wool colour is BREED, and a farm flock's breeds are overwhelmingly white:
+  // roughly four sheep in five are white, off-white or cream, and the rest are
+  // a thin scatter of fawn, brown, grey, black and patched animals. That ratio
+  // is the whole point. A dark sheep is worth looking at precisely because
+  // there are two of them in the field, and a flock painted in even sixths
+  // reads as a colour chart rather than as livestock.
   //
-  // bold is rolled once at spawn and never changes, so the palette is a table
-  // lookup rather than a mix per draw — this runs twenty-odd times a frame and
-  // has no business building colour strings in the draw path.
+  // Temperament used to pick the fleece outright — cream for a biddable ewe,
+  // dun for a stubborn one — so the flock's colour was a readout of how much
+  // work each animal was going to be. That is gone, and it had to go: once
+  // four sheep in five are white, the readout has nowhere left to live. The
+  // range a white sheep can honestly cover is off-white to warm cream, and
+  // sorting the flock along a step that small tells the player nothing while
+  // costing the fleece its independence. So the step inside a family is
+  // rolled, not derived, and colour says nothing about behaviour at all — the
+  // same rule the points have always followed. What marks a defiant sheep is
+  // what it does: it strays, it plants, and it huffs steam while planted.
+  //
+  // Every roll happens once at spawn and never changes, so the whole thing is
+  // a table lookup rather than a mix per draw: this runs twenty-odd times a
+  // frame and has no business building colour strings in the draw path.
+  const rgbC  = (h) => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+  const hexC  = (c) => '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
+  const mixC  = (a, b, t) => [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * t));
+  const lumaC = (c) => 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2];
+
+  // `skin` on each family is P(points | this fleece), over the six SKINS
+  // below in order. Skin and points are NOT rolled independently of the
+  // fleece: a brown ewe with a bright pink face is a sheep nobody has ever
+  // seen. The conditionals lean the way real breeds do — pale points on white
+  // wool, dark and grey points on dark wool, mottled points on a patched
+  // fleece — while still leaving every combination possible, because breeds
+  // cross and a flock is not a catalogue.
+  //
+  // Integrated over the family weights these land near the marginal skin
+  // distribution of a farm flock (pale 61%, beige 11%, grey 9%, brown 4%,
+  // dark 8%, mottled 6%) with ONE deliberate excursion: dark points come out
+  // around 8% rather than 5%, because a white fleece on a black face and
+  // black legs is a Suffolk, and Suffolks are not rare. The excess is bought
+  // entirely out of the white family's own row.
+  //
+  // `steps` expands into that many consecutive FLEECE buckets, ramped from
+  // the first colour to the last, and one is picked at random per sheep.
+  // Every bucket costs a baked strip (see fleeceStrip), so the resolution is
+  // spent where the sheep are: eight steps across the range the 80% family
+  // actually spans — off-white to warm cream, no further — and one apiece for
+  // the rest. Fourteen buckets in all, fewer than the sixteen this replaced.
+  const COATS = [
+    { name: 'white',   w: 0.80, steps: 8,
+      wool: ['#f7f4ec', '#ece0c6'], shade: ['#ded7c5', '#cbba99'],
+      skin: [0.71, 0.10, 0.06, 0.02, 0.06, 0.05] },
+    { name: 'fawn',    w: 0.05, steps: 1,
+      wool: ['#ddc8a5'], shade: ['#bda781'],
+      skin: [0.40, 0.30, 0.10, 0.12, 0.03, 0.05] },
+    { name: 'brown',   w: 0.04, steps: 1,
+      wool: ['#9d7c5b'], shade: ['#7c5f43'],
+      skin: [0.10, 0.18, 0.20, 0.35, 0.12, 0.05] },
+    { name: 'grey',    w: 0.04, steps: 1,
+      wool: ['#b9b6b1'], shade: ['#95928c'],
+      skin: [0.25, 0.10, 0.40, 0.05, 0.15, 0.05] },
+    { name: 'black',   w: 0.03, steps: 1,
+      wool: ['#4b4850'], shade: ['#343139'],
+      skin: [0.05, 0.05, 0.25, 0.10, 0.50, 0.05] },
+    // Two patched fleeces rather than one, at half the share each. The
+    // patches are baked into the strip, so every sheep in a bucket wears the
+    // same blotches in the same places; one layout at the full 4% put visibly
+    // cloned animals in a big flock, and a second layout is one more strip to
+    // halve that.
+    //
+    // Both patch colours are mid-value — a warm brown and a taupe grey — not
+    // black. A black blotch on white wool is a Holstein, and a field of them
+    // reads as dairy cattle rather than as sheep; the patch has to separate
+    // from the fleece without becoming the loudest thing in the pasture.
+    { name: 'spotted', w: 0.02, steps: 1,
+      wool: ['#f2ebdb'], shade: ['#d2c7af'],
+      patch: ['#8f6f4e', '#6f5439'],
+      patches: [[-0.58, -0.10, 0.46], [-0.32, 0.14, 0.32],
+                [0.55, 0.16, 0.34], [0.36, 0.34, 0.24]],
+      skin: [0.25, 0.10, 0.10, 0.08, 0.07, 0.40] },
+    { name: 'spotted', w: 0.02, steps: 1,
+      wool: ['#efe9dc'], shade: ['#cfc5b1'],
+      patch: ['#9a938a', '#7b7469'],
+      patches: [[0.44, -0.12, 0.42], [0.20, 0.12, 0.30],
+                [-0.72, 0.18, 0.34], [-0.50, 0.38, 0.24]],
+      skin: [0.25, 0.10, 0.10, 0.08, 0.07, 0.40] },
+  ];
+
   const FLEECE = (() => {
-    const ramp = (a, b, t) => [0, 1, 2].map(i => Math.round(a[i] + (b[i] - a[i]) * t));
-    const hex = (c) => '#' + c.map(v => v.toString(16).padStart(2, '0')).join('');
     const out = [];
-    for (let i = 0; i < 16; i++) {
-      const t = i / 15;
-      const wool = ramp([0xf6, 0xf1, 0xe6], [0xd9, 0xc6, 0xa8], t);
-      const shade = ramp([0xdd, 0xd3, 0xbf], [0xb8, 0xa2, 0x84], t);
-      out.push({
-        wool:  hex(wool),
-        shade: hex(shade),
-        // Two more stops, for the fleece's radial gradient (see fleeceGrad).
-        // Derived from THIS bucket's own wool and shade rather than picked as
-        // colours, so the lighting stays inside the palette's existing value
-        // step at every temperament — a fixed rim colour would go muddy on
-        // the dark buckets and invisible on the pale ones.
-        //
-        // 0.55 is set from the magnified game-size ladder, not from a zoomed
-        // view: the gradient only ever crosses ~24px of barrel, and the
-        // values that looked right blown up (0.25–0.40) vanished outright at
-        // the size the game is actually played at. Past ~0.70 the belly stops
-        // reading as shaded wool and starts reading as dirty wool.
-        woolMid: hex(ramp(wool, shade, 0.12)),
-        woolRim: hex(ramp(wool, shade, 0.55)),
-      });
+    for (const c of COATS) {
+      c.base = out.length;
+      const w0 = rgbC(c.wool[0]), w1 = rgbC(c.wool[c.wool.length - 1]);
+      const s0 = rgbC(c.shade[0]), s1 = rgbC(c.shade[c.shade.length - 1]);
+      for (let i = 0; i < c.steps; i++) {
+        const t = c.steps > 1 ? i / (c.steps - 1) : 0;
+        const wool = mixC(w0, w1, t), shade = mixC(s0, s1, t);
+        const e = {
+          wool:  hexC(wool),
+          shade: hexC(shade),
+          // Two more stops, for the fleece's radial gradient (see fleeceGrad).
+          // Derived from THIS bucket's own wool and shade rather than picked as
+          // colours, so the lighting stays inside the palette's existing value
+          // step at every fleece — a fixed rim colour would go muddy on the
+          // dark families and invisible on the pale ones.
+          //
+          // 0.55 is set from the magnified game-size ladder, not from a zoomed
+          // view: the gradient only ever crosses ~24px of barrel, and the
+          // values that looked right blown up (0.25–0.40) vanished outright at
+          // the size the game is actually played at. Past ~0.70 the belly stops
+          // reading as shaded wool and starts reading as dirty wool.
+          woolMid: hexC(mixC(wool, shade, 0.12)),
+          woolRim: hexC(mixC(wool, shade, 0.55)),
+        };
+        // a patched fleece carries a second set of the same four stops, so
+        // the patch is lit by the same overhead light as the wool around it
+        // rather than sitting on the barrel as a flat sticker
+        if (c.patch) {
+          const p = rgbC(c.patch[0]), ps = rgbC(c.patch[1]);
+          e.patches  = c.patches;
+          e.patch    = hexC(p);
+          e.patchMid = hexC(mixC(p, ps, 0.12));
+          e.patchRim = hexC(mixC(p, ps, 0.55));
+        }
+        out.push(e);
+      }
     }
     return out;
   })();
 
-  // Face, ears and legs — the points — are BREED, not temperament. A Cheviot
-  // is white in the face whatever it thinks of the dog, and rolling the
-  // points off `bold` would only have made the fleece say the same thing
-  // twice; keeping them independent means a flock reads as a flock of
-  // individual animals rather than as one gradient sorted by biddability.
+  // Face, ears and legs — the points — are the sheep's visible skin, and at
+  // this size they are the ONLY skin there is: the rest of the animal is
+  // under wool. So this table is the skin distribution, and it is rolled
+  // against the fleece rather than beside it (see COATS' `skin` rows).
   //
-  // The weighting is what a shepherding video actually shows: white faces
-  // and white legs are the clear majority, and a black-faced sheep is the
-  // one your eye picks out across the field. Rolled once at spawn.
-  //
-  // A pale-pointed sheep is the whole reason `rim` exists. The skull sits
-  // mostly INSIDE the barrel's silhouette — headX is 7u out and the barrel
-  // reaches past 12u — so the one thing the old dark head was quietly doing
-  // was separating itself from the wool behind it. A white head on cream
-  // fleece is a head that isn't there. `rim` is a flat backing shape a hair
-  // larger than the head, filled underneath it: an outline that costs one
-  // fill, and that leaves no seams where the muzzle and ear overlap the
-  // skull the way stroking the same path would. The dark points need no
-  // such help and carry no rim, so they pay nothing for this.
-  //
-  // Eyes flip with the face for the same reason — the pale eye that reads on
-  // a black face disappears on a white one — and dark eyes in a white face
-  // is what a sheep looks like anyway.
-  const POINTS = [
+  // Eyes flip with the face: the pale eye that reads on a black face
+  // disappears on a white one, and dark eyes in a white face is what a sheep
+  // looks like anyway. The nose is drawn only where a flesh-pink one would
+  // actually show — on a grey, brown or black muzzle it would be the colour
+  // of the muzzle it sits on, so it isn't drawn at all.
+  const SKINS = [
     // nose: flesh-pink, because that is the nose a white-faced sheep has.
     // A black nose belongs to a black face — the two go together in the
     // breed, and painting one onto a Cheviot to buy contrast would be
     // buying it with something that isn't a sheep. Pink is a weaker anchor
     // than black would have been, which is why the rim below carries the
-    // separation rather than the nose. The black face needs no nose drawn
-    // at all: it would be the colour of the head it sits on.
-    { skin: '#ece3d0', rim: '#b3a794', nose: '#d59a8e', eye: '#2a2620', w: 0.75 }, // white-faced
-    { skin: '#3b3b46', rim: null,      nose: null,      eye: '#fff8ec', w: 0.25 }, // black-faced
+    // separation rather than the nose.
+    { skin: '#ece3d0', nose: '#d59a8e', eye: '#2a2620' },                    // pale pink / cream
+    { skin: '#d9c5a4', nose: '#c98d7e', eye: '#2a2620' },                    // beige / tan
+    // Slate, not silver. A mid grey sits at almost exactly the pasture's own
+    // luminance, and a hueless colour at the background's value is a colour
+    // that isn't there — the legs disappeared into the turf and the sheep
+    // read as floating. Dropped to where the brown points already sit, which
+    // is the value that demonstrably clears the grass.
+    { skin: '#63616b', nose: null,      eye: '#f6efe2' },                    // grey
+    { skin: '#7b5a41', nose: null,      eye: '#f6efe2' },                    // brown
+    { skin: '#3b3b46', nose: null,      eye: '#fff8ec' },                    // dark grey / black
+    { skin: '#e3d7c0', nose: null,      eye: '#2a2620', mottle: '#6b5f54' }, // mottled
   ];
-  const POINTS_CDF = (() => { let acc = 0; return POINTS.map(p => (acc += p.w)); })();
-  function rollPoints() {
-    const r = rand(0, POINTS_CDF[POINTS_CDF.length - 1]);
-    for (let i = 0; i < POINTS_CDF.length; i++) if (r < POINTS_CDF[i]) return i;
-    return POINTS.length - 1;
+
+  // The rim is why a head is visible at all. The skull sits mostly INSIDE the
+  // barrel's silhouette — headX is 7u out and the barrel reaches past 12u — so
+  // the one thing a dark head on cream wool was quietly doing was separating
+  // itself from the fleece behind it. Give a sheep a white face and that
+  // separation is gone; give it a black face on a BLACK fleece and it is gone
+  // again, the other way round. So the rim is not a property of the points at
+  // all: it is a property of the pair, and it is tabulated per (fleece, skin).
+  //
+  // It is a flat backing shape a hair larger than the head, filled underneath
+  // it: an outline that costs one fill, and that leaves no seams where the
+  // muzzle and ear overlap the skull the way stroking the same path would.
+  // Pairs that already separate on their own — a grey face on white wool, a
+  // pale face on black — get null and pay nothing.
+  //
+  // The colour is the skin's own, walked away from the fleece's luminance
+  // (down if the fleece is pale, up if it is dark) until it clears RIM_SEP.
+  // Derived rather than picked, for the same reason woolRim is: a fixed halo
+  // would be right for one fleece and wrong for the other thirteen.
+  const RIM_SEP = 62;
+  const RIMS = FLEECE.map(f => {
+    const lw = lumaC(rgbC(f.wool));
+    const toward = rgbC(lw > 128 ? '#33302a' : '#f2ece0');
+    return SKINS.map(s => {
+      const c0 = rgbC(s.skin);
+      if (Math.abs(lumaC(c0) - lw) >= RIM_SEP) return null;
+      let c = c0;
+      for (let t = 0.32; t <= 0.92; t += 0.06) {
+        c = mixC(c0, toward, t);
+        if (Math.abs(lumaC(c) - lw) >= RIM_SEP) break;
+      }
+      return hexC(c);
+    });
+  });
+
+  const cdfOf = (ws) => { let a = 0; return ws.map(v => (a += v)); };
+  const pickCDF = (cdf) => {
+    const r = rand(0, cdf[cdf.length - 1]);
+    for (let i = 0; i < cdf.length; i++) if (r < cdf[i]) return i;
+    return cdf.length - 1;
+  };
+  const COAT_CDF = cdfOf(COATS.map(c => c.w));
+  const SKIN_CDF = COATS.map(c => cdfOf(c.skin));
+  // One roll, both halves, because the second depends on the first: the
+  // points are drawn from the row belonging to the fleece that just came up.
+  function rollCoat() {
+    const fi = pickCDF(COAT_CDF);
+    const c = COATS[fi];
+    const step = c.steps > 1 ? Math.min(c.steps - 1, Math.floor(rand(0, c.steps))) : 0;
+    return { coat: c.base + step, points: pickCDF(SKIN_CDF[fi]) };
   }
 
   // ---------- draw modes (dev) ----------
@@ -4669,19 +4800,24 @@
   // travelled far enough to see — lands on the same stop at every heading,
   // and the crown stays inside the flat top of the ramp either way. The
   // shading therefore doesn't pulse as a sheep turns.
+  //
+  // `k` selects which set of stops: 0 the wool, 1 a patched fleece's patch.
+  // Both are built about the same centre, so the patch is lit by the same
+  // light as the wool it sits in rather than carrying a second one.
   const fleeceGrads = new WeakMap(); // context → per-bucket gradient
-  function fleeceGrad(g, ti) {
+  function fleeceGrad(g, ti, k) {
     let byTi = fleeceGrads.get(g);
     if (!byTi) { byTi = []; fleeceGrads.set(g, byTi); }
-    if (byTi[ti]) return byTi[ti];
+    const key = ti * 2 + k;
+    if (byTi[key]) return byTi[key];
     const { ry, cy } = bodyGeom(1);
     const pal = FLEECE[ti];
     const topY = cy - ry * 0.9;
     const grad = g.createRadialGradient(0, topY, 0, 0, topY, ry * 2.4);
-    grad.addColorStop(0, pal.wool);
-    grad.addColorStop(0.55, pal.woolMid);
-    grad.addColorStop(1, pal.woolRim);
-    byTi[ti] = grad;
+    grad.addColorStop(0, k ? pal.patch : pal.wool);
+    grad.addColorStop(0.55, k ? pal.patchMid : pal.woolMid);
+    grad.addColorStop(1, k ? pal.patchRim : pal.woolRim);
+    byTi[key] = grad;
     return grad;
   }
 
@@ -4733,7 +4869,7 @@
     ellipseAt(g, cx - 0.7 * side, cy, rx, ry);
     g.fill();
     // the lit coat, as one union under one gradient
-    g.fillStyle = fleeceGrad(g, ti);
+    g.fillStyle = fleeceGrad(g, ti, 0);
     g.beginPath();
     ellipseAt(g, cx + 0.6 * side, cy - 0.4, rx * 0.94, ry * 0.9);
     for (const [bx, by, br] of FLEECE_BUMPS) {
@@ -4743,6 +4879,24 @@
     // itself reads as a tail from behind rather than a smudge on the fleece
     arcAt(g, cx - rx * 1.04, cy + ry * 0.3, 2.9 + 1.2 * rear);
     g.fill();
+    // A patched fleece: the blotches are clipped to the union that was just
+    // filled — fill() leaves the path current, so the clip is the same path
+    // and costs no second trace. Clipped rather than trimmed by hand because
+    // the union's outline changes with `side`, and a patch authored to sit
+    // inside it in profile would hang off the edge head-on.
+    //
+    // Placed in the barrel's own rx/ry units so they travel with the geometry:
+    // the patch stays on the same part of the animal at every heading instead
+    // of sliding across it as the barrel narrows.
+    if (pal.patches) {
+      g.save();
+      g.clip();
+      g.fillStyle = fleeceGrad(g, ti, 1);
+      g.beginPath();
+      for (const [px, py, pr] of pal.patches) arcAt(g, cx + px * rx, cy + py * ry, ry * pr);
+      g.fill();
+      g.restore();
+    }
   }
   // one cell box covering every sample, so the strip indexes uniformly
   const FLEECE_BOX = (() => {
@@ -4790,13 +4944,18 @@
     return s;
   }
 
-  function drawSheepTop(x, y, size, dir, temper, bob, moving, alert, pi) {
+  // `ci` and `pi` are the sheep's own coat and points buckets, rolled once at
+  // spawn by rollCoat — nothing about its colour is derived per frame.
+  function drawSheepTop(x, y, size, dir, ci, bob, moving, alert, pi) {
     const u = size / 30;
-    const ti = Math.max(0, Math.min(15, Math.round(temper * 15)));
+    const ti = FLEECE[ci] ? ci : 0;
+    const si = SKINS[pi] ? pi : 0;
     const pal = FLEECE[ti];
-    const pts = POINTS[pi] || POINTS[0];
+    const pts = SKINS[si];
     const wool = pal.wool;                  // the poll fringe is wool too
-    const skin = pts.skin, rimCol = pts.rim, noseCol = pts.nose, eyeCol = pts.eye;
+    const skin = pts.skin, noseCol = pts.nose, eyeCol = pts.eye;
+    const mottleCol = pts.mottle || null;
+    const rimCol = RIMS[ti][si];            // per (fleece, skin) pair — see RIMS
 
     const fx = Math.cos(dir), fy = Math.sin(dir);
     const side = Math.abs(fx);           // 1 = full profile, 0 = head/tail-on
@@ -4811,7 +4970,7 @@
     // so the standing sway is a faint remnant of the old top-down waddle
     if (!moving) ctx.translate(Math.sin(bob * 0.6) * 0.5 * u, 0);
 
-    // how far the pale-points backing stands out past the head it sits
+    // how far the rim backing stands out past the head it sits
     // under. Sized in u so it tracks the sheep rather than the screen: it
     // has to survive the small end, where the whole head is a few pixels.
     const RIM = 0.7 * u;
@@ -4998,12 +5157,12 @@
       const muRx = (2.5 - 0.5 * face) * u, muRy = (1.9 - 0.3 * face) * u;
       const nEarX = earBackX + earLat, nEarY = headY + (0.6 * side - 0.5 * splay) * u;
       const nEarRx = (2.4 - 0.2 * splay) * u, nEarRot = 0.5 * side + 0.3 * splay;
-      // Pale points: skull, muzzle and near ear get ONE flat backing shape,
+      // The rim: skull, muzzle and near ear get ONE flat backing shape,
       // a hair larger than all three and filled once beneath them. Unioned
       // under nonzero winding (each subpath opened with its own moveTo and
       // wound the same way), so the places they overlap each other don't
       // show as seams. This is the separator that keeps a white head off
-      // cream wool; see POINTS.
+      // cream wool, and a black one off a black fleece; see RIMS.
       if (rimCol) {
         ctx.fillStyle = rimCol;
         ctx.beginPath();
@@ -5020,6 +5179,21 @@
       ctx.beginPath();
       ctx.ellipse(headX, headY, skRx, skRy, 0, 0, Math.PI * 2);
       ctx.fill();
+      // A mottled face, as one dark cheek blotch and a dark muzzle. Speckling
+      // is what mottled skin actually is and is also invisible at a head a few
+      // pixels across, so what's drawn is the part of it that survives the
+      // size: a face that isn't one flat colour. Both shapes are sized and
+      // placed off the SKULL's own radii, so they collapse onto the centreline
+      // with it as the sheep squares up — which also keeps the blotch inside
+      // the skull at every heading, and so needs no clip.
+      if (mottleCol) {
+        ctx.fillStyle = mottleCol;
+        ctx.beginPath();
+        ctx.ellipse(headX - skRx * 0.30, headY + skRy * 0.34, skRx * 0.34, skRy * 0.30, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      // the muzzle, in the mottle where there is one — a dark muzzle on a pale
+      // face is the commonest way a patterned face reads at this size
       ctx.beginPath();
       ctx.ellipse(muX, muY, muRx, muRy, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -5029,8 +5203,8 @@
         ctx.beginPath();
         ctx.ellipse(muX + muRx * 0.42 * side, muY, 0.8 * u, (0.65 + 0.25 * face) * u, 0, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = skin;
       }
+      ctx.fillStyle = skin;
 
       // near ear, over the head
       ctx.beginPath();
@@ -5741,7 +5915,7 @@
       ctx.beginPath();
       ctx.ellipse(s.x, s.y + 13, 15, 5, 0, 0, Math.PI * 2);
       ctx.fill();
-      drawSheepTop(s.x, s.y - hop, 29.4 + 2.6 * s.bold, s.dir, s.bold, s.bob,
+      drawSheepTop(s.x, s.y - hop, 29.4 + 2.6 * s.bold, s.dir, s.coat, s.bob,
         hyp(s.vx, s.vy) > 12, s.alert, s.points);
       if (s.planted) {
         drawDoodle('huff', s.x + 13, s.y - 26 - hop + Math.sin(t * 8 + s.bob) * 2, 15);
