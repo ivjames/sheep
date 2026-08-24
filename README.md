@@ -156,13 +156,22 @@ over. A save the build can't read is discarded rather than guessed at.
   the dog from far out and bolts) to bold (makes you get close and barely
   budges), and another for how keenly it follows the flock's flow versus
   drifting its own way.
+- Every sheep also rolls its own **coat**, on a farm flock's own odds:
+  about four in five white, off-white or cream, and the rest a scatter of
+  fawn, brown, grey, black and patched animals. Face, ears and legs are
+  rolled **against** the fleece rather than beside it — pale points on
+  white wool, grey and dark points on dark wool, and the black face and
+  black legs on a white fleece that half the hill breeds wear.
 - Sheep near the gate mouth **know what it's for** and drift on in —
   strongest at early levels (training wheels) but never gone entirely.
   The stubborn end of the flock couldn't care less about your pen.
-- **Defiant sheep** (dark wool, curled horns, from level 2) sit pinned at
-  the bold, unflockable extreme: they barely feel the dog, stray from the
-  flock, and **plant their hooves** (huffing steam) and refuse to move. A
-  bark — the dog charging right up to them — startles them loose.
+- **Defiant sheep** (from level 2) sit pinned at the bold, unflockable
+  extreme: they barely feel the dog, stray from the flock, and **plant
+  their hooves** (huffing steam) and refuse to move. A bark — the dog
+  charging right up to them — startles them loose. They are not
+  colour-coded: wool colour is breed, and a farm flock is four-fifths
+  white whatever it thinks of the dog. The tell is behaviour — a sheep
+  that strays, plants, and huffs steam.
 - Trees and rocks block movement, each on the body you can actually see —
   a tree at its trunk, a rock at the stone — so the ground shadow around
   them is walkable turf. The hedge keeps everyone on the field.
