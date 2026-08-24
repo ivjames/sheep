@@ -1056,16 +1056,24 @@
   // mixer panel below sets them; both persist.
   const AUDIO_KEY = 'comeby-audio';
   const mix = { music: 1, sfx: 1, musicMuted: false, sfxMuted: false };
+  // What the mix was when the master switch last silenced everything, so
+  // turning sound back on restores it rather than flattening a deliberately
+  // muted channel back to audible. Null when the master switch is holding
+  // nothing — touching either channel's own controls clears it.
+  let preMaster = null;
+  // clamp() is declared further down and this block runs at load, so the
+  // bounds are spelled out here
+  const readMix = (src) => (src && typeof src === 'object' ? {
+    music: Number.isFinite(src.music) ? Math.max(0, Math.min(1, src.music)) : 1,
+    sfx: Number.isFinite(src.sfx) ? Math.max(0, Math.min(1, src.sfx)) : 1,
+    musicMuted: !!src.musicMuted,
+    sfxMuted: !!src.sfxMuted,
+  } : null);
   try {
     const saved = JSON.parse(localStorage.getItem(AUDIO_KEY) || 'null');
-    if (saved && typeof saved === 'object') {
-      // clamp() is declared further down and this block runs at load, so
-      // the bounds are spelled out here
-      if (Number.isFinite(saved.music)) mix.music = Math.max(0, Math.min(1, saved.music));
-      if (Number.isFinite(saved.sfx)) mix.sfx = Math.max(0, Math.min(1, saved.sfx));
-      mix.musicMuted = !!saved.musicMuted;
-      mix.sfxMuted = !!saved.sfxMuted;
-    }
+    const stored = readMix(saved);
+    if (stored) Object.assign(mix, stored);
+    if (saved) preMaster = readMix(saved.pre);
   } catch (err) { /* storage walled off — ship the default mix */ }
   // What a channel is worth right now. Mute is held apart from the level so
   // that silencing a channel remembers the level it silenced.
@@ -1266,7 +1274,7 @@
         musicEl.play().catch(() => { musicStarted = false; });
       }
     }
-    try { localStorage.setItem(AUDIO_KEY, JSON.stringify(mix)); }
+    try { localStorage.setItem(AUDIO_KEY, JSON.stringify({ ...mix, pre: preMaster })); }
     catch (err) { /* storage walled off — the mix still holds for this run */ }
     updateSoundUi();
   }
@@ -6785,6 +6793,7 @@
       // dragging a silenced channel back up is itself an un-mute: the slider
       // is the level and the button is the on/off, and they must not disagree
       if (mix[ch] > 0) mix[ch + 'Muted'] = false;
+      preMaster = null;
       applyMix();
     });
     // one bleat on release, so the effects level can be set by ear — on
@@ -6798,6 +6807,7 @@
       mix[ch + 'Muted'] = chLevel(ch) > 0;
       // turning a channel parked at zero back on has to leave it something to play
       if (!mix[ch + 'Muted'] && mix[ch] <= 0) mix[ch] = 0.5;
+      preMaster = null;
       applyMix();
     });
   }
@@ -6817,11 +6827,22 @@
     document.getElementById('sound-all').textContent =
       silent ? 'Turn sound back on' : 'Mute everything';
   }
-  // master switch: also what the M key throws
+  // master switch: also what the M key throws. It is a lid over the mix, not
+  // an edit of it — what it silences comes back exactly as it was, so a player
+  // who keeps the music off and the effects on doesn't get the band back for
+  // having wanted a moment's quiet.
   function toggleAllSound() {
-    const silent = musicLevel() <= 0 && sfxLevel() <= 0;
-    mix.musicMuted = mix.sfxMuted = !silent;
-    if (silent) {
+    const silent = chLevel('music') <= 0 && chLevel('sfx') <= 0;
+    if (!silent) {
+      preMaster = { music: mix.music, sfx: mix.sfx, musicMuted: mix.musicMuted, sfxMuted: mix.sfxMuted };
+      mix.musicMuted = mix.sfxMuted = true;
+    } else if (preMaster) {
+      Object.assign(mix, preMaster);
+      preMaster = null;
+    } else {
+      // nothing held: both channels were silenced by hand, so both come back,
+      // and one parked at zero needs a level to come back to
+      mix.musicMuted = mix.sfxMuted = false;
       if (mix.music <= 0) mix.music = 0.5;
       if (mix.sfx <= 0) mix.sfx = 0.5;
     }
