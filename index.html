@@ -4260,7 +4260,14 @@
           // only the clock and leaving the flag set costs another whole
           // decision interval of lying down (0.96s for the most patient
           // dog), which is a beat of the charge a planted sheep needs, or
-          // of the drive the flock has just made room for.
+          // of the drive the flock has just made room for. A cancelled hold
+          // ends the same way a bounded one does, so it owes the same
+          // one-tick reprieve from the stall clock below — the dog is still
+          // stationary from the hold, and at the top of the range that lone
+          // tick is enough to read as a jam. Only when a hold really was
+          // running: setting it unconditionally would suppress the clock on
+          // every pass a far-off flock makes through here.
+          if (state.holdT > 0) released = true;
           state.holdT = 0;
           holding = false;
         }
@@ -4306,7 +4313,13 @@
         Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
         ? state.stallT + tick : 0;
       const stalled = state.stallT >= STALL_HOLD;
-      state.wearT += tick;
+      // ...and the wear clock is a clock on the drive too, by the same
+      // argument that freezes the hold during a bout. WEAR_REST is the drive
+      // owed between sweeps — "drive at least this long", not "let this long
+      // pass" — so a stand-off must not pay it off while the dog lies there,
+      // or a hold could spend most of the rest and let the next sweep start
+      // having driven for almost none of it.
+      if (!holding) state.wearT += tick;
       if (state.wearSide && state.wearT > WEAR_BOUT) {
         state.wearSide = 0;
         state.wearT = -WEAR_REST; // drive at least this long before the next bout
