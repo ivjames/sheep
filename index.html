@@ -683,7 +683,7 @@
     },
     patience: {
       icon: '🧘', label: 'Patience', lo: 0.6, hi: 1.6,
-      blurb: 'Time between decisions \u2014 how often the dog stops to re-read the field. A patient dog works in long deliberate legs; an impatient one re-decides constantly and flits. Bout lengths don\u2019t change, only how finely they\u2019re steered. Command and autopilot only.',
+      blurb: 'How long the dog gives a job before it interferes. It leaves more room on a drive \u2014 a patient dog presses to the edge of the flock and stands, and lets the pressure work, where an impatient one walks on into them and splits the lot it was driving. It also decides less often, working in long deliberate legs rather than flitting. Bout lengths don\u2019t change, only how finely they\u2019re steered. Command and autopilot only.',
     },
   };
   const DOG_KEYS = Object.keys(DOG_ATTR);
@@ -796,6 +796,18 @@
   // it stays on it (or what's left of it) at least this long — an unhurried
   // handler who lets each phase play out rather than flip-flopping
   const AUTO_TICK = 0.6, WORK_HOLD = 5;
+  // standing off (autopilot): how close the drive lets the dog press before
+  // it takes the pressure off, in pixels from the nearest sheep of the lot
+  // it's working. Sized well inside the flee range of even the boldest
+  // sheep (FLEE_RANGE_DEFIANT) so a held dog is still leaning on them —
+  // standing off is easing the push, not dropping it. HOLD_CLEAR is the
+  // hysteresis: once the dog has eased off, the flock must draw off past
+  // this multiple of the ring before it presses again, so a dog sitting on
+  // the line doesn't flicker between walk on and lie down every tick.
+  // HOLD_BOUT bounds the hold and HOLD_PUSH is the drive that has to follow
+  // one — see the standing-off block in autopilot().
+  const HOLD_OFF = 70, HOLD_CLEAR = 1.3;
+  const HOLD_BOUT = 2.0, HOLD_PUSH = 1.5;
   // a drive counts as stalled once the dog has been under STALL_SLOW of its
   // own pace for STALL_HOLD seconds — long enough that an ordinary slow
   // press isn't mistaken for having stopped
@@ -1560,6 +1572,7 @@
     wearT: 0,      // seconds into a wear bout; negative = driving before the next one
     wearLegArc: 0, // radians swept on the current side since it was last set — see WEAR_LEG_ARC
     stallT: 0,     // seconds the drive has been stopped with sheep still out
+    holdT: 0,      // seconds the drive has been eased off; negative = driving before the next hold
     workHold: 0,   // seconds left on the dog's commitment to its picked group
     autoWaitT: 0,  // autopilot's pause on an interstitial before it plays on
     funnelViz: false, // overlay chip / F key: heat-map projection of the gate funnel
@@ -2499,7 +2512,7 @@
     state.dog.workEffort = 0; state.dog.workDist = 0;
     state.dog.workPress = 0; state.dog.workSteady = 0;
     state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
-    state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.workHold = 0;
+    state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.holdT = 0; state.workHold = 0;
     state.pace = PACE_START;
     state.barks = [];
     state.floaties = [];
@@ -2994,7 +3007,7 @@
       // sweep it had planned around the old one.
       state.demoT = 0;
       state.demoStallT = 0;
-      state.wearSide = 0; state.wearT = 0; state.stallT = 0;
+      state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.holdT = 0;
     } else {
       d.cmd = 'walk';
     }
@@ -4168,12 +4181,17 @@
     // and the step every timer below advances by, so stretching it for a
     // patient dog can't leave the two disagreeing about how much time passed.
     //
-    // And stretching it is the WHOLE of what patience does. Every hold below
-    // is a threshold in seconds that these same timers count up to, so a
-    // longer beat leaves each bout the same length in seconds and only
-    // changes how often the dog stops to re-read the field — which is what
-    // patience means. Scaling the holds as well (as this first did) made
+    // No hold below is scaled by it. Every one is a threshold in seconds
+    // that these same timers count up to, so a longer beat leaves each bout
+    // the same length in seconds and only changes how often the dog stops to
+    // re-read the field. Scaling the holds as well (as this first did) made
     // patience a second, blunter difficulty knob on top of that.
+    //
+    // The beat is one of the two things patience does; the other is the
+    // stand-off ring further down, which is where an impatient dog gets its
+    // characteristic fault — crowding a driven mob until it splits. That one
+    // is a distance, not a length of time, which is why it doesn't fall foul
+    // of the paragraph above.
     const tick = AUTO_TICK * dogK.patience;
     state.demoT = tick;
     const d = state.dog;
@@ -4294,6 +4312,77 @@
         state.pace = Math.max(state.pace, 0.8);
         return;
       }
+      // STANDING OFF. Walk on drives at the middle of the mob and never
+      // stops itself — that is the command's whole character (see updateDog)
+      // and the skill in it is calling LIE DOWN in time. Left standing, the
+      // drive carries the dog right in among them: the near sheep peel off
+      // either side of it and the lot it was working comes apart into two,
+      // which is then two fetches instead of one. Knowing how far the push
+      // can go before it does that is exactly what patience is, so the drive
+      // gets a floor — press up to the hold ring, then stand and let the
+      // pressure already on them do the moving. A patient dog holds well off
+      // and the mob rolls away whole; an impatient one crowds in until it is
+      // among them and splits the lot it was driving. Same fault as a young
+      // dog's, same cure.
+      //
+      // Presence scales the ring as well as patience, and has to: what it
+      // means to stand a given distance off is set by how far this dog's
+      // authority reaches, and FLEE_RANGE scales the same way — so the ring
+      // sits at the same point in the sheep's own gradient for every dog,
+      // and the push a held dog is still leaning on them with is the same.
+      //
+      // A planted sheep in the lot suspends the hold outright. Standing off
+      // is pressure with the volume down, and a sheep that has planted has
+      // already decided to face down exactly that — the only thing that
+      // shifts it is the dog going in and barking, which needs the charge.
+      let plantedHere = false;
+      for (const m of flock.members) if (m.planted) { plantedHere = true; break; }
+      const ring = HOLD_OFF * dogK.patience * dogK.presence;
+      const nearD = Math.sqrt(nearM);
+      // the hold is bounded, and a bounded hold owes a drive after it — the
+      // same shape as a wear bout, and for the same reason. A mob that
+      // hasn't drawn off after HOLD_BOUT seconds isn't going to on its own
+      // (a sheep pinned against a hedge can't), so the dog goes back to
+      // pressing whatever the ring says, and HOLD_PUSH of driving has to
+      // pass before it may hold again. Without that, a flock that cannot
+      // move leaves the dog standing off it for the rest of the level.
+      //
+      // These are clocks on the DRIVE, so they only run while the dog is
+      // driving. A wear bout is a flank — it neither presses the flock nor
+      // crowds it — and a bout outlasts the whole hold (WEAR_BOUT is 4.5s
+      // against HOLD_BOUT's 2), so left running they would tick a hold out
+      // and spend its owed drive while the dog swept, and the guarantee
+      // above would be a dead letter: the dog could come off a sweep and
+      // hold again having never once pressed. Frozen instead, the state
+      // machine picks up where the drive left off.
+      let holding = false, released = false;
+      if (!state.wearSide) {
+        holding = state.holdT > 0;
+        if (state.holdT < 0) {
+          state.holdT = Math.min(0, state.holdT + tick); // owed drive, counting up to 0
+          holding = false;
+        } else if (!plantedHere && nearD < ring * (holding ? HOLD_CLEAR : 1)) {
+          state.holdT += tick;
+          holding = state.holdT <= HOLD_BOUT;
+          if (!holding) { state.holdT = -HOLD_PUSH; released = true; }
+        } else {
+          // cancelled: a sheep in the lot has planted, or they've drawn off
+          // past the ring. Either way the hold is over THIS tick — clearing
+          // only the clock and leaving the flag set costs another whole
+          // decision interval of lying down (0.96s for the most patient
+          // dog), which is a beat of the charge a planted sheep needs, or
+          // of the drive the flock has just made room for. A cancelled hold
+          // ends the same way a bounded one does, so it owes the same
+          // one-tick reprieve from the stall clock below — the dog is still
+          // stationary from the hold, and at the top of the range that lone
+          // tick is enough to read as a jam. Only when a hold really was
+          // running: setting it unconditionally would suppress the clock on
+          // every pass a far-off flock makes through here.
+          if (state.holdT > 0) released = true;
+          state.holdT = 0;
+          holding = false;
+        }
+      }
       // WEARING. Walk on presses the middle of the mob and nothing else,
       // so a long drive squeezes the flock wider and wider until it's a
       // smear too broad for the gate to take. The handler's answer isn't
@@ -4317,10 +4406,31 @@
       // initiative leans on the flock sideways, pushes it off the gate
       // line, and then has to be flanked back onto balance — measured at
       // half the deliveries for a tighter, undelivered flock.
-      state.stallT = Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
+      // ...but a dog standing off is stopped on purpose, and mustn't read as
+      // a jammed drive: left counting, the hold would trip the stall test and
+      // turn every stand-off into a wear sweep. `holding` covers the hold
+      // while it runs. The tick that ENDS a bounded hold needs saying
+      // separately — `holding` has gone false there but the dog is still
+      // stationary from the hold, and at the top of the patience range one
+      // tick is longer than STALL_HOLD, so that single tick could trip the
+      // test on its own and put the dog into a sweep instead of the drive a
+      // bounded hold owes it. Only THAT tick, though, and only if the dog
+      // really was lying: the ordinary slow ticks around a hold are the
+      // stall clock working as intended — a drive that keeps stopping is
+      // what a gathering sweep is for, and blanking the clock after every
+      // lie-down (as this first did) cost more in splits than the sweep it
+      // was suppressing ever caused.
+      state.stallT = !holding && !(released && d.cmd === 'lie') &&
+        Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
         ? state.stallT + tick : 0;
       const stalled = state.stallT >= STALL_HOLD;
-      state.wearT += tick;
+      // ...and the wear clock is a clock on the drive too, by the same
+      // argument that freezes the hold during a bout. WEAR_REST is the drive
+      // owed between sweeps — "drive at least this long", not "let this long
+      // pass" — so a stand-off must not pay it off while the dog lies there,
+      // or a hold could spend most of the rest and let the next sweep start
+      // having driven for almost none of it.
+      if (!holding) state.wearT += tick;
       if (state.wearSide && state.wearT > WEAR_BOUT) {
         state.wearSide = 0;
         state.wearT = -WEAR_REST; // drive at least this long before the next bout
@@ -4378,6 +4488,10 @@
       }
       state.wearSide = 0;
       state.wearT = Math.min(0, state.wearT); // a rest keeps counting down while the dog drives
+      // nothing to sweep and nothing to fetch: the drive is the answer, and
+      // this is where it hits the floor set above. Pace is left where it is
+      // — the dog picks the drive back up at the same push it eased off.
+      if (holding) { d.cmd = 'lie'; return; }
     }
     d.cmd = 'walk';
     if (panic > 0.7) {
@@ -6401,7 +6515,7 @@
       state.pace = Math.max(state.pace, 0.4);
       state.demoT = 0;
       state.demoStallT = 0;
-      state.wearSide = 0; state.wearT = 0; state.workHold = 0;
+      state.wearSide = 0; state.wearT = 0; state.holdT = 0; state.workHold = 0;
       state.autoWaitT = 1.5; // switched on at an interstitial: pause, then play on
     } else {
       state.dog.cmd = 'lie'; // hands back a standing dog awaiting your call
