@@ -160,9 +160,8 @@ over. A save the build can't read is discarded rather than guessed at.
   about four in five white, off-white or cream, and the rest a scatter of
   fawn, brown, grey, black and patched animals. Face, ears and legs are
   rolled **against** the fleece rather than beside it — pale points on
-  white wool, grey and dark points on dark wool, a mottled face on a
-  patched one, and the black face and black legs on a white fleece that
-  half the hill breeds wear.
+  white wool, grey and dark points on dark wool, and the black face and
+  black legs on a white fleece that half the hill breeds wear.
 - Sheep near the gate mouth **know what it's for** and drift on in —
   strongest at early levels (training wheels) but never gone entirely.
   The stubborn end of the flock couldn't care less about your pen.

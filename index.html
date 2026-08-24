@@ -4515,16 +4515,16 @@
   // below in order. Skin and points are NOT rolled independently of the
   // fleece: a brown ewe with a bright pink face is a sheep nobody has ever
   // seen. The conditionals lean the way real breeds do — pale points on white
-  // wool, dark and grey points on dark wool, mottled points on a patched
-  // fleece — while still leaving every combination possible, because breeds
-  // cross and a flock is not a catalogue.
+  // wool, dark and grey points on dark wool — while still leaving every
+  // combination possible, because breeds cross and a flock is not a
+  // catalogue.
   //
   // Integrated over the family weights these land near the marginal skin
-  // distribution of a farm flock (pale 61%, beige 11%, grey 9%, brown 4%,
-  // dark 8%, mottled 6%) with ONE deliberate excursion: dark points come out
-  // around 8% rather than 5%, because a white fleece on a black face and
-  // black legs is a Suffolk, and Suffolks are not rare. The excess is bought
-  // entirely out of the white family's own row.
+  // distribution of a farm flock (pale 66%, beige 12%, grey 9%, brown 5%,
+  // dark 9%) with ONE deliberate excursion: dark points come out around 9%
+  // rather than 5%, because a white fleece on a black face and black legs is
+  // a Suffolk, and Suffolks are not rare. The excess is bought entirely out
+  // of the white family's own row.
   //
   // `steps` expands into that many consecutive FLEECE buckets, ramped from
   // the first colour to the last, and one is picked at random per sheep.
@@ -4535,19 +4535,19 @@
   const COATS = [
     { name: 'white',   w: 0.80, steps: 8,
       wool: ['#f7f4ec', '#ece0c6'], shade: ['#ded7c5', '#cbba99'],
-      skin: [0.71, 0.10, 0.06, 0.02, 0.06, 0.05] },
+      skin: [0.76, 0.10, 0.06, 0.02, 0.06] },
     { name: 'fawn',    w: 0.05, steps: 1,
       wool: ['#ddc8a5'], shade: ['#bda781'],
-      skin: [0.40, 0.30, 0.10, 0.12, 0.03, 0.05] },
+      skin: [0.45, 0.30, 0.10, 0.12, 0.03] },
     { name: 'brown',   w: 0.04, steps: 1,
       wool: ['#9d7c5b'], shade: ['#7c5f43'],
-      skin: [0.10, 0.18, 0.20, 0.35, 0.12, 0.05] },
+      skin: [0.12, 0.20, 0.20, 0.35, 0.13] },
     { name: 'grey',    w: 0.04, steps: 1,
       wool: ['#b9b6b1'], shade: ['#95928c'],
-      skin: [0.25, 0.10, 0.40, 0.05, 0.15, 0.05] },
+      skin: [0.28, 0.11, 0.40, 0.05, 0.16] },
     { name: 'black',   w: 0.03, steps: 1,
       wool: ['#4b4850'], shade: ['#343139'],
-      skin: [0.05, 0.05, 0.25, 0.10, 0.50, 0.05] },
+      skin: [0.06, 0.06, 0.25, 0.10, 0.53] },
     // Two patched fleeces rather than one, at half the share each. The
     // patches are baked into the strip, so every sheep in a bucket wears the
     // same blotches in the same places; one layout at the full 4% put visibly
@@ -4563,13 +4563,13 @@
       patch: ['#8f6f4e', '#6f5439'],
       patches: [[-0.58, -0.10, 0.46], [-0.32, 0.14, 0.32],
                 [0.55, 0.16, 0.34], [0.36, 0.34, 0.24]],
-      skin: [0.25, 0.10, 0.10, 0.08, 0.07, 0.40] },
+      skin: [0.36, 0.16, 0.14, 0.12, 0.22] },
     { name: 'spotted', w: 0.02, steps: 1,
       wool: ['#efe9dc'], shade: ['#cfc5b1'],
       patch: ['#9a938a', '#7b7469'],
       patches: [[0.44, -0.12, 0.42], [0.20, 0.12, 0.30],
                 [-0.72, 0.18, 0.34], [-0.50, 0.38, 0.24]],
-      skin: [0.25, 0.10, 0.10, 0.08, 0.07, 0.40] },
+      skin: [0.36, 0.16, 0.14, 0.12, 0.22] },
   ];
 
   const FLEECE = (() => {
@@ -4644,16 +4644,7 @@
     { skin: '#63616b', nose: '#2e2d34', eye: '#f6efe2' },                    // grey
     { skin: '#7b5a41', nose: '#3a2718', eye: '#f6efe2' },                    // brown
     { skin: '#3b3b46', nose: '#0a0a0e', eye: '#fff8ec' },                    // dark grey / black
-    { skin: '#e3d7c0', nose: '#c89485', eye: '#2a2620', mottle: '#6b5f54' }, // mottled
   ];
-
-  // Where a mottled face's blotches sit, as [dx, dy, rx, ry] in the SKULL's
-  // own radii — so they collapse onto the centreline with it as the sheep
-  // squares up, which is also what keeps them inside the skull at every
-  // heading and so costs no clip. Both are on the skull and neither is on the
-  // muzzle: mottling the muzzle read as one oversized dark nose worn by a
-  // pale-faced sheep, which is the one thing the nose rule above forbids.
-  const MOTTLE_BLOTCHES = [[-0.30, 0.34, 0.34, 0.30], [-0.08, -0.42, 0.30, 0.26]];
 
   // The rim is why a head is visible at all. The skull sits mostly INSIDE the
   // barrel's silhouette — headX is 7u out and the barrel reaches past 12u — so
@@ -4965,7 +4956,6 @@
     const pts = SKINS[si];
     const wool = pal.wool;                  // the poll fringe is wool too
     const skin = pts.skin, noseCol = pts.nose, eyeCol = pts.eye;
-    const mottleCol = pts.mottle || null;
     const rimCol = RIMS[ti][si];            // per (fleece, skin) pair — see RIMS
 
     const fx = Math.cos(dir), fy = Math.sin(dir);
@@ -5162,7 +5152,15 @@
       // The muzzle's offset rides on `side` so it reaches zero head-on —
       // otherwise a sheep looking straight at you keeps its nose stuck out
       // sideways and reads as still being in profile.
-      const skRx = (4.6 - 2.2 * face) * u, skRy = (3.4 + 1.1 * face) * u;
+      // The skull is TALLER than it is wide, at every heading. It used to be
+      // a lozenge lying on its side in profile, which is the shape of the
+      // whole head — skull plus muzzle — not of the skull alone; with the
+      // muzzle drawn as its own ellipse jutting forward, the part behind it
+      // is a deep cheek and a high poll, and reads as a sheep's head only
+      // when it stands up rather than lies down. Squaring up narrows it
+      // further and lengthens it, which is what a sheep looking straight at
+      // you actually is.
+      const skRx = (3.6 - 1.2 * face) * u, skRy = (4.2 + 0.8 * face) * u;
       const muX = headX + 3.3 * u * side * (0.35 + 0.65 * side);
       const muY = headY + (0.7 + 0.9 * face) * u;
       const muRx = (2.5 - 0.5 * face) * u, muRy = (1.9 - 0.3 * face) * u;
@@ -5190,29 +5188,19 @@
       ctx.beginPath();
       ctx.ellipse(headX, headY, skRx, skRy, 0, 0, Math.PI * 2);
       ctx.fill();
-      // A mottled face: dark blotches on the skull (see MOTTLE_BLOTCHES).
-      // Speckling is what mottled skin actually is and is also invisible at a
-      // head a few pixels across, so what's drawn is the part of it that
-      // survives the size — a face that isn't one flat colour. Traced as one
-      // path under nonzero winding, each subpath opened with its own moveTo.
-      if (mottleCol) {
-        ctx.fillStyle = mottleCol;
-        ctx.beginPath();
-        for (const [dx, dy, brx, bry] of MOTTLE_BLOTCHES) {
-          ctx.moveTo(headX + (dx + brx) * skRx, headY + dy * skRy);
-          ctx.ellipse(headX + dx * skRx, headY + dy * skRy, brx * skRx, bry * skRy, 0, 0, Math.PI * 2);
-        }
-        ctx.fill();
-        ctx.fillStyle = skin;
-      }
       // the muzzle
       ctx.beginPath();
       ctx.ellipse(muX, muY, muRx, muRy, 0, 0, Math.PI * 2);
       ctx.fill();
-      // the nose — every face has one, in that face's own colour
+      // The nose — every face has one, in that face's own colour. It sits LOW
+      // on the muzzle, not centred on it: a sheep's nostrils are at the
+      // bottom of the muzzle with the bridge running up to the eyes above
+      // them, and a nose parked in the middle of the muzzle reads as a snout
+      // on a pig. Offset in muzzle radii so it holds its place as the muzzle
+      // shortens and collapses toward the centreline.
       ctx.fillStyle = noseCol;
       ctx.beginPath();
-      ctx.ellipse(muX + muRx * 0.42 * side, muY, 0.8 * u, (0.65 + 0.25 * face) * u, 0, 0, Math.PI * 2);
+      ctx.ellipse(muX + muRx * 0.42 * side, muY + muRy * 0.34, 0.8 * u, (0.65 + 0.25 * face) * u, 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = skin;
 
