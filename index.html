@@ -4235,17 +4235,28 @@
       // pressing whatever the ring says, and HOLD_PUSH of driving has to
       // pass before it may hold again. Without that, a flock that cannot
       // move leaves the dog standing off it for the rest of the level.
-      let holding = state.holdT > 0, released = false;
-      if (state.holdT < 0) {
-        state.holdT = Math.min(0, state.holdT + tick); // owed drive, counting up to 0
-        holding = false;
-      } else if (!plantedHere && nearD < ring * (holding ? HOLD_CLEAR : 1)) {
-        state.holdT += tick;
-        holding = state.holdT <= HOLD_BOUT;
-        if (!holding) { state.holdT = -HOLD_PUSH; released = true; }
-      } else {
-        state.holdT = 0;
-        holding = false;
+      //
+      // These are clocks on the DRIVE, so they only run while the dog is
+      // driving. A wear bout is a flank — it neither presses the flock nor
+      // crowds it — and a bout outlasts the whole hold (WEAR_BOUT is 4.5s
+      // against HOLD_BOUT's 2), so left running they would tick a hold out
+      // and spend its owed drive while the dog swept, and the guarantee
+      // above would be a dead letter: the dog could come off a sweep and
+      // hold again having never once pressed. Frozen instead, the state
+      // machine picks up where the drive left off.
+      let holding = false, released = false;
+      if (!state.wearSide) {
+        holding = state.holdT > 0;
+        if (state.holdT < 0) {
+          state.holdT = Math.min(0, state.holdT + tick); // owed drive, counting up to 0
+          holding = false;
+        } else if (!plantedHere && nearD < ring * (holding ? HOLD_CLEAR : 1)) {
+          state.holdT += tick;
+          holding = state.holdT <= HOLD_BOUT;
+          if (!holding) { state.holdT = -HOLD_PUSH; released = true; }
+        } else {
+          state.holdT = 0;
+        }
       }
       // WEARING. Walk on presses the middle of the mob and nothing else,
       // so a long drive squeezes the flock wider and wider until it's a
@@ -6108,7 +6119,7 @@
       state.pace = Math.max(state.pace, 0.4);
       state.demoT = 0;
       state.demoStallT = 0;
-      state.wearSide = 0; state.wearT = 0; state.workHold = 0;
+      state.wearSide = 0; state.wearT = 0; state.holdT = 0; state.workHold = 0;
       state.autoWaitT = 1.5; // switched on at an interstitial: pause, then play on
     } else {
       state.dog.cmd = 'lie'; // hands back a standing dog awaiting your call
