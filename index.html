@@ -2534,15 +2534,31 @@
   };
   function layoutDrill(cfg, seedStr) {
     withSeed(seedStr, () => {
-      // A drill sizes to its own flock like any level. It used to be held
-      // at the stock field on the grounds that shrinking would walk the
-      // lots in toward the ring and score an easier gather — but that was
-      // fixing the symptom. `reach` below is measured off the world's short
-      // side, so it already scales; what was missing was the ring and the
-      // knots' own jitter, which are quoted in absolute units. Scale those
-      // with the field and the exercise is geometrically identical at any
-      // size, which is what the exemption was really after.
-      setWorldSize(fieldAreaFor(cfg.knots * cfg.per));
+      // A drill keeps the STOCK field, and the reason is not the one that
+      // used to be written here. Scaling its layout distances does make the
+      // exercise geometrically similar — but a drill is scored on
+      // `1 - blownT / t`, a ratio of TIME, and time is the one thing a
+      // change of length cannot carry with it. Dog speed, acceleration and
+      // wind regeneration are all per-second, so a smaller circuit brings
+      // the turns round sooner and the same run spends more wind; and the
+      // containment test asks whether a fixed-size SHEEP is inside the
+      // ring, so shrinking the ring shrinks the usable disc faster than it
+      // shrinks the ring itself.
+      //
+      // Both were measured rather than argued, autopilot on three seeds
+      // with the dog pinned identically, stock against fieldAreaFor(12):
+      //
+      //   usable radius (ring - SHEEP_R)  163 -> 133, usable area -33%,
+      //   so twelve fixed-size sheep go from 12.9% of it to 19.4%
+      //   blown-time fraction  10.6% -> 49.3%   (worse on all three seeds)
+      //   score                0.894 -> 0.508   = 31% less training paid
+      //
+      // And a drill has a FIXED lot count, so sizing to its flock would
+      // only ever hand it one constant size anyway — all the shrink buys is
+      // that recalibration. fieldReach() stays on the distances below: it
+      // is identity at this scale, and stays correct if a drill ever does
+      // get a variable lot count.
+      setWorldSize(FIELD_AREA);
       makeDecor();
       const { w, h } = state.world;
       const cx = w / 2, cy = h / 2, R = fieldReach(cfg.ring);
