@@ -821,19 +821,40 @@
   // Two ways a rating moves, deliberately different in size. DRIFT is what
   // the level itself taught the dog — small, automatic, and pointed at
   // whatever it actually spent the level doing. A POINT is a choice, worth
-  // a couple of levels' drift in one go, and it's what lets you push a dog
+  // a few levels' drift in one go, and it's what lets you push a dog
   // toward the job you want it for rather than the job it happened to get.
-  const DRIFT_MAX = 0.02;         // most a rating can drift in one level
-  const POINT_STEP = 0.05;        // ...and what one spent point is worth
+  //
+  // The sizes here are what set CAREER LENGTH, and the first pass set them
+  // about three times too generous: drifting 0.02 a level and handing over
+  // a 0.05 point on top paid roughly 0.10 a level against a total of ~2.4
+  // of room, so a dog was finished — every rating parked on its ceiling,
+  // nothing left to train — somewhere around level 40-60. That is well
+  // before the flock sizes this game is built to reach, so the whole back
+  // half was played on a dog that could no longer be improved. Cut to a
+  // third, a dog now runs out of room around level 100-150, which is the
+  // deep game rather than the middle of it.
+  const DRIFT_MAX = 0.007;        // most a rating can drift in one level
+  const POINT_STEP = 0.02;        // ...and what one spent point is worth
   const POINT_PER_LEVEL = 1;
   // what a drill pays. The floor is deliberately above nothing: a scored run
   // costs a point, and a hard-won gather on a green dog that spent half of
-  // it blown is still a morning's work.
-  const DRILL_MIN = 0.02, DRILL_MAX = 0.08;
+  // it blown is still a morning's work. Held at the same ~1.6x of a point
+  // it has always been — a drill has to beat spending the point in the
+  // kennel or there is no reason to run one, and if it beat it by more than
+  // that, drilling would be the only sane way to raise a dog.
+  const DRILL_MIN = 0.008, DRILL_MAX = 0.032;
   // gains taper as a rating nears its ceiling rather than stopping dead at
   // it: the last stretch crawls, which is how you feel a ceiling coming
-  // without ever being shown the number
-  const CAP_TAPER = 0.15;
+  // without ever being shown the number. Narrowed with the cut above: the
+  // taper is a decay, so a zone of fixed width against gains a third the
+  // size is a last stretch three times as long, and 0.15 of crawl at the
+  // new rate was an asymptote you could feel yourself pushing against for
+  // fifty levels. 0.10 keeps the signal and not the wall.
+  const CAP_TAPER = 0.10;
+  // below this a gain is not worth reporting — the clear card says the dog
+  // took nothing rather than drawing an arrow for a rounding error. Sized
+  // against the gains above, so it has to move when they do.
+  const GAIN_EPS = 0.0003;
   const DOG_SPEED = 345;          // direct-drive top speed
   const DOG_ACCEL = 2400, DOG_DRAG = 6;
   const CMD_SPEED = 340;          // command-mode speed at full pace
@@ -1377,14 +1398,20 @@
   // underneath it: small flocks, a wide gate, and (since fieldAreaFor) a
   // field that is itself smaller at level 1, with the dog's reach scaled
   // to match — so a puppy is working a paddock, not being asked to cover
-  // a stock field with a puppy's authority. At 0.15 it starts on 0.79x
-  // presence, 0.83x speed, 0.65x stamina and 0.72x patience: green in a
-  // way you can feel on the first level, and with roughly twice the arc
-  // to train through before it meets its ceilings.
+  // a stock field with a puppy's authority. At 0.06 it starts on 0.74x
+  // presence, 0.79x speed, 0.56x stamina and 0.65x patience: a dog with
+  // no wind and no authority, which is what a young one is, and which
+  // makes the first twenty levels of training something you can feel
+  // rather than something the card tells you about.
+  //
+  // Worth being clear about what this knob does and doesn't do. It sets
+  // how GREEN a dog starts, not how long the career runs: dropping 0.15 to
+  // 0.06 adds 0.36 of room against a total of ~2.4, so it is worth a
+  // handful of levels. The length lives in DRIFT_MAX/POINT_STEP.
   //
   // Existing saves are untouched — loadCareer keeps whatever a dog has
   // already trained to, and only newly-made dogs start here.
-  const DOG_GREEN = 0.15;
+  const DOG_GREEN = 0.06;
   // ...and every dog is bounded by ceilings it can't train past. They're
   // rolled per dog and then NORMALISED to a fixed total, which is the
   // whole point: a dog that could max all four would make the second dog
@@ -4295,7 +4322,7 @@
     learnedEl.innerHTML = D.scored
       ? '<strong>' + dog.name + ':</strong> ' + pct + '% of the run with wind in hand · ' +
         stat.icon + ' ' + stat.label.toLowerCase() +
-        (got < 0.0005 ? ' is at its ceiling — nothing left to give'
+        (got < GAIN_EPS ? ' is at its ceiling — nothing left to give'
                       : ' ' + (got > DRILL_MAX * 0.66 ? '▲▲▲' : got > DRILL_MAX * 0.4 ? '▲▲' : '▲'))
       : '<strong>Practice.</strong> ' + pct + '% of the run with wind in hand — nothing spent, nothing learnt.';
     clearSeedEl.textContent = '';
@@ -4315,7 +4342,7 @@
     const parts = [];
     for (const k of DOG_KEYS) {
       const g = gained[k] || 0;
-      if (g < 0.0005) continue;
+      if (g < GAIN_EPS) continue;
       const arrows = g > DRIFT_MAX * 0.66 ? '▲▲▲' : g > DRIFT_MAX * 0.33 ? '▲▲' : '▲';
       const soft = dogCaps[k] - dogStats[k] < CAP_TAPER;
       parts.push(DOG_ATTR[k].icon + ' ' + DOG_ATTR[k].label.toLowerCase() + ' ' +
