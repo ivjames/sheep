@@ -1164,11 +1164,24 @@
   // one is a bug you can't reproduce.
   const CAREER_KEY = 'comeby-career';
   const CAREER_V = 1;
-  // every dog starts here, on all four — below the 0.5 baseline, so a
-  // green dog is visibly greener than the one the game shipped with,
-  // but not so green that level 1 turns into a slog while you train out
-  // of it (the early levels are small flocks and a wide gate)
-  const DOG_GREEN = 0.40;
+  // Every dog starts here, on all four: a PUPPY, not a slightly-under-par
+  // adult. 0.40 was set when a green dog had to cope with a full-sized
+  // field from level 1, so it hedged — a quarter of the way down from the
+  // 0.5 baseline, which read as "unpolished" rather than as "young", and
+  // left barely a third of the range to grow through before the caps bit.
+  //
+  // What pays for going properly low is that the early game got gentler
+  // underneath it: small flocks, a wide gate, and (since fieldAreaFor) a
+  // field that is itself smaller at level 1, with the dog's reach scaled
+  // to match — so a puppy is working a paddock, not being asked to cover
+  // a stock field with a puppy's authority. At 0.15 it starts on 0.79x
+  // presence, 0.83x speed, 0.65x stamina and 0.72x patience: green in a
+  // way you can feel on the first level, and with roughly twice the arc
+  // to train through before it meets its ceilings.
+  //
+  // Existing saves are untouched — loadCareer keeps whatever a dog has
+  // already trained to, and only newly-made dogs start here.
+  const DOG_GREEN = 0.15;
   // ...and every dog is bounded by ceilings it can't train past. They're
   // rolled per dog and then NORMALISED to a fixed total, which is the
   // whole point: a dog that could max all four would make the second dog
