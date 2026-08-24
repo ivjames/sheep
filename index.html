@@ -4343,7 +4343,15 @@
         // past: the arc gives way to the ground the dog is about to cover,
         // down to a floor that keeps a fast orbit sweeping a real width
         // rather than dithering on the line.
-        const step = paceSpeed(state.pace) / (flock.r + fieldReach(FLANK_CLEAR)) * tick;
+        // the orbit this is timing is the one updateDog actually builds, and
+        // that one floors its radius at FLANK_MIN: a stalled tight pair has
+        // flock.r well under the floor, so reading flock.r raw overestimates
+        // the angular step (24% at a 3-sheep knot) and turns the sweep early.
+        // Still an estimate — updateDog measures its radius over the SWEPT
+        // SECTOR while flock.r spans every member — but erring wide on a
+        // spread mob is the safe direction: it under-steps and turns late.
+        const orbit = Math.max(flock.r, fieldReach(FLANK_MIN)) + fieldReach(FLANK_CLEAR);
+        const step = paceSpeed(state.pace) / orbit * tick;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
         state.wearLegArc += step;
         if (!state.wearSide) { state.wearSide = dAng >= 0 ? -1 : 1; state.wearT = 0; state.stallT = 0; state.wearLegArc = 0; }

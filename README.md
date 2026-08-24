@@ -86,12 +86,12 @@ earns its keep.
 
 ## Raising a dog
 
-Every dog starts **green** — all four ratings at 0.40, below the baseline — and
-every dog has its own **ceilings** it can't train past. The ceilings are rolled
-per dog and then held to a fixed total, so no dog can max all four: each one is
-a specialist, and *which* specialist is what you find out by working it. They're
-never shown as numbers. You read them off the notch on each bar in the kennel,
-and off gains going soft as a rating nears its limit.
+Every dog starts **green** — a puppy, all four ratings at 0.15, well below the
+baseline — and every dog has its own **ceilings** it can't train past. The
+ceilings are rolled per dog and then held to a fixed total, so no dog can max
+all four: each one is a specialist, and *which* specialist is what you find out
+by working it. They're never shown as numbers. You read them off the notch on
+each bar in the kennel, and off gains going soft as a rating nears its limit.
 
 Two things move a rating, deliberately different in size:
 
@@ -141,9 +141,13 @@ over. A save the build can't read is discarded rather than guessed at.
 
 ## Rules
 
-- Levels are zoomed out — the whole field fits on screen. Each level has a
-  **random-sized flock** (growing fast, with **no cap** — the flock keeps
-  swelling as long as you keep clearing) and a fenced pen against one edge
+- Levels are zoomed out — the whole field fits on screen, and the field itself
+  is **sized to the flock**: a dozen sheep get a paddock, a late-game mob gets
+  somewhere to spread out. Every distance the sim measures between things
+  scales with it, so the same flock works the same way whatever size its field
+  is — what changes is how big the sheep draw. Each level has a
+  **random-sized flock** (growing fast, easing onto a ceiling only once the
+  mobs are bigger than a phone can draw) and a fenced pen against one edge
   with a flagged gate that **narrows level by level** down to a two-sheep
   squeeze. Pen every sheep and the gate swings shut to clear the level. No
   fail state, just you, the flock, and the clock — which waits for your
