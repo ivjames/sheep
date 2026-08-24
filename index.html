@@ -6771,6 +6771,10 @@
   const soundBtn = document.getElementById('sound-btn');
   const titleSoundBtn = document.getElementById('title-sound-btn');
   const soundRows = {};
+  // what this channel is actually worth — the button, its label and the row's
+  // dimming all read this rather than the mute flag, so a channel dragged to
+  // zero and a channel muted at volume are the same "off" to every one of them
+  const chLevel = (ch) => (ch === 'music' ? musicLevel() : sfxLevel());
   for (const row of soundPanel.querySelectorAll('.sound-row')) {
     const ch = row.dataset.ch;
     const slider = row.querySelector('input[type=range]');
@@ -6787,8 +6791,12 @@
     // release rather than per input event, or a drag becomes a flock
     if (ch === 'sfx') slider.addEventListener('change', () => { ensureAudio(); sfx.baa(1); });
     muteBtn.addEventListener('click', () => {
-      mix[ch + 'Muted'] = !mix[ch + 'Muted'];
-      // un-muting a channel parked at zero has to leave it something to play
+      // the button does what it says: a channel that is silent for ANY reason
+      // — muted, or dragged to zero — turns back on, and one you can hear goes
+      // quiet. Reading the flag instead would make the first click on a
+      // zeroed-out channel change nothing audible.
+      mix[ch + 'Muted'] = chLevel(ch) > 0;
+      // turning a channel parked at zero back on has to leave it something to play
       if (!mix[ch + 'Muted'] && mix[ch] <= 0) mix[ch] = 0.5;
       applyMix();
     });
@@ -6796,7 +6804,7 @@
   function updateSoundUi() {
     for (const ch of Object.keys(soundRows)) {
       const r = soundRows[ch];
-      const level = ch === 'music' ? musicLevel() : sfxLevel();
+      const level = chLevel(ch);
       r.slider.value = String(Math.round(mix[ch] * 100));
       r.val.textContent = Math.round(mix[ch] * 100) + '%';
       r.muteBtn.textContent = level > 0 ? '🔊' : '🔇';
@@ -6804,7 +6812,7 @@
         (level > 0 ? 'Mute ' : 'Unmute ') + (ch === 'music' ? 'music' : 'sound effects'));
       r.row.classList.toggle('sound-off', level <= 0);
     }
-    const silent = musicLevel() <= 0 && sfxLevel() <= 0;
+    const silent = chLevel('music') <= 0 && chLevel('sfx') <= 0;
     soundBtn.textContent = silent ? '🔇' : '🔊';
     document.getElementById('sound-all').textContent =
       silent ? 'Turn sound back on' : 'Mute everything';
