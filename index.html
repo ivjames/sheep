@@ -4255,7 +4255,14 @@
           holding = state.holdT <= HOLD_BOUT;
           if (!holding) { state.holdT = -HOLD_PUSH; released = true; }
         } else {
+          // cancelled: a sheep in the lot has planted, or they've drawn off
+          // past the ring. Either way the hold is over THIS tick — clearing
+          // only the clock and leaving the flag set costs another whole
+          // decision interval of lying down (0.96s for the most patient
+          // dog), which is a beat of the charge a planted sheep needs, or
+          // of the drive the flock has just made room for.
           state.holdT = 0;
+          holding = false;
         }
       }
       // WEARING. Walk on presses the middle of the mob and nothing else,
