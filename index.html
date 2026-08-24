@@ -4530,8 +4530,8 @@
   // individual animals rather than as one gradient sorted by biddability.
   //
   // The weighting is what a shepherding video actually shows: white faces
-  // and white legs are the clear majority, tan next, and a black-faced sheep
-  // is the one your eye picks out across the field. Rolled once at spawn.
+  // and white legs are the clear majority, and a black-faced sheep is the
+  // one your eye picks out across the field. Rolled once at spawn.
   //
   // A pale-pointed sheep is the whole reason `rim` exists. The skull sits
   // mostly INSIDE the barrel's silhouette — headX is 7u out and the barrel
@@ -4552,11 +4552,10 @@
     // breed, and painting one onto a Cheviot to buy contrast would be
     // buying it with something that isn't a sheep. Pink is a weaker anchor
     // than black would have been, which is why the rim below carries the
-    // separation rather than the nose. The dark faces need no nose drawn at
-    // all: theirs would be the colour of the head it sits on.
-    { skin: '#ece3d0', rim: '#b3a794', nose: '#d59a8e', eye: '#2a2620', w: 0.56 }, // white-faced
-    { skin: '#b9976f', rim: null,      nose: null,      eye: '#2a2620', w: 0.28 }, // tan
-    { skin: '#3b3b46', rim: null,      nose: null,      eye: '#fff8ec', w: 0.16 }, // black-faced
+    // separation rather than the nose. The black face needs no nose drawn
+    // at all: it would be the colour of the head it sits on.
+    { skin: '#ece3d0', rim: '#b3a794', nose: '#d59a8e', eye: '#2a2620', w: 0.75 }, // white-faced
+    { skin: '#3b3b46', rim: null,      nose: null,      eye: '#fff8ec', w: 0.25 }, // black-faced
   ];
   const POINTS_CDF = (() => { let acc = 0; return POINTS.map(p => (acc += p.w)); })();
   function rollPoints() {
