@@ -4832,10 +4832,12 @@
   // Dog as an upright billboard: a black-and-white working collie whose
   // *pose*, not just its animation speed, tells you the gait. gait 0 is the
   // breed's signature stalk — the whole dog drops, rump above lowered
-  // shoulders, head thrust out level with the back on a long flat neck.
-  // gait 1 is flat out: taller, daylight under the belly, head carried up
-  // on a raised neck, tail streaming. Proportions are deliberately square —
-  // body length ~ leg height — because a collie gets low by folding its
+  // shoulders, head thrust out ahead of the chest and BELOW them, nose
+  // tipped down on the sheep. gait 1 is flat out: taller, daylight under
+  // the belly, tail streaming, the head reaching forward on a long flat
+  // neck, level with the topline. It never rides up: a head-up carriage is
+  // a pet trotting to heel, not a dog working. Proportions are deliberately
+  // square — body length ~ leg height — because a collie gets low by folding its
   // legs, not by being built long. Authored right-facing and mirrored,
   // never rotated, so it billboards cleanly through every heading.
   function drawDogTop(x, y, size, dir, bob, gait) {
@@ -5028,10 +5030,14 @@
     leg(fHipX + splay, shoulderY, fHipX + splay + ph * strideAmt, footY - Math.max(0, ph) * liftAmt, bendF);
     leg(rHipX + splay * 0.7, hipY, rHipX + splay * 0.7 - ph * strideAmt, footY - Math.max(0, -ph) * liftAmt, bendR);
 
-    // head: the anchor of the silhouette. In the stalk it thrusts ahead of
-    // the chest, level with the topline; at a run the carriage is extended
-    // rather than lifted — a galloping collie keeps its head roughly level
-    // with its back, reaching.
+    // head: the anchor of the silhouette, and it is carried LOW at both ends
+    // of the gait. In the stalk it thrusts ahead of the chest and drops below
+    // the shoulders — the breed's clapping-eye creep, where the skull tops out
+    // around the withers and the dog sights along its own back at the sheep.
+    // At a run the carriage is extended rather than lifted: a galloping collie
+    // reaches its head out roughly level with its topline, so the neck goes
+    // flatter and longer with speed instead of rising into a trot's head-up
+    // carriage.
     //
     // It is placed relative to the neck's own root rather than in body
     // coordinates, so NECK scales the whole neck without disturbing the
@@ -5039,8 +5045,8 @@
     // re-tuned to match.
     const neckSx = Lf * 0.5 * side, neckSy = withersY + 1.1 * u;
     const NECK = 0.75;
-    const headX = neckSx + NECK * (lerp(0, lerp(7.2, 10.6, g), side) * u - neckSx);
-    const headY = neckSy + NECK * (withersY + lerp(1.5, -3.2, g) * u - neckSy);
+    const headX = neckSx + NECK * (lerp(0, lerp(9.2, 13.6, g), side) * u - neckSx);
+    const headY = neckSy + NECK * (withersY + lerp(4.2, 3.2, g) * u - neckSy);
     const headRx = (3.3 + 0.5 * (1 - side)) * u, headRy = 3.0 * u;
     // how much of the *face side* of the head the camera sees; kills the
     // snout, blaze and nose from dead behind without a pop
@@ -5076,6 +5082,19 @@
       ctx.fill();
       ctx.globalAlpha = 1;
     }
+
+    // ...and the whole head hinges nose-down on its own joint at the top of
+    // the neck, hardest in the creep. A head that only DROPS keeps looking at
+    // the horizon from further down; the tilt is what puts the eye on the
+    // sheep. Everything from here to the end of the function is head — skull,
+    // ears, muzzle, chin, nose, eyes — so it all swings together, and the
+    // tilt is scaled by `side` because head-on the same rotation is not a dog
+    // dipping its nose towards you, it's a dog cocking its head sideways.
+    const pitch = lerp(0.2, 0.04, g) * side;
+    ctx.save();
+    ctx.translate(headX, headY);
+    ctx.rotate(pitch);
+    ctx.translate(-headX, -headY);
 
     // ears: the collie semi-prick — an erect base with the top third folded
     // forward. In profile the pair nearly overlaps at the top-back of the
@@ -5154,6 +5173,7 @@
       ctx.fill();
       ctx.globalAlpha = 1;
     }
+    ctx.restore(); // head tilt
 
     ctx.restore();
   }
