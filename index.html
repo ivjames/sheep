@@ -4270,10 +4270,19 @@
       // initiative leans on the flock sideways, pushes it off the gate
       // line, and then has to be flanked back onto balance — measured at
       // half the deliveries for a tighter, undelivered flock.
-      // a dog standing off is stopped on purpose, so it mustn't read as a
-      // jammed drive — left counting, the hold would trip the stall test and
-      // every stand-off would turn into a wear sweep
-      state.stallT = !holding && Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
+      // ...but the question the stall test asks — is the drive jammed? — only
+      // means anything about a dog that was being asked to drive. A dog
+      // standing off is stopped on purpose, and so is one that came into
+      // this tick under a LIE DOWN: it is not stopped against the sheep, it
+      // simply hasn't been told to move yet. Counting either as a stall used
+      // to turn the stand-off into its own opposite. `holding` covers the
+      // hold while it runs; d.cmd covers the tick that ENDS one, where the
+      // dog is still stationary from the hold but is about to be sent on —
+      // and at the top of the patience range one tick is longer than
+      // STALL_HOLD, so that single tick was enough to trip the test and put
+      // the dog into a sweep instead of the drive a bounded hold owes it.
+      state.stallT = !holding && d.cmd !== 'lie' &&
+        Math.hypot(d.vx, d.vy) < paceSpeed(state.pace) * STALL_SLOW
         ? state.stallT + tick : 0;
       const stalled = state.stallT >= STALL_HOLD;
       state.wearT += tick;
