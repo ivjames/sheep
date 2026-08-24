@@ -762,6 +762,7 @@
   const FLEE_RANGE_DEFIANT = 150; // ...and the boldest make you get close
   const SEP_RANGE = 34, COH_RANGE = 190;
   const COMFORT = 70;             // a neighbor this close means you're IN the flock — no cohesion pull
+  const LINK_RANGE = 170;         // sheep this close hang together as one group (clusterLoose)
   // wearing (autopilot): how wide a mob may spread before the dog stops
   // driving and sweeps it back together. A mob at comfortable shoulder
   // spacing packs into a radius of about (COMFORT/2)·√n, so the trigger is
@@ -807,6 +808,21 @@
   const PANIC_FLOOR = 0.35;       // ...and below this it no longer takes, so a startle dies out in ~5 rings
   const MERGE_REACH = 520;        // a stray feels the pull of the NEAREST sheep out to here
   const BARK_RANGE = 270, BARK_LIFE = 0.35, BARK_COOLDOWN = 0.8;
+  // A flank's standoff: how far outside the flock's edge the dog orbits,
+  // and the floor under the flock radius that orbit is measured from. These
+  // are reach, not clearance — the orbit radius IS the distance the sweep
+  // presses from, so they have to move with the flee range that fieldReach
+  // scales, or the same flank lands different pressure on different field
+  // sizes. Left fixed, the clearance sits 45% of the way out to the range
+  // at reachK 0.81 where it sits 36% at stock and 33% at reachK 1.10, so a
+  // flank works softer on a small field and harder on a big one (k = 0.554
+  // / 0.638 / 0.672); scaled, it is 0.638 at every size.
+  //
+  // What is measured from sheep positions — `need`, flock.r — is flock
+  // geometry and does NOT scale: sheep and their spacing keep their size
+  // whatever the field does.
+  const FLANK_CLEAR = 85;         // orbit this far outside the swept sector's outermost sheep
+  const FLANK_MIN = 70;           // ...around at least this much flock
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
   // flock growth: linear and untouched up to FLOCK_SOFT, then easing onto
@@ -836,12 +852,16 @@
   //   which is not a field, it is a crash. FIELD_BIG grows the biggest
   //   field's area by a fifth instead — about 18MB on that same worst
   //   case, a small bite out of the headroom rather than a bet against it.
-  // - Shrinking it is bounded by the dog's REACH. DOG_AWARE, BARK_RANGE
-  //   and MERGE_REACH are fixed world distances, so a field small enough
-  //   makes the dog omnipresent and leaves no herding to do. At
-  //   FIELD_SMALL the short side still runs ~735 world units at the
-  //   widest aspect — 2.2x DOG_AWARE, 1.4x MERGE_REACH — which is snug on
-  //   purpose for a nine-sheep level and is as far down as this should go.
+  // - Shrinking it is bounded by whatever stays a fixed world distance.
+  //   The DOG is no longer one of those: setWorldSize scales its reach
+  //   with the field, so the omnipresence that would otherwise pin this
+  //   floor is answered there rather than by refusing to shrink. What is
+  //   left is the flock's own geometry and the pen's furniture —
+  //   MERGE_REACH (520) and COH_RANGE (190) bind sheep at ranges no field
+  //   size touches, and the gate keeps its width while the wall it sits in
+  //   gets shorter. At FIELD_SMALL the short side still runs ~735 world
+  //   units at the widest aspect, 1.4x MERGE_REACH: snug on purpose for a
+  //   nine-sheep level, and as far down as this should go.
   //
   // Between those the factor is linear in log(count) — one even step per
   // doubling of the flock — so the field grows smoothly across the whole
@@ -856,9 +876,65 @@
                     Math.log(FLOCK_MAX / FLOCK_SMALL), 0, 1);
     return FIELD_AREA * (FIELD_SMALL + (FIELD_BIG - FIELD_SMALL) * t);
   }
+  // Sizing the world is also where the dog's reach gets set, because the two
+  // cannot be decided apart. Every distance the dog works through is a fixed
+  // number of world units, so shrinking the ground silently promotes the dog:
+  // on a level-1 field DOG_AWARE would cover 43% of the short side where it
+  // used to cover 34%, and a dog that is felt everywhere leaves nothing to
+  // herd. Deriving reachK from the world we just set makes the dog's
+  // authority a constant FRACTION of the field instead — the flee gradient,
+  // the notice range, the bark and the autopilot's approach ring all land on
+  // the same share of the ground they landed on before any of this, at every
+  // field size, and a stock-sized field (a drill's, say) gets exactly 1.
+  //
+  // Read off the world rather than off fieldAreaFor's factor so the two can
+  // never drift: whatever set the world, reachK describes the world that is
+  // actually there.
+  //
+  // What deliberately does NOT scale: the dog's SPEED. A small paddock being
+  // a quicker job to cross is the point of a small paddock, not a fault in
+  // it — scaling pace too would make every field the same field at a
+  // different zoom. Nor do MERGE_REACH and GATE_PULL, which are the flock's
+  // and the pen's business rather than the dog's, nor BARK_CHARGE_RANGE,
+  // which is a nose-to-nose trigger keyed to how big a sheep is.
+  function setWorldSize(area) {
+    const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
+    state.world.w = Math.round(Math.sqrt(area * ar));
+    state.world.h = Math.round(state.world.w / ar);
+    const k = Math.sqrt(state.world.w * state.world.h / FIELD_AREA);
+    state.world.reachK = k;
+    cohR = COH_RANGE * k; mergeR = MERGE_REACH * k;
+    gatePull = GATE_PULL * k; linkR = LINK_RANGE * k;
+  }
+  // every dog-reach distance passes through here on its way to the ground
+  const fieldReach = (px) => px * state.world.reachK;
   const GATE_W = 112;             // gate width at level 1...
   const GATE_MIN = 68;            // ...narrowing 4px a level down to this
   const GATE_PULL = 390;          // sheep this near the gate mouth drift on in
+  // Field-scaled working copies of the distances that are measured BETWEEN
+  // things rather than set by how big a sheep is. Sizing the field to the
+  // flock made these the last things still quoted in absolute world units,
+  // so a small field shrank the ground without shrinking how far a sheep
+  // looks for its flock or how wide the gate's suction reaches — which
+  // changes the gather, and the gather is exactly what a change of scale
+  // must not touch.
+  //
+  // Held fixed on the other side of that line, because they are the sprite
+  // and the flock's own packing rather than distances across the field:
+  // the drawn sheep (drawSheepTop's own size), SHEEP_R/DOG_R, SEP_RANGE,
+  // COMFORT and PEN_SEP. Something has to stay fixed or the whole exercise
+  // cancels — the camera fits the field to the viewport, so screen scale is
+  // exactly 1/world, and scaling EVERY length by k renders pixel-identical
+  // (measured: world*scale holds at 1315.8 across a 4x area range).
+  // Holding the sprite is what makes a small field read as a small field.
+  //
+  // Computed once per field rather than multiplied at each use, because
+  // cohR is also the flocking grid's CELL SIZE: build the grid with one
+  // value and probe it with another and neighbours simply go missing.
+  // linkR rides that same grid and must stay UNDER cohR (a linkable pair
+  // has to land in adjacent cells), so it scales with it rather than
+  // holding at 170 and overtaking a shrunken cell.
+  let cohR = COH_RANGE, mergeR = MERGE_REACH, gatePull = GATE_PULL, linkR = LINK_RANGE;
   const HILL_AMP = 0.115;         // ridge height as a fraction of the world's short side
   const HILL_FLAT = 0.85;         // share of the lift that fades out by the near edge
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1131,11 +1207,24 @@
   // one is a bug you can't reproduce.
   const CAREER_KEY = 'comeby-career';
   const CAREER_V = 1;
-  // every dog starts here, on all four — below the 0.5 baseline, so a
-  // green dog is visibly greener than the one the game shipped with,
-  // but not so green that level 1 turns into a slog while you train out
-  // of it (the early levels are small flocks and a wide gate)
-  const DOG_GREEN = 0.40;
+  // Every dog starts here, on all four: a PUPPY, not a slightly-under-par
+  // adult. 0.40 was set when a green dog had to cope with a full-sized
+  // field from level 1, so it hedged — a quarter of the way down from the
+  // 0.5 baseline, which read as "unpolished" rather than as "young", and
+  // left barely a third of the range to grow through before the caps bit.
+  //
+  // What pays for going properly low is that the early game got gentler
+  // underneath it: small flocks, a wide gate, and (since fieldAreaFor) a
+  // field that is itself smaller at level 1, with the dog's reach scaled
+  // to match — so a puppy is working a paddock, not being asked to cover
+  // a stock field with a puppy's authority. At 0.15 it starts on 0.79x
+  // presence, 0.83x speed, 0.65x stamina and 0.72x patience: green in a
+  // way you can feel on the first level, and with roughly twice the arc
+  // to train through before it meets its ceilings.
+  //
+  // Existing saves are untouched — loadCareer keeps whatever a dog has
+  // already trained to, and only newly-made dogs start here.
+  const DOG_GREEN = 0.15;
   // ...and every dog is bounded by ceilings it can't train past. They're
   // rolled per dog and then NORMALISED to a fixed total, which is the
   // whole point: a dog that could max all four would make the second dog
@@ -1438,7 +1527,7 @@
     input: 'drag', // drag | cmd
     auto: false,   // in-game autopilot: the dog works the flock itself
     level: 1,
-    world: { w: 1600, h: 1000 },
+    world: { w: 1600, h: 1000, reachK: 1 },
     dog: { x: 800, y: 500, vx: 0, vy: 0, facing: -1, dir: Math.PI, cmd: 'lie', bob: 0, gait: 0, barkCd: 0,
            // wind: `stam` is the pool (1 full → 0 empty), `blown` latches
            // when it runs out and clears once STAM_WIND is back, and
@@ -2315,11 +2404,8 @@
     // Zoomed-out pasture: the whole field fits on screen, sized to this
     // device's aspect so it fills the viewport — and to the flock, so a
     // dozen sheep get a paddock and a mob gets somewhere to spread out
-    // (fieldAreaFor).
-    const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
-    const area = fieldAreaFor(count);
-    state.world.w = Math.round(Math.sqrt(area * ar));
-    state.world.h = Math.round(state.world.w / ar);
+    // (fieldAreaFor). setWorldSize scales the dog's reach to match.
+    setWorldSize(fieldAreaFor(count));
     makeDecor();
     makePen();
     const { w, h } = state.world;
@@ -2448,18 +2534,34 @@
   };
   function layoutDrill(cfg, seedStr) {
     withSeed(seedStr, () => {
-      // A drill keeps the stock field rather than sizing to its flock. Its
-      // lot count is fixed, so flock-scaling would only ever hand it one
-      // constant size anyway — and the exercise is tuned against these
-      // distances: `reach` below is measured off the world's short side, so
-      // shrinking the field would quietly walk the lots in toward the ring
-      // and make the gather an easier drill than the one that was scored.
-      const ar = clamp(vw / Math.max(vh, 1), 0.62, 1.9);
-      state.world.w = Math.round(Math.sqrt(FIELD_AREA * ar));
-      state.world.h = Math.round(state.world.w / ar);
+      // A drill keeps the STOCK field, and the reason is not the one that
+      // used to be written here. Scaling its layout distances does make the
+      // exercise geometrically similar — but a drill is scored on
+      // `1 - blownT / t`, a ratio of TIME, and time is the one thing a
+      // change of length cannot carry with it. Dog speed, acceleration and
+      // wind regeneration are all per-second, so a smaller circuit brings
+      // the turns round sooner and the same run spends more wind; and the
+      // containment test asks whether a fixed-size SHEEP is inside the
+      // ring, so shrinking the ring shrinks the usable disc faster than it
+      // shrinks the ring itself.
+      //
+      // Both were measured rather than argued, autopilot on three seeds
+      // with the dog pinned identically, stock against fieldAreaFor(12):
+      //
+      //   usable radius (ring - SHEEP_R)  163 -> 133, usable area -33%,
+      //   so twelve fixed-size sheep go from 12.9% of it to 19.4%
+      //   blown-time fraction  10.6% -> 49.3%   (worse on all three seeds)
+      //   score                0.894 -> 0.508   = 31% less training paid
+      //
+      // And a drill has a FIXED lot count, so sizing to its flock would
+      // only ever hand it one constant size anyway — all the shrink buys is
+      // that recalibration. fieldReach() stays on the distances below: it
+      // is identity at this scale, and stays correct if a drill ever does
+      // get a variable lot count.
+      setWorldSize(FIELD_AREA);
       makeDecor();
       const { w, h } = state.world;
-      const cx = w / 2, cy = h / 2, R = cfg.ring;
+      const cx = w / 2, cy = h / 2, R = fieldReach(cfg.ring);
       // the ring: a pen's shape with none of its fences. `inner` is what the
       // containment test reads, `rect` is its bounding box (penClear and the
       // obstacle placement below use that unchanged), and `gate` is a
@@ -2477,7 +2579,7 @@
         const r = kind === 'tree' ? 32 : 20;
         for (let tries = 0; tries < 40; tries++) {
           const x = rand(HEDGE + 90, w - HEDGE - 90), y = rand(HEDGE + 90, h - HEDGE - 90);
-          if (dist2(x, y, cx, cy) < (R + 190) ** 2) continue;
+          if (dist2(x, y, cx, cy) < (R + fieldReach(190)) ** 2) continue;
           if (!state.obstacles.every(o => dist2(x, y, o.x, o.y) > (o.r + r + 110) ** 2)) continue;
           state.obstacles.push(makeObstacle(x, y, r, kind, Math.floor(rand(0, 2))));
           break;
@@ -2487,14 +2589,22 @@
       // wall, so no single lot is a short trip and the run is a circuit
       state.sheep = [];
       const a0 = rand(0, Math.PI * 2);
-      const reach = Math.min(w, h) / 2 - HEDGE - 90;
+      // the 90 is a keep-off-the-fence pad, and a pad quoted in absolute
+      // units is relatively fatter on a small field — left fixed it pulls
+      // the lots in to lot/ring 1.73 where the stock field gives 1.84, i.e.
+      // a 6% easier gather, which is the very thing sizing this field to
+      // its flock must not do. Scaled it lands 1.81; the last 1.4% is
+      // HEDGE, which stays put because it is the border's own thickness
+      // rather than a distance across the field.
+      const reach = Math.min(w, h) / 2 - HEDGE - fieldReach(90);
+      const jit = fieldReach(42);
       for (let k = 0; k < cfg.knots; k++) {
         const a = a0 + k * Math.PI * 2 / cfg.knots;
         const kx = clamp(cx + Math.cos(a) * reach * cfg.spread, HEDGE + 80, w - HEDGE - 80);
         const ky = clamp(cy + Math.sin(a) * reach * cfg.spread, HEDGE + 80, h - HEDGE - 80);
         for (let i = 0; i < cfg.per; i++) {
           state.sheep.push({
-            x: kx + rand(-42, 42), y: ky + rand(-42, 42), vx: 0, vy: 0, facing: -1,
+            x: kx + rand(-jit, jit), y: ky + rand(-jit, jit), vx: 0, vy: 0, facing: -1,
             dir: rand(0, Math.PI * 2), penned: false, settle: null,
             defiant: false, ...rollTemper(false), ...rollCoat(),
             panic: 0, fearT: 0, fright: 0, contagCd: 0, planted: false, plantT: 0, plantCd: rand(0, 2),
@@ -2916,7 +3026,7 @@
     state.barksUsed++;
     // the pulse carries the radius it was thrown at, so a bark already in
     // flight keeps its own reach even if the dog's presence changes under it
-    state.barks.push({ x: d.x, y: d.y, t: 0, r: BARK_RANGE * dogK.presence });
+    state.barks.push({ x: d.x, y: d.y, t: 0, r: fieldReach(BARK_RANGE * dogK.presence) });
     sfx.bark();
     state.floaties.push({ x: d.x + d.facing * -26, y: d.y - 26, vy: -60, t: 0, life: 0.7, d: 'spark', s: 20 });
   }
@@ -2959,7 +3069,7 @@
   }
   function clusterLoose() {
     if (clusterCache.step === simStep) return clusterCache.clusters;
-    const LINK = 170; // sheep this close hang together as one group
+    const LINK = linkR; // sheep this close hang together as one group
     const grid = sheepGrid();
     const seen = new Set();
     const clusters = [];
@@ -2971,7 +3081,7 @@
       while (q.length) {
         const a = q.pop();
         members.push(a);
-        const gx = Math.floor(a.x / COH_RANGE), gy = Math.floor(a.y / COH_RANGE);
+        const gx = Math.floor(a.x / cohR), gy = Math.floor(a.y / cohR);
         for (let ci = -1; ci <= 1; ci++) {
           for (let cj = -1; cj <= 1; cj++) {
             const cell = grid.get(gridKey(gx + ci, gy + cj));
@@ -3141,7 +3251,7 @@
         // orbit radius: wide enough to clear every sheep in the sector the
         // dog is sweeping into, so a flank swings out and around a strayed
         // outlier instead of slicing inside it toward the flock's middle
-        let need = 70;
+        let need = fieldReach(FLANK_MIN);
         for (const s of flock.members) {
           let da = (Math.atan2(s.y - flock.cy, s.x - flock.cx) - a) * dir;
           da = ((da % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
@@ -3154,7 +3264,8 @@
         // ease toward the needed radius: with a big scattered flock,
         // strays entering and leaving the sweep sector make it jump, and
         // a smoothed radius walks the aim point instead of teleporting it
-        d.orbitR = d.orbitR ? d.orbitR + (need + 85 - d.orbitR) * Math.min(1, 4 * dt) : need + 85;
+        const want = need + fieldReach(FLANK_CLEAR);
+        d.orbitR = d.orbitR ? d.orbitR + (want - d.orbitR) * Math.min(1, 4 * dt) : want;
         const R = d.orbitR;
         // chase a point on the orbit a little ahead of the sweep (canvas
         // y grows downward, so increasing angle is clockwise on screen).
@@ -3303,8 +3414,8 @@
     // bounded by MERGE_REACH (≤3 cells out): the flock grows without a
     // cap, so a flat rescan of state.sheep here would turn the sheep
     // pass O(n²) by the big late-game mobs
-    const R = Math.ceil(MERGE_REACH / COH_RANGE);
-    const gx = Math.floor(s.x / COH_RANGE), gy = Math.floor(s.y / COH_RANGE);
+    const R = Math.ceil(mergeR / cohR);
+    const gx = Math.floor(s.x / cohR), gy = Math.floor(s.y / cohR);
     let bx = 0, by = 0, best = Infinity;
     for (let ci = -R; ci <= R; ci++) {
       for (let cj = -R; cj <= R; cj++) {
@@ -3319,9 +3430,9 @@
     }
     if (best === Infinity) return null;
     const ml = Math.sqrt(best);
-    if (ml < COH_RANGE) return null; // close enough — cohesion handles it
-    if (ml > MERGE_REACH) return null; // too far to see — truly lost
-    const k = Math.min(1, (ml - COH_RANGE) / (MERGE_REACH - COH_RANGE));
+    if (ml < cohR) return null; // close enough — cohesion handles it
+    if (ml > mergeR) return null; // too far to see — truly lost
+    const k = Math.min(1, (ml - cohR) / (mergeR - cohR));
     // a calm stray ambles back; a frightened one has one destination —
     // the safety of the mob — and runs for it
     const pull = (8 + 36 * s.flocky) * (0.4 + 0.6 * k) * (1 + 1.5 * s.panic);
@@ -3351,7 +3462,7 @@
     // aim a little inside the gate so the pull carries sheep over the line
     const tx = P.gx - P.out.x * 34 - s.x, ty = P.gy - P.out.y * 34 - s.y;
     const tl = hyp(tx, ty);
-    const reach = GATE_PULL;
+    const reach = gatePull;
     if (tl < 0.01 || tl > reach) return null;
     const k = 1 - tl / reach;
     // the pull bites the moment a sheep crosses into the funnel and
@@ -3430,7 +3541,7 @@
     const g = new Map();
     for (const s of state.sheep) {
       if (s.penned) continue;
-      const key = gridKey(Math.floor(s.x / COH_RANGE), Math.floor(s.y / COH_RANGE));
+      const key = gridKey(Math.floor(s.x / cohR), Math.floor(s.y / cohR));
       const cell = g.get(key);
       if (cell) cell.push(s); else g.set(key, [s]);
     }
@@ -3468,7 +3579,7 @@
       // a worked flock look worked rather than merely pushed around.
       {
         const spd = Math.hypot(s.vx, s.vy);
-        const NOTICE = FLEE_RANGE * dogK.presence + 120; // they clock the dog well before they flee
+        const NOTICE = fieldReach(FLEE_RANGE * dogK.presence + 120); // they clock the dog well before they flee
         const dogD = Math.hypot(d.x - s.x, d.y - s.y);
         let want = spd > 12 ? 1 : 0;     // you cannot graze and travel at once
         want = Math.max(want, Math.min(1, s.panic * 1.6));
@@ -3554,7 +3665,7 @@
       const sepPush = 320 * (gs ? 1 - 0.75 * gs.k : 1);
       // --- flocking: separation, cohesion, alignment ---
       let cn = 0, cx = 0, cy = 0, avx = 0, avy = 0, nearFright = 0, npvx = 0, npvy = 0, nd = Infinity;
-      const gx = Math.floor(s.x / COH_RANGE), gy = Math.floor(s.y / COH_RANGE);
+      const gx = Math.floor(s.x / cohR), gy = Math.floor(s.y / cohR);
       for (let ci = -1; ci <= 1; ci++) {
         for (let cj = -1; cj <= 1; cj++) {
           const cell = grid.get(gridKey(gx + ci, gy + cj));
@@ -3569,7 +3680,7 @@
               fx += (dx / dl) * k * sepPush;
               fy += (dy / dl) * k * sepPush;
             }
-            if (dd < COH_RANGE * COH_RANGE) {
+            if (dd < cohR * cohR) {
               cn++; cx += o.x; cy += o.y; avx += o.vx; avy += o.vy;
               // only an ACTIVELY frightened neighbour (fear clock still
               // running) is contagious, and what it passes on is the
@@ -3623,8 +3734,8 @@
         // ...and the whole gradient is scaled by the DOG's presence: the
         // sheep's temperament sets where it sits between timid and bold,
         // the dog sets how far that reaches on the ground
-        const range = (FLEE_RANGE - (FLEE_RANGE - FLEE_RANGE_DEFIANT) * s.bold) * dogK.presence;
-        const aware = DOG_AWARE * dogK.presence;
+        const range = fieldReach((FLEE_RANGE - (FLEE_RANGE - FLEE_RANGE_DEFIANT) * s.bold) * dogK.presence);
+        const aware = fieldReach(DOG_AWARE * dogK.presence);
         // sheep track where the dog actually IS. It used to project
         // the dog ~0.3s along its line of travel, but that phantom sat
         // up to 100px ahead of the real dog at a sprint — with panic
@@ -4092,7 +4203,7 @@
     if (flock && !state.drill) {
       let mouth = 0;
       for (const m of flock.members) {
-        if (dist2(m.x, m.y, P.gx, P.gy) < GATE_PULL * GATE_PULL) mouth++;
+        if (dist2(m.x, m.y, P.gx, P.gy) < gatePull * gatePull) mouth++;
       }
       if (mouth >= flock.n * 0.7) {
         // ...and standing off is only the answer when there is nothing
@@ -4123,7 +4234,7 @@
         }
         if (cand && dist2(cand.cx, cand.cy, P.gx, P.gy) > dist2(flock.cx, flock.cy, P.gx, P.gy)) {
           for (const m of cand.members) {
-            if (dist2(m.x, m.y, P.gx, P.gy) >= GATE_PULL * GATE_PULL) {
+            if (dist2(m.x, m.y, P.gx, P.gy) >= gatePull * gatePull) {
               // clear the stall clock here rather than leaning on
               // issueLookBack to do it: the reset there is inside its
               // `state.auto` branch, and the title demo runs this same
@@ -4176,7 +4287,7 @@
       // creeping only matters once the dog is actually on the sheep
       let nearM = Infinity;
       for (const m of flock.members) nearM = Math.min(nearM, dist2(d.x, d.y, m.x, m.y));
-      const reach = 260 * dogK.presence;
+      const reach = fieldReach(260 * dogK.presence);
       if (nearM > reach * reach) {
         state.wearSide = 0; state.wearT = Math.min(0, state.wearT);
         d.cmd = 'walk';
@@ -4248,7 +4359,15 @@
         // past: the arc gives way to the ground the dog is about to cover,
         // down to a floor that keeps a fast orbit sweeping a real width
         // rather than dithering on the line.
-        const step = paceSpeed(state.pace) / (flock.r + 85) * tick;
+        // the orbit this is timing is the one updateDog actually builds, and
+        // that one floors its radius at FLANK_MIN: a stalled tight pair has
+        // flock.r well under the floor, so reading flock.r raw overestimates
+        // the angular step (24% at a 3-sheep knot) and turns the sweep early.
+        // Still an estimate — updateDog measures its radius over the SWEPT
+        // SECTOR while flock.r spans every member — but erring wide on a
+        // spread mob is the safe direction: it under-steps and turns late.
+        const orbit = Math.max(flock.r, fieldReach(FLANK_MIN)) + fieldReach(FLANK_CLEAR);
+        const step = paceSpeed(state.pace) / orbit * tick;
         const turn = Math.max(WEAR_ARC - step, WEAR_ARC * 0.4);
         state.wearLegArc += step;
         if (!state.wearSide) { state.wearSide = dAng >= 0 ? -1 : 1; state.wearT = 0; state.stallT = 0; state.wearLegArc = 0; }
@@ -5682,12 +5801,12 @@
         ctx.save();
         const A = { x: P.gx - P.out.x * 34, y: P.gy - P.out.y * 34 };
         const step = 26;
-        for (let wx = A.x - GATE_PULL; wx <= A.x + GATE_PULL; wx += step) {
-          for (let wy = A.y - GATE_PULL; wy <= A.y + GATE_PULL; wy += step) {
+        for (let wx = A.x - gatePull; wx <= A.x + gatePull; wx += step) {
+          for (let wy = A.y - gatePull; wy <= A.y + gatePull; wy += step) {
             if ((wx - P.gx) * P.out.x + (wy - P.gy) * P.out.y < -4) continue;
             const tl = Math.hypot(A.x - wx, A.y - wy);
-            if (tl > GATE_PULL) continue;
-            const dpt = 1 - tl / GATE_PULL;
+            if (tl > gatePull) continue;
+            const dpt = 1 - tl / gatePull;
             const p = camPt(wx, wy), k = camScale(wx, wy);
             ctx.fillStyle = `hsla(${215 * (1 - dpt)}, 90%, 55%, ${0.10 + 0.22 * dpt})`;
             ctx.fillRect(p.x - (step / 2) * k, p.y - (step / 2) * k, step * k, step * k);
@@ -5698,7 +5817,7 @@
         ctx.font = 'bold 12px system-ui, sans-serif';
         ctx.textAlign = 'center';
         for (const want of [60, 100, 150, 200]) {
-          const r = GATE_PULL * (1 - (want - 60) / 150);
+          const r = gatePull * (1 - (want - 60) / 150);
           ctx.strokeStyle = 'rgba(255,255,255,0.55)';
           ctx.lineWidth = 1.5;
           ctx.beginPath();
@@ -5749,7 +5868,7 @@
             if (dist2(wx, wy, c.cx, c.cy) > reach * reach) continue;
             sampled.add(key);
             let w = 0;
-            const gx = Math.floor(wx / COH_RANGE), gy = Math.floor(wy / COH_RANGE);
+            const gx = Math.floor(wx / cohR), gy = Math.floor(wy / cohR);
             for (let ci = -1; ci <= 1; ci++) {
               for (let cj = -1; cj <= 1; cj++) {
                 const cell = grid.get(gridKey(gx + ci, gy + cj));
@@ -5845,7 +5964,7 @@
     if (state.mode === 'playing') {
       const dg = state.dog, dk = camScale(dg.x, dg.y);
       const RING_N = 48; // drawn every frame — smooth without being wasteful
-      const R = FLEE_RANGE * dogK.presence; // the ring IS the presence rating, drawn
+      const R = fieldReach(FLEE_RANGE * dogK.presence); // the ring IS the reach, drawn
       ctx.beginPath();
       for (let i = 0; i <= RING_N; i++) {
         const a = Math.PI * 2 * i / RING_N;
