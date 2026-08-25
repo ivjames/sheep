@@ -1834,7 +1834,7 @@
   // Everything else is unchanged, deliberately: F is still bounded to
   // [0,1] and still multiplied by the same fade, so every buffer-size and
   // margin bound derived from the old form still holds exactly.
-  const hill = { amp: 0, m: 0, mMax: 0, top: 0, field: () => 0 };
+  const hill = { amp: 0, m: 0, mMax: 0, top: 0, wave: Infinity, field: () => 0 };
 
   // ---------- camera ----------
   // Two stages, both exactly invertible. Stage 1 is the hillside lift
@@ -1921,6 +1921,39 @@
     for (let i = 0; i < 12; i++) y = v + hillLift(u, y);
     return { x: u, y };
   }
+  // Screen-space bounding box of the FIELD (its four fences, margins
+  // excluded), traced through whatever camera `cam` currently holds.
+  // viewFit() frames this, and requiredHillMargin() sizes the off-field
+  // margin from it, so the two have to measure the same box — they used to
+  // trace it separately, at a fixed 16 subdivisions an edge.
+  //
+  // Fixed 16 stopped being enough when the terrain gained a heading. The
+  // old ridge ran at most ~1.5 cycles across the field, so 16 samples had
+  // ten a cycle; the finest roll now has a wavelength of ~0.28 of the
+  // world's short side and, on the widest aspect the world can take, gets
+  // through ~7 cycles along the far fence — barely two samples each, which
+  // slides right past crests depending on the phase. Measured against a
+  // 1024-sample trace that cost up to 5 world units of missed height, and
+  // since viewFit fits bh exactly, ~4px of the field clipped off a
+  // height-limited viewport. So take the sample step from the terrain
+  // itself: a dozen per shortest wavelength, floored at the old 16 for a
+  // flat camera and capped so nothing here can run away.
+  function fieldBBox() {
+    const { w, h } = state.world;
+    const step = hill.wave / 12;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [ax, ay, bx, by] of [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]) {
+      const n = clamp(Math.ceil(Math.hypot(bx - ax, by - ay) / step), 16, 256);
+      for (let i = 0; i <= n; i++) {
+        const p = camPt(ax + (bx - ax) * i / n, ay + (by - ay) * i / n);
+        if (p.x < x0) x0 = p.x;
+        if (p.x > x1) x1 = p.x;
+        if (p.y < y0) y0 = p.y;
+        if (p.y > y1) y1 = p.y;
+      }
+    }
+    return { x0, y0, x1, y1 };
+  }
   function setCamera(name) {
     if (!CAMS[name]) return;
     camKey = name;
@@ -1984,15 +2017,7 @@
     const { w, h } = state.world;
     const saved = cam;
     cam = camPreset;
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity;
-    for (const [ax, ay, bx, by] of [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]) {
-      for (let i = 0; i <= 16; i++) {
-        const p = camPt(ax + (bx - ax) * i / 16, ay + (by - ay) * i / 16);
-        if (p.x < x0) x0 = p.x;
-        if (p.x > x1) x1 = p.x;
-        if (p.y < y0) y0 = p.y;
-      }
-    }
+    const { x0, x1, y0 } = fieldBBox();
     cam = saved;
     const bw = Math.max(1, x1 - x0);
     const s0 = camPreset.sFar, g = (camPreset.sNear - camPreset.sFar) / h;
@@ -2111,8 +2136,11 @@
     // two rolls crest together the ground domes, where they oppose it
     // hollows out, and the crest lines run at whatever angle the headings
     // happen to give — which is the whole point of carrying a heading.
+    hill.wave = Infinity;
     const waves = HILL_ROLLS.map(([a, wlo, whi, tlo, thi]) => {
-      const k = Math.PI * 2 / (rand(wlo, whi) * L);
+      const wl = rand(wlo, whi) * L;
+      hill.wave = Math.min(hill.wave, wl); // sets fieldBBox's sample step
+      const k = Math.PI * 2 / wl;
       // sign drawn separately from magnitude so the tilt band excludes the
       // square-on case without also excluding one of the two directions
       const sn = rand(tlo, thi) * (rand(0, 1) < 0.5 ? -1 : 1);
@@ -2491,16 +2519,7 @@
     }
     // screen-space bounding box of the FIELD (margins excluded) — viewFit
     // frames this, so every preset fills the viewport the same way
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const [ax, ay, bx, by] of [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]) {
-      for (let i = 0; i <= 16; i++) {
-        const p = camPt(ax + (bx - ax) * i / 16, ay + (by - ay) * i / 16);
-        if (p.x < x0) x0 = p.x;
-        if (p.x > x1) x1 = p.x;
-        if (p.y < y0) y0 = p.y;
-        if (p.y > y1) y1 = p.y;
-      }
-    }
+    const { x0, y0, x1, y1 } = fieldBBox();
     // commit — the renderer's whole view of the land (image, offsets,
     // bounding box) swaps atomically between two frames, and the pair the
     // old front lived in becomes the next bake's back buffer
