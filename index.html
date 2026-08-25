@@ -1018,11 +1018,18 @@
   //
   // FLOCK_EASE is that second use, cut out and named. It is the roll's worth
   // of head-room the curve spends per e-fold: SMALLER climbs faster and
-  // saturates sooner, larger draws the ladder out. It is set to
-  // FLOCK_MAX - FLOCK_SOFT here, which is exactly what the expression
-  // computed before, so this changes the shape of nothing — it only means
-  // the next person to move the ceiling gets to decide about the climb
-  // instead of inheriting it.
+  // saturates sooner, larger draws the ladder out. 250 is what the old
+  // expression worked out to at this cap, so this changes the shape of
+  // nothing — it only means the next person to move the ceiling gets to
+  // decide about the climb instead of inheriting it.
+  //
+  // It is a LITERAL, deliberately, and not `FLOCK_MAX - FLOCK_SOFT`. Writing
+  // it as that subtraction reads like a tidier way to say 250 and is in fact
+  // the whole bug wearing a new name: the ease would still ride the ceiling,
+  // so moving the cap would still stretch the climb, silently, exactly as
+  // before — and now under a constant whose name promises it doesn't. The
+  // two numbers agreeing today is a coincidence of this cap, not a relation
+  // to preserve. Change either one alone.
   //
   // What the knob does, at FLOCK_SOFT 150 / FLOCK_MAX 400 (median flock by
   // level, 400 seeds; "full" = the level from which every seed rolls the cap):
@@ -1039,7 +1046,7 @@
   // never reaches this expression at all. Measured over 400 seeds, level 37
   // is indeed the first where the ease changes any flock at all.
   const FLOCK_SOFT = 150, FLOCK_MAX = 400;
-  const FLOCK_EASE = FLOCK_MAX - FLOCK_SOFT;
+  const FLOCK_EASE = 250;   // a literal on purpose — see above
   // ...and the field is sized to the flock that has to be worked on it. A
   // fixed field is two wrong sizes at once: level 1's handful of sheep
   // rattle around in a pasture they never fill, while a late-game mob
