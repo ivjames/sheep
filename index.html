@@ -983,12 +983,37 @@
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
   // flock growth: linear and untouched up to FLOCK_SOFT, then easing onto
   // FLOCK_MAX rather than climbing without bound — see startLevel. FLOCK_MAX
-  // is set by what the renderer can actually carry: ~324 sheep measured 29fps
-  // on a phone-sized canvas and ~154 measured 51fps, so the top of the game
-  // sits just the playable side of that line, and difficulty past it comes
-  // from the defiant share (which keeps climbing to its third of the flock)
-  // rather than from more animals.
-  const FLOCK_SOFT = 150, FLOCK_MAX = 260;
+  // is set by what the renderer can actually carry, so it moves when the
+  // renderer does. It was 260 when a sheep cost ~42µs to draw: ~324 measured
+  // 29fps on a phone-sized canvas and ~154 measured 51fps, which put 260 at
+  // about 35fps and made it the last comfortable number.
+  //
+  // Baking the head (see paintHead/headStrip) and batching the legs took a
+  // sheep to ~26µs — a 38% cut, measured the same way, across 200-800 sheep.
+  // 400 is where that lands the cap: measured head to head on one machine,
+  // 400 sheep now cost what 260 cost before, so the top of the game is a 54%
+  // bigger mob for the same frame.
+  //
+  // Below the cap the spend is split the other way — the flock grows AND the
+  // frame gets cheaper, because the curve doesn't hand the whole 38% to extra
+  // animals until it saturates:
+  //
+  //     level 50    172 sheep @ 10.0ms  ->  191 sheep @  7.4ms
+  //     level 100   248 sheep @ 13.2ms  ->  307 sheep @ 11.4ms
+  //     level 600+  260 sheep @ 13.5ms  ->  400 sheep @ 13.4ms
+  //
+  // (render-only medians, headless software raster, 390x844 — the absolute
+  // numbers are not a phone's, the ratios are what carry over.)
+  //
+  // Difficulty past the cap still comes from the defiant share (which keeps
+  // climbing to its third of the flock) rather than from more animals.
+  //
+  // The approach RATE is deliberately still tied to the ceiling: the ease
+  // term below reuses (FLOCK_MAX - FLOCK_SOFT), so raising the cap also
+  // stretches the climb — the mob now saturates around level 570 instead of
+  // 247. If those two ever need to move apart, that subtraction is the seam
+  // to cut; nothing else reads it.
+  const FLOCK_SOFT = 150, FLOCK_MAX = 400;
   // ...and the field is sized to the flock that has to be worked on it. A
   // fixed field is two wrong sizes at once: level 1's handful of sheep
   // rattle around in a pasture they never fill, while a late-game mob
@@ -3046,9 +3071,15 @@
       // what it was up to about level 36. Past that the curve bends: the old
       // straight line put ~800 sheep on level 200, which drew at 13fps on a
       // phone, so "no cap" did not mean the top of the game was hard, it meant
-      // it was unplayable. This is continuous at the join and never quite
-      // reaches FLOCK_MAX, so the mob still grows for as long as you keep
-      // clearing — just ever more slowly, and inside what a phone can draw.
+      // it was unplayable. This is continuous at the join.
+      //
+      // It is an asymptote in the algebra only. Math.round closes the last
+      // half-sheep, so the curve REACHES FLOCK_MAX exactly and then sits
+      // there: with FLOCK_MAX at 400 the first 400-strong flock is possible
+      // at level 425 and every seed rolls one from level 567 on.
+      // Below that the mob still grows for as long as you keep clearing, just
+      // ever more slowly. (At the old 260 those two levels were 185 and 247 —
+      // worth knowing before treating the top of the ladder as unbounded.)
       count = raw <= FLOCK_SOFT ? raw
         : Math.round(FLOCK_SOFT + (FLOCK_MAX - FLOCK_SOFT) *
             (1 - Math.exp(-(raw - FLOCK_SOFT) / (FLOCK_MAX - FLOCK_SOFT))));
@@ -5805,6 +5836,159 @@
     return s;
   }
 
+  // ---------- baked head ----------
+  // The head is the sheep's busiest piece: far ear and its backing, the poll
+  // fringe, the rim under skull/muzzle/ear, the skull union, the nose and one
+  // or two eyes — eight fills for something a few pixels across. It bakes for
+  // the same reason the fleece does, and the objection that used to stand
+  // against it turns out not to.
+  //
+  // That objection was `alert`: a head that rises and reaches forward looked
+  // like an axis the atlas would have to carry. It isn't one. `alert` appears
+  // in headX and headY and NOWHERE else in the head — every feature below is
+  // written as a fixed offset from that anchor, so lifting the head slides
+  // the whole drawing without reshaping any part of it. Draw the head in a
+  // frame centred on the anchor and the alert axis vanishes; what's left is
+  // the same collapse the fleece makes, side/face/rear/splay all following
+  // from sin(dir) alone. So this keys on (fleece, skin, heading) — 32
+  // headings per palette pair, baked on first use, like fleeceStrip.
+  //
+  // The NECK is the one head-ish piece that stays live: it spans anchor to
+  // barrel, so both its ends move with `alert` and it genuinely does need
+  // the axis. It is one fill, and it draws under the fleece anyway.
+  //
+  // Alpha is baked IN rather than applied to the blit. The far ear, the head
+  // proper and each eye ride different alphas, and source-over is
+  // associative — compositing them onto a transparent sprite and blitting
+  // that is exactly compositing them onto the canvas one at a time.
+  function paintHead(g, side, face, rear, ti, si) {
+    const splay = 1 - side;
+    const pal = FLEECE[ti], pts = SKINS[si];
+    const skin = pts.skin, rimCol = RIMS[ti][si];
+    const RIM = 0.7;
+    const headAlpha = clamp((0.45 - rear) / 0.21, 0, 1);
+    const faceShow = Math.max(0, 1 - rear * 1.5);
+    const farEar = Math.min(1, splay * 2.2);
+    const earBackX = -2.6 * side, earLat = 3.2 * splay;
+
+    g.globalAlpha = headAlpha * farEar;
+    const fEarX = earBackX - earLat, fEarY = -(0.6 * side + 0.5 * splay);
+    const fEarRx = 2.4 - 0.2 * splay, fEarRot = -0.5 * side - 0.3 * splay;
+    if (rimCol) {
+      g.fillStyle = rimCol;
+      g.beginPath();
+      g.ellipse(fEarX, fEarY, fEarRx + RIM, 1.25 + RIM, fEarRot, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = skin;
+    g.beginPath();
+    g.ellipse(fEarX, fEarY, fEarRx, 1.25, fEarRot, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = headAlpha;
+
+    g.fillStyle = pal.wool;                 // poll fringe, under the skull
+    g.beginPath();
+    g.ellipse(-2.8 * side, -(2.3 - 0.5 * face), 2.1 + 0.9 * splay, 2.1, 0, 0, Math.PI * 2);
+    g.fill();
+
+    const skRx = 3.6 - 1.2 * face, skRy = 4.2 + 0.8 * face;
+    const muX = 3.3 * side * (0.35 + 0.65 * side), muY = 0.7 + 0.9 * face;
+    const muRx = 2.5 - 0.5 * face, muRy = 1.9 - 0.3 * face;
+    const nEarX = earBackX + earLat, nEarY = 0.6 * side - 0.5 * splay;
+    const nEarRx = 2.4 - 0.2 * splay, nEarRot = 0.5 * side + 0.3 * splay;
+
+    if (rimCol) {
+      g.fillStyle = rimCol;
+      g.beginPath();
+      ellipseAt(g, 0, 0, skRx + RIM, skRy + RIM);
+      ellipseAt(g, muX, muY, muRx + RIM, muRy + RIM);
+      g.moveTo(nEarX + (nEarRx + RIM) * Math.cos(nEarRot),
+               nEarY + (nEarRx + RIM) * Math.sin(nEarRot));
+      g.ellipse(nEarX, nEarY, nEarRx + RIM, 1.25 + RIM, nEarRot, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.fillStyle = skin;
+    g.beginPath();
+    ellipseAt(g, 0, 0, skRx, skRy);
+    ellipseAt(g, muX, muY, muRx, muRy);
+    g.moveTo(nEarX + nEarRx * Math.cos(nEarRot), nEarY + nEarRx * Math.sin(nEarRot));
+    g.ellipse(nEarX, nEarY, nEarRx, 1.25, nEarRot, 0, Math.PI * 2);
+    g.fill();
+
+    g.fillStyle = pts.nose;
+    g.beginPath();
+    g.ellipse(muX + muRx * 0.42 * side, muY + muRy * 0.34, 0.8, 0.65 + 0.25 * face, 0, 0, Math.PI * 2);
+    g.fill();
+
+    const eyeY = -(1.3 - 0.5 * face);
+    g.globalAlpha = headAlpha * faceShow;
+    g.fillStyle = pts.eye;
+    g.beginPath();
+    g.arc(1.3 + 0.6 * face, eyeY, 0.85, 0, Math.PI * 2);
+    g.fill();
+    if (face > 0.04) {
+      g.globalAlpha = headAlpha * faceShow * Math.min(1, face * 2.2);
+      g.beginPath();
+      g.arc(1.3 - 3.2 * face, eyeY, 0.85, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.globalAlpha = 1;
+  }
+
+  // widest extent the head reaches over the heading sweep, in u = 1 units
+  // relative to the anchor — the same job FLEECE_BOX does for the barrel.
+  // Rotated ears are bounded by their major radius on both axes, which is
+  // slack by a hair and cheaper than being clever about it.
+  const HEAD_BOX = (() => {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const put = (cx, cy, rx, ry) => {
+      x0 = Math.min(x0, cx - rx); x1 = Math.max(x1, cx + rx);
+      y0 = Math.min(y0, cy - ry); y1 = Math.max(y1, cy + ry);
+    };
+    const RIM = 0.7;
+    for (let i = 0; i < BODY_DIRS; i++) {
+      const a = -Math.PI / 2 + (i / (BODY_DIRS - 1)) * Math.PI;
+      const side = Math.cos(a), face = Math.max(0, Math.sin(a)), splay = 1 - side;
+      const earBackX = -2.6 * side, earLat = 3.2 * splay;
+      const earR = 2.4 - 0.2 * splay + RIM;
+      put(earBackX - earLat, -(0.6 * side + 0.5 * splay), earR, earR);
+      put(earBackX + earLat, 0.6 * side - 0.5 * splay, earR, earR);
+      put(-2.8 * side, -(2.3 - 0.5 * face), 2.1 + 0.9 * splay, 2.1);
+      put(0, 0, 3.6 - 1.2 * face + RIM, 4.2 + 0.8 * face + RIM);
+      const muX = 3.3 * side * (0.35 + 0.65 * side), muY = 0.7 + 0.9 * face;
+      put(muX, muY, 2.5 - 0.5 * face + RIM, 1.9 - 0.3 * face + RIM);
+      put(1.3 - 3.2 * face, -(1.3 - 0.5 * face), 0.85, 0.85);
+      put(1.3 + 0.6 * face, -(1.3 - 0.5 * face), 0.85, 0.85);
+    }
+    return { x0: x0 - 1, y0: y0 - 1, x1: x1 + 1, y1: y1 + 1 };
+  })();
+  // one strip per (fleece, skin) pair, baked on first use — a flock only
+  // touches the pairs it actually rolled, and there are 108 in all
+  const headStrips = new Map();
+  function headStrip(ti, si) {
+    const key = ti * SKINS.length + si;
+    let s = headStrips.get(key);
+    if (s) return s;
+    const w = Math.ceil((HEAD_BOX.x1 - HEAD_BOX.x0) * BODY_BAKE);
+    const h = Math.ceil((HEAD_BOX.y1 - HEAD_BOX.y0) * BODY_BAKE);
+    const c = document.createElement('canvas');
+    c.width = w * BODY_DIRS;
+    c.height = h;
+    const g = c.getContext('2d');
+    for (let i = 0; i < BODY_DIRS; i++) {
+      const a = -Math.PI / 2 + (i / (BODY_DIRS - 1)) * Math.PI;
+      g.save();
+      g.translate(i * w, 0);
+      g.scale(BODY_BAKE, BODY_BAKE);
+      g.translate(-HEAD_BOX.x0, -HEAD_BOX.y0);
+      paintHead(g, Math.cos(a), Math.max(0, Math.sin(a)), Math.max(0, -Math.sin(a)), ti, si);
+      g.restore();
+    }
+    s = { c, w, h };
+    headStrips.set(key, s);
+    return s;
+  }
+
   // `ci` and `pi` are the sheep's own coat and points buckets, rolled once at
   // spawn by rollCoat — nothing about its colour is derived per frame.
   function drawSheepTop(x, y, size, dir, ci, bob, moving, alert, pi) {
@@ -5829,11 +6013,6 @@
     // grazing sheep barely rock when idle; a trot supplies its own motion,
     // so the standing sway is a faint remnant of the old top-down waddle
     if (!moving) ctx.translate(Math.sin(bob * 0.6) * 0.5 * u, 0);
-
-    // how far the rim backing stands out past the head it sits
-    // under. Sized in u so it tracks the sheep rather than the screen: it
-    // has to survive the small end, where the whole head is a few pixels.
-    const RIM = 0.7 * u;
 
     const footY = 12 * u;
     const bellyY = 7.4 * u;                           // short legs — the barrel nearly sits on the ground
@@ -5867,26 +6046,38 @@
     const strideX = moving ? Math.sin(bob * 2) * 2 * u * side : 0;
     const strideY = moving ? Math.sin(bob * 2) * 1 * u * (1 - side) : 0;
 
-    function leg(hx, hyy, fxx, fyy) {
-      ctx.strokeStyle = skin;
-      ctx.lineWidth = (2.1 + 0.5 * side) * u;
-      ctx.lineCap = 'round';
-      ctx.beginPath();
-      ctx.moveTo(hx, hyy);
-      ctx.lineTo(fxx, fyy);
-      ctx.stroke();
-      ctx.fillStyle = skin;
-      ctx.beginPath();
-      ctx.ellipse(fxx, fyy + 0.3 * u, 1.5 * u, 1.05 * u, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // All four under the fleece: far pair tucked up and in, near pair a
+    // touch lower and wider. The four legs share one stroke style and the
+    // four hooves one fill, so they go down as TWO paths rather than eight
+    // — a stroke of four subpaths is the union of four strokes, and skin is
+    // opaque, so the pixels are the same and only the number of times the
+    // rasteriser is asked for them changes. The feet are named rather than
+    // collected into an array: this runs once per sheep per frame, and a
+    // 260-strong flock allocating four little arrays a head is exactly the
+    // garbage that shows up as jitter rather than as a lower average.
+    const f1x = frontHipX - strideX, f1y = footY - pairSpread - strideY;
+    const f2x = rearHipX + strideX, f2y = footY - pairSpread + strideY;
+    const f3x = frontHipX + strideX, f3y = footY + pairSpread + strideY;
+    const f4x = rearHipX - strideX, f4y = footY + pairSpread - strideY;
 
-    // all four under the fleece: far pair tucked up and in, near pair a
-    // touch lower and wider
-    leg(frontHipX, shoulderY - pairSpread * 0.5, frontHipX - strideX, footY - pairSpread - strideY);
-    leg(rearHipX, hipY - pairSpread * 0.5, rearHipX + strideX, footY - pairSpread + strideY);
-    leg(frontHipX, shoulderY + pairSpread * 0.5, frontHipX + strideX, footY + pairSpread + strideY);
-    leg(rearHipX, hipY + pairSpread * 0.5, rearHipX - strideX, footY + pairSpread - strideY);
+    ctx.strokeStyle = skin;
+    ctx.lineWidth = (2.1 + 0.5 * side) * u;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(frontHipX, shoulderY - pairSpread * 0.5); ctx.lineTo(f1x, f1y);
+    ctx.moveTo(rearHipX, hipY - pairSpread * 0.5); ctx.lineTo(f2x, f2y);
+    ctx.moveTo(frontHipX, shoulderY + pairSpread * 0.5); ctx.lineTo(f3x, f3y);
+    ctx.moveTo(rearHipX, hipY + pairSpread * 0.5); ctx.lineTo(f4x, f4y);
+    ctx.stroke();
+
+    const hoofDy = 0.3 * u, hoofRx = 1.5 * u, hoofRy = 1.05 * u;
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ellipseAt(ctx, f1x, f1y + hoofDy, hoofRx, hoofRy);
+    ellipseAt(ctx, f2x, f2y + hoofDy, hoofRx, hoofRy);
+    ellipseAt(ctx, f3x, f3y + hoofDy, hoofRx, hoofRy);
+    ellipseAt(ctx, f4x, f4y + hoofDy, hoofRx, hoofRy);
+    ctx.fill();
 
     // Head anchors are computed up here because the NECK draws under the
     // fleece, for the same reason the legs do: run it over the wool and a
@@ -5909,18 +6100,9 @@
     // on a fast ramp once the sheep quarters away — a ramp, not a linear
     // fade, because a half-lit skull is a grey smudge on the fleece.
     const headAlpha = clamp((0.45 - rear) / 0.21, 0, 1);
-    // the FACE still turns away even when the skull doesn't — eyes belong to
-    // the front of the head and have no business showing from behind it
-    const faceShow = Math.max(0, 1 - rear * 1.5);
-    // Ears, horns and the crown tuft all splay SIDEWAYS as the sheep squares
-    // up, and fold back onto the skull in profile — the same collapse the
-    // eyes and muzzle make. Spreading them vertically instead put one ear
-    // above the head and one below it, which is not a pair of ears from any
-    // angle. In profile the far ear is behind the skull and doesn't read.
-    const splay = 1 - side;
-    const earLat = 3.2 * u * splay;           // sideways reach, squared up
-    const earBackX = headX - 2.6 * u * side;  // tucked behind the skull in profile
-    const farEar = Math.min(1, splay * 2.2);
+    // (the ear splay, the far ear's crossfade and the eyes' `faceShow` moved
+    // into paintHead with the rest of the head — they are written there in
+    // anchor-relative units so they can bake)
 
     // neck, under the fleece: rooted at the withers and widening into the
     // shoulder rather than tapering to a point, so what emerges reads as a
@@ -5978,113 +6160,27 @@
     // the tail breaking the outline and the hind legs beneath it.
 
 
+    // The head: one blit from the baked strip where the blit is also the
+    // sharper choice, the same vector art live where it isn't — the identical
+    // switch the fleece makes just above, on the identical predicate, so a
+    // sheep walking toward the camera crosses both at once rather than
+    // swapping one piece and not the other. Under scale(u, u) with the origin
+    // on the anchor, paintHead's coordinates and the strip's are the same
+    // coordinates, so the two paths cannot drift.
     if (headAlpha > 0.01) {
-      ctx.globalAlpha = headAlpha * farEar;
-      const fEarX = earBackX - earLat, fEarY = headY - (0.6 * side + 0.5 * splay) * u;
-      const fEarRx = (2.4 - 0.2 * splay) * u, fEarRot = -0.5 * side - 0.3 * splay;
-      // the far ear stands out over the fleece when the sheep squares up, so
-      // it needs the same backing the skull does — and its own fill, because
-      // it is the one part of the head on its own alpha
-      if (rimCol) {
-        ctx.fillStyle = rimCol;
-        ctx.beginPath();
-        ctx.ellipse(fEarX, fEarY, fEarRx + RIM, 1.25 * u + RIM, fEarRot, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.fillStyle = skin;
-      ctx.beginPath();
-      ctx.ellipse(fEarX, fEarY, fEarRx, 1.25 * u, fEarRot, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.globalAlpha = headAlpha;
-
-      // wool fringe on the poll, UNDER the skull: drawn over it, it read as a
-      // pale cap painted onto the face. Beneath, only the fringe above the head
-      // shows — wool the head pokes out of, which is what it actually is.
-      ctx.fillStyle = wool;
-      ctx.beginPath();
-      ctx.ellipse(headX - 2.8 * u * side, headY - (2.3 - 0.5 * face) * u,
-                  (2.1 + 0.9 * splay) * u, 2.1 * u, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // head + muzzle. In profile the skull is long and the muzzle juts
-      // forward; squared up to the camera both collapse onto the centreline.
-      // The muzzle's offset rides on `side` so it reaches zero head-on —
-      // otherwise a sheep looking straight at you keeps its nose stuck out
-      // sideways and reads as still being in profile.
-      // The skull is TALLER than it is wide, at every heading. It used to be
-      // a lozenge lying on its side in profile, which is the shape of the
-      // whole head — skull plus muzzle — not of the skull alone; with the
-      // muzzle drawn as its own ellipse jutting forward, the part behind it
-      // is a deep cheek and a high poll, and reads as a sheep's head only
-      // when it stands up rather than lies down. Squaring up narrows it
-      // further and lengthens it, which is what a sheep looking straight at
-      // you actually is.
-      const skRx = (3.6 - 1.2 * face) * u, skRy = (4.2 + 0.8 * face) * u;
-      const muX = headX + 3.3 * u * side * (0.35 + 0.65 * side);
-      const muY = headY + (0.7 + 0.9 * face) * u;
-      const muRx = (2.5 - 0.5 * face) * u, muRy = (1.9 - 0.3 * face) * u;
-      const nEarX = earBackX + earLat, nEarY = headY + (0.6 * side - 0.5 * splay) * u;
-      const nEarRx = (2.4 - 0.2 * splay) * u, nEarRot = 0.5 * side + 0.3 * splay;
-      // The rim: skull, muzzle and near ear get ONE flat backing shape,
-      // a hair larger than all three and filled once beneath them. Unioned
-      // under nonzero winding (each subpath opened with its own moveTo and
-      // wound the same way), so the places they overlap each other don't
-      // show as seams. This is the separator that keeps a white head off
-      // cream wool, and a black one off a black fleece; see RIMS.
-      if (rimCol) {
-        ctx.fillStyle = rimCol;
-        ctx.beginPath();
-        ctx.moveTo(headX + skRx + RIM, headY);
-        ctx.ellipse(headX, headY, skRx + RIM, skRy + RIM, 0, 0, Math.PI * 2);
-        ctx.moveTo(muX + muRx + RIM, muY);
-        ctx.ellipse(muX, muY, muRx + RIM, muRy + RIM, 0, 0, Math.PI * 2);
-        ctx.moveTo(nEarX + (nEarRx + RIM) * Math.cos(nEarRot),
-                   nEarY + (nEarRx + RIM) * Math.sin(nEarRot));
-        ctx.ellipse(nEarX, nEarY, nEarRx + RIM, 1.25 * u + RIM, nEarRot, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.fillStyle = skin;
-      ctx.beginPath();
-      ctx.ellipse(headX, headY, skRx, skRy, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // the muzzle
-      ctx.beginPath();
-      ctx.ellipse(muX, muY, muRx, muRy, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // The nose — every face has one, in that face's own colour. It sits LOW
-      // on the muzzle, not centred on it: a sheep's nostrils are at the
-      // bottom of the muzzle with the bridge running up to the eyes above
-      // them, and a nose parked in the middle of the muzzle reads as a snout
-      // on a pig. Offset in muzzle radii so it holds its place as the muzzle
-      // shortens and collapses toward the centreline.
-      ctx.fillStyle = noseCol;
-      ctx.beginPath();
-      ctx.ellipse(muX + muRx * 0.42 * side, muY + muRy * 0.34, 0.8 * u, (0.65 + 0.25 * face) * u, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = skin;
-
-      // near ear, over the head
-      ctx.beginPath();
-      ctx.ellipse(nEarX, nEarY, nEarRx, 1.25 * u, nEarRot, 0, Math.PI * 2);
-      ctx.fill();
-
-      // eyes: one in profile, a symmetric PAIR once the sheep squares up. They
-      // separate SIDEWAYS as `face` rises rather than stacking one above the
-      // other — a second eye below the first just reads as a profile head that
-      // has grown a spare, not as a face looking back at you. Drawn as separate
-      // fills so the profile eye's alpha never rides the far eye's crossfade.
-      const eyeY = headY - (1.3 - 0.5 * face) * u;
-      ctx.globalAlpha = headAlpha * faceShow;
-      ctx.fillStyle = eyeCol;
-      ctx.beginPath();
-      ctx.arc(headX + (1.3 + 0.6 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
-      ctx.fill();
-      if (face > 0.04) {
-        ctx.globalAlpha = headAlpha * faceShow * Math.min(1, face * 2.2);
-        ctx.beginPath();
-        ctx.arc(headX + (1.3 - 3.2 * face) * u, eyeY, 0.85 * u, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 1;
+      if (bakeFits) {
+        const hs = headStrip(ti, si);
+        const hi = clamp(Math.round((Math.asin(clamp(fy, -1, 1)) + Math.PI / 2)
+                                    / Math.PI * (BODY_DIRS - 1)), 0, BODY_DIRS - 1);
+        ctx.drawImage(hs.c, hi * hs.w, 0, hs.w, hs.h,
+                      headX + HEAD_BOX.x0 * u, headY + HEAD_BOX.y0 * u,
+                      (hs.w / BODY_BAKE) * u, (hs.h / BODY_BAKE) * u);
+      } else {
+        ctx.save();
+        ctx.translate(headX, headY);
+        ctx.scale(u, u);
+        paintHead(ctx, side, face, rear, ti, si);
+        ctx.restore();
       }
     }
 
