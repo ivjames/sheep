@@ -939,6 +939,23 @@
   // own pace for STALL_HOLD seconds — long enough that an ordinary slow
   // press isn't mistaken for having stopped
   const STALL_SLOW = 0.45, STALL_HOLD = 0.9;
+  // how many sheep it takes for the mouth of the gate to be a QUEUE — a
+  // crowd that files itself in while the dog stands off and waits, rather
+  // than a sheep that merely happens to be standing near a gate. It takes
+  // two to make a queue, and the funnel agrees: the "a queue pressing from
+  // behind hurries the front on through" term in updateSheep is
+  // 1 + min(cn, 8) * 0.18 over a sheep's UNPENNED neighbours, so a lot of
+  // one gets exactly none of it. See the funnel branch in autopilot().
+  //
+  // Two, and not higher, because two is where the evidence stops. A lot of
+  // one makes that branch's fraction test VACUOUS, which is a fault in the
+  // test rather than a matter of taste; from two up the test at least asks
+  // for the whole lot to be at the mouth, and a three-sheep lot measured
+  // (114 scenarios) at mean 28.1s to pen against 25.9s with the floor at
+  // four — a gain that came with a WORSE worst case (64.2s against 74.9s)
+  // and no change at p90, which is noise wearing an improvement's clothes.
+  // A test that cannot fail is not.
+  const MOUTH_QUEUE = 2;
   const PEN_SEP = 26;             // penned sheep keep loose shoulder room, no full flocking
   const DOG_AWARE = 330;          // dog is noticed well before it forces a flee
   const FEAR_HOLD = 0.5;          // seconds a first-hand startle pins panic at FULL (caught frights hold less)
@@ -4843,16 +4860,46 @@
         }
         // most of the worked lot is in the funnel and there is nobody
         // else to fetch — stand off and let the gate's own pull drain
-        // it; if it jams, walk back in gently
-        state.demoStallT += tick;
-        state.wearSide = 0; state.wearT = 0;
-        if (state.demoStallT < 5) {
-          if (d.cmd !== 'lie') { d.cmd = 'lie'; state.pace = 0; }
-        } else {
-          d.cmd = 'walk';
-          state.pace = Math.max(state.pace, 0.3);
+        // it; if it jams, walk back in gently.
+        //
+        // ...but only where there is a QUEUE to drain, and a queue is a
+        // COUNT, not a share. The test above asks what FRACTION of the lot
+        // is at the mouth, and a fraction is vacuous for a lot of one: the
+        // LAST SHEEP, standing anywhere inside a pull that reaches
+        // GATE_PULL, is by definition all of its lot at the mouth. Nothing
+        // is filing in behind it and next to nothing is drawing it either
+        // — gateSuction leaves a late-level defiant sheep on willing ≈
+        // 0.12 and a planted one on none at all, and the queue pressure
+        // MOUTH_QUEUE's own note describes pays a lone sheep nothing. So
+        // the dog lay down for five seconds and then walked on at a flat
+        // pace 0.3 at that one sheep's own centroid, from whichever side
+        // it happened to be standing, for as long as it stayed in the pull.
+        // The branch returns above the balance-line flank, the wear, the
+        // stand-off ring and the pace control, so nothing put the dog
+        // behind the sheep and nothing charged a planted one. Measured
+        // over 266 endgames (level 204, eight layouts, the last sheep
+        // dropped on a grid of starting spots) this branch owned 48% of
+        // the time the last sheep took to pen.
+        //
+        // Under a queue's worth the lot is simply work, so the dog falls
+        // through and works it — which is not the dog losing its manners
+        // at the mouth. The stand-off ring below is the same restraint
+        // with the balance line and the pace still attached, and it eases
+        // off for HOLD_BOUT rather than for a flat five seconds. Same 266
+        // endgames: median 20.4s → 15.6s, p90 28.6s → 24.0s, worst 54.2s
+        // → 38.9s, and the share of the sheep's travel that went AWAY from
+        // the gate 12.2% → 10.0%.
+        if (flock.n >= MOUTH_QUEUE) {
+          state.demoStallT += tick;
+          state.wearSide = 0; state.wearT = 0;
+          if (state.demoStallT < 5) {
+            if (d.cmd !== 'lie') { d.cmd = 'lie'; state.pace = 0; }
+          } else {
+            d.cmd = 'walk';
+            state.pace = Math.max(state.pace, 0.3);
+          }
+          return;
         }
-        return;
       }
     }
     state.demoStallT = 0;
