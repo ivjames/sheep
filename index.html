@@ -1075,8 +1075,8 @@
   // holding at 170 and overtaking a shrunken cell.
   let cohR = COH_RANGE, mergeR = MERGE_REACH, gatePull = GATE_PULL, linkR = LINK_RANGE;
   let splitGap = SPLIT_GAP; // the lane that makes a linked lot two lots
-  const HILL_AMP = 0.115;         // ridge height as a fraction of the world's short side
-  const HILL_FLAT = 0.85;         // share of the lift that fades out by the near edge
+  const HILL_AMP = 0.115;         // relief height as a fraction of the world's short side
+  const HILL_FLAT = 0.75;         // share of the lift that fades out by the near edge
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const isTouch = matchMedia('(pointer: coarse)').matches;
 
@@ -1838,13 +1838,29 @@
   }
 
   // ---------- hillside ----------
-  // The pasture is simulated flat but DRAWN draped over a rolling hillside.
-  // A per-level ridge profile R(x) lifts the far edge of the field and the
-  // lift fades linearly toward the near edge: H(x,y) = R(x)·(1 − FLAT·y/h).
-  // H is affine in y for a fixed x, so every vertical strip of the flat
-  // field maps onto the hill with one translate + stretch (an exact warp,
-  // baked once per level) and the pointer math inverts in closed form.
-  const hill = { amp: 0, m: 0, mMax: 0, top: 0, ridge: () => 0 };
+  // The pasture is simulated flat but DRAWN draped over rolling ground.
+  // A per-level height field F(x,y) ∈ [0,1] gives the terrain's shape and
+  // the lift fades linearly toward the near edge:
+  //   H(x,y) = amp·F(x,y)·(1 − FLAT·y/h)
+  //
+  // F used to be a function of x ALONE — a ridge profile R(x) dragged
+  // unchanged from the far fence to the near one. That made H affine in y
+  // for a fixed x, which bought an exact one-translate-plus-stretch warp
+  // per column and a closed-form pointer inverse; what it cost was that
+  // every crest ran dead away from the camera and every band of light and
+  // shade was a full-height vertical stripe. The result read as corrugated
+  // iron rather than as hills. F now varies with depth as well, so crests
+  // run at an angle and crossing rolls build domes and hollows (see
+  // makeHill). Two things pay for that:
+  //
+  //  - the column warp is piecewise-linear in y instead of exactly linear
+  //    (bakeGen slices each strip into bands), and
+  //  - camInv iterates instead of solving directly.
+  //
+  // Everything else is unchanged, deliberately: F is still bounded to
+  // [0,1] and still multiplied by the same fade, so every buffer-size and
+  // margin bound derived from the old form still holds exactly.
+  const hill = { amp: 0, m: 0, mMax: 0, top: 0, wave: Infinity, field: () => 0 };
 
   // ---------- camera ----------
   // Two stages, both exactly invertible. Stage 1 is the hillside lift
@@ -1877,9 +1893,24 @@
   } catch (err) { /* storage walled off — stay on the default */ }
 
   function hillLift(x, y) {
-    return hill.ridge(x) * cam.hillK * (1 - HILL_FLAT * y / state.world.h);
+    return hill.amp * hill.field(x, y) * cam.hillK * (1 - HILL_FLAT * y / state.world.h);
   }
   const hillY = (x, y) => y - hillLift(x, y);
+  // Lambert-ish shading term for the ground at (x,y): the surface gradient
+  // of the UNFADED terrain, central-differenced. Unfaded because the fade
+  // is a drawing compression rather than real relief — the light should
+  // read the hill's true shape, not the flattened version of it that gets
+  // painted. Sun rakes in from the north-west, so ground rising to the
+  // east or away from the viewer catches light and the falls behind it sit
+  // in shade. Positive = lit, negative = shaded.
+  const SHADE_D = 6;    // central-difference step, world units
+  const SHADE_GAIN = 0.6;
+  function hillShade(x, y) {
+    if (!cam.hillK) return 0;
+    const fx = (hill.field(x + SHADE_D, y) - hill.field(x - SHADE_D, y)) / (2 * SHADE_D);
+    const fy = (hill.field(x, y + SHADE_D) - hill.field(x, y - SHADE_D)) / (2 * SHADE_D);
+    return clamp((fx + 0.8 * fy) * hill.amp * cam.hillK * SHADE_GAIN, -0.2, 0.2);
+  }
   // stage-2 row scale: s(v) = sFar at the field's far row (v = 0), sNear at v = h
   const camG = () => (cam.sNear - cam.sFar) / state.world.h;
   // world point → screen point, through both stages
@@ -1906,8 +1937,48 @@
       ? Y / s0
       : (-s0 + Math.sqrt(Math.max(0, s0 * s0 + 2 * g * Y))) / g;
     const u = w / 2 + (X - w / 2) / (s0 + g * v);
-    const r = hill.ridge(u) * cam.hillK;
-    return { x: u, y: (v + r) / (1 + r * HILL_FLAT / h) };
+    // Undoing the lift no longer solves in closed form: H varies with y
+    // through the terrain field as well as through the linear fade. But
+    // y ↦ v + H(u, y) is a contraction — makeHill caps the field's depth
+    // slope so |∂H/∂y| stays well under 1 by construction — so iterating it
+    // converges geometrically from any start. A dozen passes puts the
+    // residual far below a pixel and costs nothing at pointer rates.
+    let y = v;
+    for (let i = 0; i < 12; i++) y = v + hillLift(u, y);
+    return { x: u, y };
+  }
+  // Screen-space bounding box of the FIELD (its four fences, margins
+  // excluded), traced through whatever camera `cam` currently holds.
+  // viewFit() frames this, and requiredHillMargin() sizes the off-field
+  // margin from it, so the two have to measure the same box — they used to
+  // trace it separately, at a fixed 16 subdivisions an edge.
+  //
+  // Fixed 16 stopped being enough when the terrain gained a heading. The
+  // old ridge ran at most ~1.5 cycles across the field, so 16 samples had
+  // ten a cycle; the finest roll now has a wavelength of ~0.28 of the
+  // world's short side and, on the widest aspect the world can take, gets
+  // through ~7 cycles along the far fence — barely two samples each, which
+  // slides right past crests depending on the phase. Measured against a
+  // 1024-sample trace that cost up to 5 world units of missed height, and
+  // since viewFit fits bh exactly, ~4px of the field clipped off a
+  // height-limited viewport. So take the sample step from the terrain
+  // itself: a dozen per shortest wavelength, floored at the old 16 for a
+  // flat camera and capped so nothing here can run away.
+  function fieldBBox() {
+    const { w, h } = state.world;
+    const step = hill.wave / 12;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [ax, ay, bx, by] of [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]) {
+      const n = clamp(Math.ceil(Math.hypot(bx - ax, by - ay) / step), 16, 256);
+      for (let i = 0; i <= n; i++) {
+        const p = camPt(ax + (bx - ax) * i / n, ay + (by - ay) * i / n);
+        if (p.x < x0) x0 = p.x;
+        if (p.x > x1) x1 = p.x;
+        if (p.y < y0) y0 = p.y;
+        if (p.y > y1) y1 = p.y;
+      }
+    }
+    return { x0, y0, x1, y1 };
   }
   function setCamera(name) {
     if (!CAMS[name]) return;
@@ -1972,15 +2043,7 @@
     const { w, h } = state.world;
     const saved = cam;
     cam = camPreset;
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity;
-    for (const [ax, ay, bx, by] of [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]) {
-      for (let i = 0; i <= 16; i++) {
-        const p = camPt(ax + (bx - ax) * i / 16, ay + (by - ay) * i / 16);
-        if (p.x < x0) x0 = p.x;
-        if (p.x > x1) x1 = p.x;
-        if (p.y < y0) y0 = p.y;
-      }
-    }
+    const { x0, x1, y0 } = fieldBBox();
     cam = saved;
     const bw = Math.max(1, x1 - x0);
     const s0 = camPreset.sFar, g = (camPreset.sNear - camPreset.sFar) / h;
@@ -2068,17 +2131,54 @@
     setSpeed(next);
     toast('⏩ Speed: ' + next + 'x');
   }
+  // Each roll is a plane wave: amplitude share, wavelength as a fraction of
+  // the world's short side, and how far its heading is allowed to swing
+  // away from straight-across. The heading is what makes this terrain and
+  // not corrugation — a wave whose crests run purely away from the camera
+  // is the degenerate case, and the [min, max] depth-tilt bands below keep
+  // the two larger rolls off it from both sides: never square-on, never
+  // straight down the screen either.
+  //
+  // The caps are also the fold bound. The baked warp stretches a column by
+  // 1/(1 − ∂H/∂y), so the terrain's depth slope has to stay clear of 1 or a
+  // column turns back on itself. ∂H/∂y is bounded by amp·½·Σ aᵢ·kᵢ·|sin θᵢ|
+  // plus the fade's own amp·FLAT/h, and since amp ≤ HILL_AMP·h these
+  // numbers hold it to 0.28 over the field and 0.42 including the far
+  // margin (swept over 400 random worlds) — a ≤1.5× stretch at worst, and
+  // nowhere near a fold. Widening a cap or shortening a wavelength moves
+  // that bound; re-check it if you do.
+  const HILL_ROLLS = [
+    // share  wavelength      depth tilt |sin θ|
+    [0.52,    0.95, 1.35,     0.32, 0.72],  // the broad shape of the ground
+    [0.32,    0.52, 0.72,     0.18, 0.48],  // a second roll crossing it
+    [0.16,    0.28, 0.38,     0,    0.26],  // fine undulation on top
+  ];
   function makeHill() {
     const { w, h } = state.world;
-    hill.amp = Math.min(w, h) * HILL_AMP;
-    // two sine rolls — one broad, one smaller riding on it — with random
-    // phase and frequency, so every level gets its own skyline
-    const a1 = rand(0, Math.PI * 2), a2 = rand(0, Math.PI * 2);
-    const f1 = rand(2.8, 4.2), f2 = rand(6.5, 9.5);
-    hill.ridge = (x) => {
-      const u = x / w; // unclamped: the rolls carry on past the fence
-      const s = 0.62 * Math.sin(u * f1 + a1) + 0.38 * Math.sin(u * f2 + a2);
-      return hill.amp * (0.5 + 0.5 * s);
+    const L = Math.min(w, h);
+    hill.amp = L * HILL_AMP;
+    // Three crossing rolls with random wavelength, heading and phase, so
+    // every level gets its own ground. Summed and remapped to [0,1]: where
+    // two rolls crest together the ground domes, where they oppose it
+    // hollows out, and the crest lines run at whatever angle the headings
+    // happen to give — which is the whole point of carrying a heading.
+    hill.wave = Infinity;
+    const waves = HILL_ROLLS.map(([a, wlo, whi, tlo, thi]) => {
+      const wl = rand(wlo, whi) * L;
+      hill.wave = Math.min(hill.wave, wl); // sets fieldBBox's sample step
+      const k = Math.PI * 2 / wl;
+      // sign drawn separately from magnitude so the tilt band excludes the
+      // square-on case without also excluding one of the two directions
+      const sn = rand(tlo, thi) * (rand(0, 1) < 0.5 ? -1 : 1);
+      const cs = Math.sqrt(1 - sn * sn) * (rand(0, 1) < 0.5 ? -1 : 1);
+      return { a, kx: k * cs, ky: k * sn, ph: rand(0, Math.PI * 2) };
+    });
+    // unclamped in both axes: the rolls carry on past the fence, so the
+    // off-field margin is the same landscape rather than a flat apron
+    hill.field = (x, y) => {
+      let s = 0;
+      for (const q of waves) s += q.a * Math.sin(q.kx * x + q.ky * y + q.ph);
+      return 0.5 + 0.5 * s;
     };
     // hill.m is the ACTIVE camera's own margin (drives this bake's
     // hillCanvas/landCanvas size); hill.mMax is the largest margin any
@@ -2089,8 +2189,9 @@
     hill.m = requiredHillMargin(cam);
   }
   // trace world-space points through the camera, subdividing runs so edges
-  // bow with the ridge. Under the tilt only fixed-x runs stay straight and
-  // horizontal edges still bow, so subdivide on whichever axis runs longer.
+  // bow with the ground. Nothing stays straight now that the terrain rolls
+  // in depth as well as across — a fixed-x run climbs and falls just like a
+  // horizontal one — so subdivide on whichever axis runs longer.
   // `map` overrides the point mapper (the stage-1 bake traces in (u,v) space).
   function camTrace(c, pts, close, map) {
     const f = map || camPt;
@@ -2255,21 +2356,66 @@
     // hillCanvas is pre-tilt, so its own tracing stays in (u,v) space
     const s1 = (x, y) => ({ x, y: hillY(x, y) });
     const STRIP = 8;
+    // The lift is affine in y only for flat ground, so a column can no
+    // longer be warped with a single translate + stretch. Each strip is
+    // sliced into BAND-deep pieces instead and each piece gets its own —
+    // a piecewise-linear warp whose error is the field's curvature across
+    // one band, which at this depth is a fraction of a pixel (the rolls'
+    // shortest wavelength is ~0.28 of the world's short side; nothing in
+    // the terrain turns over inside 40 units). Under the overhead camera
+    // there is no lift at all, so the whole column goes in one piece.
+    //
+    // Consecutive pieces share a ROUNDED destination edge, for the same
+    // reason stage 2's row strips do below: Safari antialiases each draw's
+    // edges independently, and two abutting fractional edges leave a
+    // translucent seam — here that would be a horizontal line every band,
+    // the length of the field.
+    const BAND = cam.hillK ? 40 : h + 2 * M;
+    // Shading is a gradient down the strip rather than one flat tone, now
+    // that the ground rises and falls with depth too. One pass, not two:
+    // where the luminance crosses zero a PAIR of coincident fully
+    // transparent stops is spliced in, so the ramp runs cream → nothing →
+    // shade instead of interpolating cream directly into shade through a
+    // muddy middle. (A transparent stop alone would do it on a browser
+    // that interpolates gradients premultiplied, as the spec requires, but
+    // the pair makes the hue constant across each segment and so costs a
+    // zero-width stop to stop depending on that.) Two separate full-strip
+    // passes were the obvious version and measured ~2x this one's fill
+    // cost, which on the widest camera is most of a bake.
+    const SHADE_STOPS = 12;
+    const LIT0 = 'rgba(255, 246, 200, 0)', SHD0 = 'rgba(20, 40, 16, 0)';
     for (let x = -M; x < w + M; x += STRIP) {
       const sw = Math.min(STRIP, w + M - x);
-      const r = hill.ridge(x + sw / 2) * cam.hillK;
-      const q = r * HILL_FLAT / h; // y′ = y·(1+q) − R, affine per column
-      // fieldCanvas's own pixel origin is offset by Mf (its paint margin,
-      // see makeDecor), not M — read the M-wide sub-window centred on it
-      hc.drawImage(fieldCanvas, x + Mf, Mf - M, sw, h + 2 * M,
-        x, -M * (1 + q) - r, sw, (h + 2 * M) * (1 + q));
-      // slope shading sells the curvature: sun rakes in from the left, so
-      // west-facing rises catch light and east-facing falls sit in shade
-      const slope = (hill.ridge(x + sw) - hill.ridge(x)) * cam.hillK / sw;
-      const lum = clamp(slope * 1.1, -0.18, 0.18);
-      hc.fillStyle = lum >= 0
-        ? `rgba(255, 246, 200, ${lum})` : `rgba(20, 40, 16, ${-lum})`;
-      hc.fillRect(x, -M * (1 + q) - r, sw, (h + 2 * M) * (1 + q));
+      const xc = x + sw / 2;
+      const vAt = (y) => Math.round(hillY(xc, y));
+      const vTop = vAt(-M), vBot = vAt(h + M);
+      for (let y = -M; y < h + M; y += BAND) {
+        const yB = Math.min(y + BAND, h + M);
+        const vA = vAt(y), vB = vAt(yB);
+        if (vB <= vA) continue; // degenerate band — its neighbours own the pixel
+        // fieldCanvas's own pixel origin is offset by Mf (its paint margin,
+        // see makeDecor), not M — read the M-wide sub-window centred on it
+        hc.drawImage(fieldCanvas, x + Mf, y + Mf, sw, yB - y, x, vA, sw, vB - vA);
+      }
+      if (cam.hillK && vBot > vTop) {
+        const grd = hc.createLinearGradient(0, vTop, 0, vBot);
+        let pLum = null, pF = 0;
+        for (let i = 0; i <= SHADE_STOPS; i++) {
+          const y = -M + (h + 2 * M) * i / SHADE_STOPS;
+          const f = clamp((vAt(y) - vTop) / (vBot - vTop), 0, 1);
+          const lum = hillShade(xc, y);
+          if (pLum !== null && (pLum > 0) !== (lum > 0)) {
+            const z = pF + (f - pF) * (pLum / (pLum - lum)); // linear crossing
+            grd.addColorStop(z, pLum > 0 ? LIT0 : SHD0);
+            grd.addColorStop(z, pLum > 0 ? SHD0 : LIT0);
+          }
+          grd.addColorStop(f, lum >= 0
+            ? `rgba(255, 246, 200, ${lum})` : `rgba(20, 40, 16, ${-lum})`);
+          pLum = lum; pF = f;
+        }
+        hc.fillStyle = grd;
+        hc.fillRect(x, vTop, sw, vBot - vTop);
+      }
       hc.getImageData(0, 0, 1, 1);
       yield; // one strip per slice — this loop is the dominant cost
     }
@@ -2399,16 +2545,7 @@
     }
     // screen-space bounding box of the FIELD (margins excluded) — viewFit
     // frames this, so every preset fills the viewport the same way
-    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
-    for (const [ax, ay, bx, by] of [[0, 0, w, 0], [w, 0, w, h], [w, h, 0, h], [0, h, 0, 0]]) {
-      for (let i = 0; i <= 16; i++) {
-        const p = camPt(ax + (bx - ax) * i / 16, ay + (by - ay) * i / 16);
-        if (p.x < x0) x0 = p.x;
-        if (p.x > x1) x1 = p.x;
-        if (p.y < y0) y0 = p.y;
-        if (p.y > y1) y1 = p.y;
-      }
-    }
+    const { x0, y0, x1, y1 } = fieldBBox();
     // commit — the renderer's whole view of the land (image, offsets,
     // bounding box) swaps atomically between two frames, and the pair the
     // old front lived in becomes the next bake's back buffer
