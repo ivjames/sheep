@@ -157,6 +157,15 @@ over. A save the build can't read is discarded rather than guessed at.
   neighbours, strays and split groups drift back and merge with the mob,
   and they graze and wander when calm. Pressure from directly behind moves
   them where you want; pressure from the side scatters them.
+- A working dog reads the field as **lots**, and works one at a time. Sheep
+  near each other hang together as one lot — but only until an empty lane
+  opens through them, at which point a driven mob that has come apart reads
+  as the two knots it now is rather than as one lot with nothing in the
+  middle. The dog then holds its commitment **by the sheep in it**, so a lot
+  splitting under the drive doesn't leave it running the lane between the
+  halves. **Look back** is still yours to call when you want it on the other
+  lot; the 🗺️ overlay (or **F**) draws what it's reading — a ring round each
+  lot, gold on the one it's working.
 - Every sheep rolls its own **temperament**: a gradient from timid (feels
   the dog from far out and bolts) to bold (makes you get close and barely
   budges), and another for how keenly it follows the flock's flow versus
