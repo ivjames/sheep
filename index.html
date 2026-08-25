@@ -878,6 +878,12 @@
   const SEP_RANGE = 34, COH_RANGE = 190;
   const COMFORT = 70;             // a neighbor this close means you're IN the flock — no cohesion pull
   const LINK_RANGE = 170;         // sheep this close hang together as one group (clusterLoose)
+  // ...but LINKED is not the same as TOGETHER. SPLIT_GAP is how wide a lane
+  // of empty grass has to run through a linked lot before clusterLoose()
+  // calls it two lots rather than one — see splitLot(). Comfortably under
+  // LINK_RANGE by design: a lane wider than that has already broken the
+  // link and needs no test to notice it.
+  const SPLIT_GAP = 96;
   // wearing (autopilot): how wide a mob may spread before the dog stops
   // driving and sweeps it back together. A mob at comfortable shoulder
   // spacing packs into a radius of about (COMFORT/2)·√n, so the trigger is
@@ -1037,7 +1043,7 @@
     const k = Math.sqrt(state.world.w * state.world.h / FIELD_AREA);
     state.world.reachK = k;
     cohR = COH_RANGE * k; mergeR = MERGE_REACH * k;
-    gatePull = GATE_PULL * k; linkR = LINK_RANGE * k;
+    gatePull = GATE_PULL * k; linkR = LINK_RANGE * k; splitGap = SPLIT_GAP * k;
   }
   // every dog-reach distance passes through here on its way to the ground
   const fieldReach = (px) => px * state.world.reachK;
@@ -1068,6 +1074,7 @@
   // has to land in adjacent cells), so it scales with it rather than
   // holding at 170 and overtaking a shrunken cell.
   let cohR = COH_RANGE, mergeR = MERGE_REACH, gatePull = GATE_PULL, linkR = LINK_RANGE;
+  let splitGap = SPLIT_GAP; // the lane that makes a linked lot two lots
   const HILL_AMP = 0.115;         // ridge height as a fraction of the world's short side
   const HILL_FLAT = 0.85;         // share of the lift that fades out by the near edge
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1738,7 +1745,10 @@
            // and cashed in at the gate (see trainDog). They measure WORK
            // DONE, not time passed, so a level spent standing still teaches
            // nothing and a hard one teaches plenty.
-           workEffort: 0, workDist: 0, workPress: 0, workWhole: 0 },
+           workEffort: 0, workDist: 0, workPress: 0, workWhole: 0,
+           // the lot the dog is committed to, held as the sheep in it —
+           // see flockInfo() for why it isn't a point on the grass
+           workLot: null },
     pace: PACE_START, // command-mode speed gradient, 0 (halt) → 1 (flat out)
     handler: { x: 800, y: 560 },
     sheep: [],
@@ -2702,7 +2712,7 @@
     state.dog.lastVX = 0; state.dog.lastVY = 0; state.dog.breathers = 0;
     state.dog.workEffort = 0; state.dog.workDist = 0;
     state.dog.workPress = 0; state.dog.workWhole = 0;
-    state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
+    state.dog.workLot = null; // fresh field, fresh group pick
     state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.holdT = 0; state.workHold = 0;
     state.demoT = 0; state.demoSince = 0; state.demoCut = false;
     state.beatLot = null; // a fresh field: the old lot's sheep are gone
@@ -3172,7 +3182,7 @@
   // picking whichever cluster the dog isn't currently committed to —
   // farthest from the gate if that leaves more than one candidate, since
   // that's the lot most likely left behind. Committing it is just handing
-  // flockInfo() a new workX/workY and a fresh WORK_HOLD: its own
+  // flockInfo() a new working lot and a fresh WORK_HOLD: its own
   // stickiness then keeps the dog on the new group same as any other
   // pick, so there's no parallel targeting machinery to keep in sync —
   // and it works the same whether the player or the autopilot holds the
@@ -3185,11 +3195,11 @@
     }
     const d = state.dog;
     let current = null;
-    if (d.workX !== undefined) {
-      let best = Infinity;
+    if (d.workLot) {
+      let held = 0;
       for (const c of clusters) {
-        const dd = dist2(c.cx, c.cy, d.workX, d.workY);
-        if (dd < best) { best = dd; current = c; }
+        const k = heldBy(c, d.workLot);
+        if (k > held) { held = k; current = c; }
       }
     }
     const P = state.pen;
@@ -3200,8 +3210,9 @@
     }
     if (!target) target = clusters[0]; // current somehow matched every cluster — don't strand the call
     ensureAudio();
-    d.workX = target.cx;
-    d.workY = target.cy;
+    if (!d.workLot) d.workLot = new Set();
+    d.workLot.clear();
+    for (const m of target.members) d.workLot.add(m);
     state.workHold = WORK_HOLD;
     if (state.auto) {
       // under the autopilot the call STEERS the run rather than taking the
@@ -3259,15 +3270,17 @@
   // groups). Instead: single-link the loose sheep into clusters, then
   // work ONE group. First pick is the group farthest from the gate, so
   // the sweep works the back of the field pen-ward and merges groups
-  // as it drives; the choice is tracked frame to frame (nearest
-  // centroid to the last one) so the dog doesn't flip targets
-  // mid-drive, and re-picks only when its group dissolves — merged
-  // into another or penned.
+  // as it drives; the choice is tracked frame to frame BY THE SHEEP IN
+  // IT (see flockInfo) so the dog doesn't flip targets mid-drive, and
+  // re-picks only when its group dissolves — merged into another or
+  // penned.
   // groups the loose sheep by proximity — sheep within LINK of each other
-  // hang together as one cluster. Shared by flockInfo() (which turns a
-  // cluster into the dog's working target) and LOOK BACK (which just
-  // needs to know where the OTHER lot is), so the two never disagree
-  // about what counts as "a group".
+  // hang together as one cluster — and then asks of each cluster whether
+  // it is really one mob (splitLot), because a lot the dog has driven
+  // through stays linked long after it has stopped being together.
+  // Shared by flockInfo() (which turns a cluster into the dog's working
+  // target) and LOOK BACK (which just needs to know where the OTHER lot
+  // is), so the two never disagree about what counts as "a group".
   // Linking rides the same COH_RANGE grid as flocking (cells are wider
   // than LINK, so any linkable pair sits in adjacent cells): the old
   // every-sheep-vs-every-sheep sweep was the sim's only O(n²) pass, run
@@ -3287,12 +3300,109 @@
     const P = state.pen;
     return dist2(s.x, s.y, P.cx, P.cy) <= (P.ring - SHEEP_R) ** 2;
   }
+  // the shape of a lot as the dog reads it: where it is, how wide it is,
+  // and the sheep in it. Members ride along so the dog's positioning
+  // (contact ring, swing widening, flank clearance) reads ONLY the group
+  // it committed to — with the pick stable but the geometry still
+  // scanning the whole field, a far-off second group kept bending the
+  // dog's arcs toward it and the dog dithered between targets.
+  function lotOf(members) {
+    let cx = 0, cy = 0;
+    for (const s of members) { cx += s.x; cy += s.y; }
+    cx /= members.length; cy /= members.length;
+    let r = 0;
+    for (const s of members) r = Math.max(r, hyp(s.x - cx, s.y - cy));
+    return { n: members.length, cx, cy, r, members };
+  }
+  // Single linkage says these sheep are CONNECTED. It does not say they are
+  // one mob, and the gap between those two is the fault this exists to
+  // close: a lot the dog has driven through comes apart into two knots that
+  // still trail a sheep or two between them, the chain holds, and the two
+  // arrive as a single cluster whose centroid sits in the empty lane down
+  // the middle. Every line the dog steers by is drawn from that centroid —
+  // the drive, the flank, the balance point — so the dog drove at the lane
+  // and ran up and down it while the sheep it was meant to be pushing stood
+  // either side. Waiting for the halves to drift past LINK_RANGE doesn't
+  // rescue it: cohesion and mergePull hold a split lot at exactly the
+  // spacing that keeps it one cluster, which is the whole point of
+  // mergePull's comment that a split group "stays a group until the dog
+  // gathers it". It stays a group to the SHEEP. It must not stay one to the
+  // dog, or there is nothing to gather it with.
+  //
+  // So each linked lot is asked one more question: is there an empty BAND
+  // through it? Two-means proposes the cut — seeded from the member
+  // farthest out, then the member farthest from THAT, which drops one seed
+  // in each knot when there are two — and the cut is taken only if the
+  // knots it proposes are separated by real grass:
+  //
+  //     centre to centre  −  both radii  >  splitGap
+  //
+  // which is the width of the lane between them. One mob has no such lane:
+  // cut a round one down the middle and each half still reaches most of the
+  // way across the other, so that figure comes out negative and the lot is
+  // left whole. Only a genuinely two-knotted lot clears it — precisely the
+  // one the dog was mishandling.
+  //
+  // Both sides have to be a real knot (SPLIT_MIN), so one sheep hanging off
+  // the edge is never promoted to a lot of its own: LINK_RANGE sits under
+  // COH_RANGE, so a sheep still linked is a sheep still inside cohesion
+  // range, and it is already on its way back without anyone fetching it.
+  const SPLIT_MIN = 2;   // sheep per side — fewer is a straggler, not a lot
+  const SPLIT_ITERS = 4; // two-means passes; it settles well inside this
+  function splitLot(members) {
+    if (members.length < SPLIT_MIN * 2) return null;
+    let cx = 0, cy = 0;
+    for (const s of members) { cx += s.x; cy += s.y; }
+    cx /= members.length; cy /= members.length;
+    let a = members[0], far = -1;
+    for (const s of members) {
+      const dd = dist2(s.x, s.y, cx, cy);
+      if (dd > far) { far = dd; a = s; }
+    }
+    let b = members[0]; far = -1;
+    for (const s of members) {
+      const dd = dist2(s.x, s.y, a.x, a.y);
+      if (dd > far) { far = dd; b = s; }
+    }
+    if (a === b) return null; // every sheep on the same spot
+    let ax = a.x, ay = a.y, bx = b.x, by = b.y, A = null, B = null;
+    for (let it = 0; it < SPLIT_ITERS; it++) {
+      A = []; B = [];
+      for (const s of members) {
+        (dist2(s.x, s.y, ax, ay) <= dist2(s.x, s.y, bx, by) ? A : B).push(s);
+      }
+      if (!A.length || !B.length) return null;
+      let nax = 0, nay = 0, nbx = 0, nby = 0;
+      for (const s of A) { nax += s.x; nay += s.y; }
+      for (const s of B) { nbx += s.x; nby += s.y; }
+      nax /= A.length; nay /= A.length; nbx /= B.length; nby /= B.length;
+      // assign before the break, so ax/ay is A's own centroid on every
+      // exit from this loop and the radii below are measured from it
+      const settled = nax === ax && nay === ay && nbx === bx && nby === by;
+      ax = nax; ay = nay; bx = nbx; by = nby;
+      if (settled) break;
+    }
+    if (A.length < SPLIT_MIN || B.length < SPLIT_MIN) return null;
+    let ra = 0, rb = 0;
+    for (const s of A) ra = Math.max(ra, hyp(s.x - ax, s.y - ay));
+    for (const s of B) rb = Math.max(rb, hyp(s.x - bx, s.y - by));
+    if (hyp(bx - ax, by - ay) - ra - rb < splitGap) return null;
+    return [A, B];
+  }
+  // how many of a remembered lot's sheep are standing in this cluster —
+  // the handle flockInfo() tracks the dog's commitment by, and the one the
+  // flock overlay draws the gold ring with, so the two always agree.
+  function heldBy(c, lot) {
+    let k = 0;
+    for (const m of c.members) if (lot.has(m)) k++;
+    return k;
+  }
   function clusterLoose() {
     if (clusterCache.step === simStep) return clusterCache.clusters;
     const LINK = linkR; // sheep this close hang together as one group
     const grid = sheepGrid();
     const seen = new Set();
-    const clusters = [];
+    const linked = [];
     for (const s0 of state.sheep) {
       if (parked(s0) || seen.has(s0)) continue;
       seen.add(s0);
@@ -3319,17 +3429,19 @@
           }
         }
       }
-      let cx = 0, cy = 0;
-      for (const s of members) { cx += s.x; cy += s.y; }
-      cx /= members.length; cy /= members.length;
-      let r = 0;
-      for (const s of members) r = Math.max(r, hyp(s.x - cx, s.y - cy));
-      // members ride along so the dog's positioning (contact ring,
-      // swing widening, flank clearance) reads ONLY the group it
-      // committed to — with the pick stable but the geometry still
-      // scanning the whole field, a far-off second group kept bending
-      // the dog's arcs toward it and the dog dithered between targets
-      clusters.push({ n: members.length, cx, cy, r, members });
+      linked.push(members);
+    }
+    // ...and now the second question: is each linked lot actually ONE mob?
+    // A lot can want more than one cut — three knots strung along a chain
+    // come apart one at a time — so the proposals run off a stack rather
+    // than in a single pass. It always terminates: an accepted cut hands
+    // back two strictly smaller lots, and SPLIT_MIN floors how small.
+    const clusters = [];
+    while (linked.length) {
+      const members = linked.pop();
+      const two = splitLot(members);
+      if (two) linked.push(two[0], two[1]);
+      else clusters.push(lotOf(members));
     }
     clusterCache.step = simStep;
     clusterCache.clusters = clusters;
@@ -3342,47 +3454,84 @@
   // choosing to whoever is whistling (LOOK BACK is that call). Same reason
   // walk on no longer hunts the balance point — a dog that quietly took the
   // lot the pen wanted next was doing the handler's reading for them.
+  //
+  // Which lot to take on when there is no commitment to keep, and which
+  // remnant to take when a commitment comes apart, are the same question,
+  // so they are the same code. Under the autopilot the answer is the lot
+  // farthest from the gate — the handler's own reading of what needs
+  // fetching first. Under a player's whistle it is simply the nearest.
+  function bestLot(list, handler) {
+    const d = state.dog, P = state.pen;
+    let best = -Infinity, pick = null;
+    for (const c of list) {
+      const score = handler ? dist2(c.cx, c.cy, P.gx, P.gy)
+                            : -dist2(c.cx, c.cy, d.x, d.y);
+      if (score > best) { best = score; pick = c; }
+    }
+    return pick;
+  }
   function flockInfo(handler) {
     const clusters = clusterLoose();
     if (!clusters.length) return null;
     const d = state.dog;
     let pick = null;
     if (clusters.length > 1) {
-      // stay on the group we were working if it still exists nearby —
-      // and for WORK_HOLD after committing, follow the nearest remnant
-      // of it wherever it drifted: a mob splitting under pressure jumps
-      // its centroid past any radius test, and re-shopping the whole
-      // field at that moment is what had the dog sprinting back and
-      // forth between groups until someone rescued it by hand
-      if (d.workX !== undefined) {
-        let best = Infinity, near = null;
+      // WHAT THE DOG IS ON is remembered as the sheep in it, not as a point
+      // on the grass. A centroid is the wrong handle for a commitment: the
+      // moment a mob comes apart, the centroid of the lot the dog was
+      // working jumps into the lane between the two halves, both halves are
+      // then about equally near it, and which one "is" the lot it was on
+      // comes down to a few pixels of drift — so the dog flipped between
+      // them frame to frame and ran the lane in the middle. That is the
+      // same failure clusterLoose's split test fixes from the other end,
+      // and it needs fixing from both: sheep can't be ambiguous the way a
+      // point can. Whichever cluster holds the sheep the dog was working IS
+      // the lot it was working, however far the shape of it has moved
+      // since — so the generous radius test that used to be needed just to
+      // survive a jumping centroid is gone with it.
+      let held = 0, spread = 0, share = null;
+      if (d.workLot) {
         for (const c of clusters) {
-          const dd = dist2(c.cx, c.cy, d.workX, d.workY);
-          if (dd < best) { best = dd; near = c; }
+          const k = heldBy(c, d.workLot);
+          if (k) spread++;
+          if (k > held) { held = k; share = c; }
         }
-        if (best < 300 * 300 || state.workHold > 0) pick = near;
       }
-      // ...otherwise commit to a fresh lot, and give the commitment time
-      // to be worked before it can be re-judged. Under the autopilot that
-      // lot is the one farthest from the gate — the handler's own reading
-      // of what needs fetching first. Under a player's whistle it's simply
-      // the nearest: the dog takes the sheep in front of it and never
-      // re-picks its work to suit the drive.
-      if (!pick) {
-        const P = state.pen;
-        let best = -Infinity;
-        for (const c of clusters) {
-          const score = handler ? dist2(c.cx, c.cy, P.gx, P.gy)
-                                : -dist2(c.cx, c.cy, d.x, d.y);
-          if (score > best) { best = score; pick = c; }
+      if (share) {
+        // stay on the lot we were working — by default whichever piece of
+        // it holds the most of it
+        pick = share;
+        // ...but once it has genuinely come apart, and the commitment has
+        // had its WORK_HOLD to be worked, choose between the remnants the
+        // way a fresh lot is chosen. Under a handler that is the one
+        // farthest from the gate: driving the back half forward folds the
+        // near half into it on the way, which is one fetch instead of two.
+        // The choice is made once per split — next frame the committed lot
+        // IS the chosen remnant, so spread is 1 and nothing here is asked
+        // again — and it re-arms the hold, so a lot still coming apart
+        // isn't re-judged every few frames.
+        if (spread > 1 && state.workHold <= 0) {
+          pick = bestLot(clusters.filter(c => heldBy(c, d.workLot) > 0), handler);
+          state.workHold = WORK_HOLD;
         }
+      }
+      // ...otherwise nothing is left of the old lot — penned, or swallowed
+      // by another — so commit to a fresh one, and give the commitment
+      // time to be worked before it can be re-judged.
+      if (!pick) {
+        pick = bestLot(clusters, handler);
         state.workHold = WORK_HOLD;
       }
     } else {
       pick = clusters[0];
     }
-    d.workX = pick.cx;
-    d.workY = pick.cy;
+    // the commitment, refreshed on every read: sheep that have joined the
+    // lot are part of it now, sheep that have left it are not, and a lot
+    // absorbed into a bigger one carries the dog onto the bigger one.
+    // Rewritten in place rather than rebuilt — this runs every sub-step.
+    if (!d.workLot) d.workLot = new Set();
+    d.workLot.clear();
+    for (const m of pick.members) d.workLot.add(m);
     return pick;
   }
 
@@ -4495,16 +4644,16 @@
     // ...and this is the lot the beat is about, for the cut test above. Set
     // here, from the one call that picks it, so the test can never be
     // judging a different lot from the branches below — and never by
-    // calling flockInfo itself, which commits the dog (it writes workX/workY
-    // and arms workHold) and must run once a decision, not once a frame.
+    // calling flockInfo itself, which commits the dog (it writes the working
+    // lot and arms workHold) and must run once a decision, not once a frame.
     state.beatLot = flock ? flock.members : null;
     // Stand off while the funnel drains — judged against the lot the dog
     // is WORKING, not the whole field. Counted field-wide, a mob draining
     // at the mouth held the dog parked at the gate while stragglers sat
     // out in the grass, and it swallowed LOOK BACK outright: the retarget
-    // landed in workX, then this branch returned before ever consulting
-    // it. Per-lot, a dog sent back for the leftovers keeps working them
-    // while the mouth crowd files in on its own.
+    // landed in the working lot, then this branch returned before ever
+    // consulting it. Per-lot, a dog sent back for the leftovers keeps
+    // working them while the mouth crowd files in on its own.
     // ...but only where there IS a gate to drain. A drill's ring exerts no
     // pull, so nothing files in on its own: measured, the dog parked 180px
     // off the ring and stood there for over two minutes waiting for a
@@ -6296,15 +6445,18 @@
         ctx.fillStyle = `hsla(${215 * (1 - heat)}, 90%, 55%, ${0.07 + 0.23 * heat})`;
         ctx.fillRect(p.x - (step / 2) * k, p.y - (step / 2) * k, step * k, step * k);
       }
-      // the knot the dog is working: flockInfo() tracks it via workX/Y,
-      // which only means anything while something is steering by it
+      // the knot the dog is working: the cluster holding most of the lot
+      // flockInfo() committed to, read exactly the way flockInfo() reads
+      // it, so the gold ring can never sit on a different lot from the one
+      // the dog is actually on. Only means anything while something is
+      // steering by it.
       let worked = null;
       const dg = state.dog;
-      if (dg.workX !== undefined && (state.auto || state.demo || state.input === 'cmd')) {
-        let best = Infinity;
+      if (dg.workLot && (state.auto || state.demo || state.input === 'cmd')) {
+        let held = 0;
         for (const c of clusters) {
-          const dd = dist2(c.cx, c.cy, dg.workX, dg.workY);
-          if (dd < best) { best = dd; worked = c; }
+          const k = heldBy(c, dg.workLot);
+          if (k > held) { held = k; worked = c; }
         }
       }
       ctx.font = 'bold 12px system-ui, sans-serif';
