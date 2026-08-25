@@ -775,9 +775,9 @@
       icon: '🫁', label: 'Stamina', lo: 0.5, hi: 2.0,
       blurb: 'How quickly it\u2019s ready to go again. Running is nearly free \u2014 a collie is built for that \u2014 but every burst costs: getting up to speed, and wrenching a hard turn at it. Spend the pool and the dog wants a breather before it can go properly again.',
     },
-    patience: {
-      icon: '🧘', label: 'Patience', lo: 0.6, hi: 1.6,
-      blurb: 'How long the dog gives a job before it interferes. It leaves more room on a drive \u2014 a patient dog presses to the edge of the flock and stands, and lets the pressure work, where an impatient one walks on into them and splits the lot it was driving. It also decides less often, working in long deliberate legs rather than flitting. Bout lengths don\u2019t change, only how finely they\u2019re steered. Command and autopilot only.',
+    intelligence: {
+      icon: '🧠', label: 'Intelligence', lo: 0.6, hi: 1.6,
+      blurb: 'How well the dog reads the job in front of it. It knows where the push stops \u2014 a clever dog presses to the edge of the flock and stands, and lets the pressure work, where a dull one walks on into them and splits the lot it was driving. And it keeps reading while it runs: it re-thinks often, and a leg that turns out to be wrong gets cut short, where a dull dog puts its head down and holds a straight line at the middle of the mob for a full second whatever happens in front of it. Bout lengths don\u2019t change, only how finely they\u2019re steered. Command and autopilot only.',
     },
   };
   const DOG_KEYS = Object.keys(DOG_ATTR);
@@ -922,6 +922,12 @@
   // HOLD_BOUT bounds the hold and HOLD_PUSH is the drive that has to follow
   // one — see the standing-off block in autopilot().
   const HOLD_OFF = 70, HOLD_CLEAR = 1.3;
+  // how close the dog has to be to the flock for what it is doing to count
+  // as WORKING it — the range at which the autopilot stops covering ground
+  // and starts handling, and (see updateDog) the range inside which keeping
+  // the lot together is credited to the dog rather than to luck. Scaled by
+  // presence, like every other radius the dog works through.
+  const WORK_REACH = 260;
   const HOLD_BOUT = 2.0, HOLD_PUSH = 1.5;
   // a drive counts as stalled once the dog has been under STALL_SLOW of its
   // own pace for STALL_HOLD seconds — long enough that an ordinary slow
@@ -1399,7 +1405,7 @@
   // field that is itself smaller at level 1, with the dog's reach scaled
   // to match — so a puppy is working a paddock, not being asked to cover
   // a stock field with a puppy's authority. At 0.06 it starts on 0.74x
-  // presence, 0.79x speed, 0.56x stamina and 0.65x patience: a dog with
+  // presence, 0.79x speed, 0.56x stamina and 0.65x intelligence: a dog with
   // no wind and no authority, which is what a young one is, and which
   // makes the first twenty levels of training something you can feel
   // rather than something the card tells you about.
@@ -1465,7 +1471,14 @@
       if (!d || typeof d.id !== 'string' || !d.id) continue;
       const stats = {}, caps = rollCaps(d.id); // caps are DERIVED, never trusted from the save
       for (const k of DOG_KEYS) {
-        const v = d.stats && Number(d.stats[k]);
+        // `patience` is what intelligence was called before it was inverted,
+        // and it sat in the same slot, so a save written under the old name
+        // carries straight over: same rating, same cap (caps are re-derived
+        // from the dog's id and DOG_KEYS order, which is unchanged). Without
+        // this a trained dog came back from storage green in one rating.
+        const stored = d.stats && (k === 'intelligence' && d.stats[k] === undefined
+          ? d.stats.patience : d.stats[k]);
+        const v = Number(stored);
         stats[k] = Number.isFinite(v) ? clamp(v, 0, 1) : DOG_GREEN;
       }
       dogs.push({
@@ -1725,7 +1738,7 @@
            // and cashed in at the gate (see trainDog). They measure WORK
            // DONE, not time passed, so a level spent standing still teaches
            // nothing and a hard one teaches plenty.
-           workEffort: 0, workDist: 0, workPress: 0, workSteady: 0 },
+           workEffort: 0, workDist: 0, workPress: 0, workWhole: 0 },
     pace: PACE_START, // command-mode speed gradient, 0 (halt) → 1 (flat out)
     handler: { x: 800, y: 560 },
     sheep: [],
@@ -1742,6 +1755,9 @@
     defiantSeen: false,
     demo: false,   // title screen: the autopilot works a real field behind the panel
     demoT: 0,      // autopilot decision timer
+    demoSince: 0,  // seconds actually elapsed since the last decision
+    demoCut: false,// this beat was already cut short — see autopilot()
+    beatLot: null, // members of the lot this beat committed to, or null
     demoStallT: 0, // how long the funnel has been left to drain
     wearSide: 0,   // autopilot wear sweep: +1 away-side, -1 come-by side, 0 not wearing
     wearT: 0,      // seconds into a wear bout; negative = driving before the next one
@@ -1770,7 +1786,7 @@
   // the DOM refresh is gated until the UI has been wired up (see uiReady =
   // true, just before the first frame).
   let uiReady = false;
-  const dogK = { presence: 1, speed: 1, stamina: 1, patience: 1 };
+  const dogK = { presence: 1, speed: 1, stamina: 1, intelligence: 1 };
   // 0 → lo, 0.5 → exactly 1, 1 → hi
   function statK(a, r) {
     return r <= 0.5 ? a.lo + (1 - a.lo) * (r * 2) : 1 + (a.hi - 1) * ((r - 0.5) * 2);
@@ -2685,9 +2701,11 @@
     state.dog.stam = 1; state.dog.blown = false; state.dog.windK = 1; // a level starts fresh
     state.dog.lastVX = 0; state.dog.lastVY = 0; state.dog.breathers = 0;
     state.dog.workEffort = 0; state.dog.workDist = 0;
-    state.dog.workPress = 0; state.dog.workSteady = 0;
+    state.dog.workPress = 0; state.dog.workWhole = 0;
     state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
     state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.holdT = 0; state.workHold = 0;
+    state.demoT = 0; state.demoSince = 0; state.demoCut = false;
+    state.beatLot = null; // a fresh field: the old lot's sheep are gone
     state.pace = PACE_START;
     state.barks = [];
     state.floaties = [];
@@ -3194,6 +3212,7 @@
       // tick judges fresh against the new target instead of playing out a
       // sweep it had planned around the old one.
       state.demoT = 0;
+      state.demoSince = 0; state.demoCut = false; state.beatLot = null;
       state.demoStallT = 0;
       state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.holdT = 0;
     } else {
@@ -3543,9 +3562,29 @@
       }
     }
     d.workDist += dspd * dt;
-    // patience is trained by NOT fidgeting: seconds the dog spent holding a
-    // line — moving, on one command
-    if (dspd > 20) d.workSteady += dt;
+    // intelligence is trained by keeping the job WHOLE: seconds the dog
+    // spent on the flock with the loose sheep still in a single lot. The
+    // measure used to be seconds spent MOVING, full stop, under the name
+    // patience, and that rewarded the exact fault this rating is about — a
+    // dog that walks into the mob and splits it then has to run twice as
+    // far to put it back, so splitting PAID, and measured it paid well: the
+    // old measure scored 0.80-0.92 whatever the dog did to the flock.
+    //
+    // Two conditions, and the second is doing as much work as the first.
+    // Nearness is what separates holding a flock together from watching one
+    // that was never in danger: credit only counts inside the range the dog
+    // actually handles at. And it replaces the old speed test rather than
+    // joining it, because standing off IS the skill here — a dog gated on
+    // movement stopped earning at the exact moment it did the right thing,
+    // which measured a fifth off a clever dog's training against a dull
+    // one's.
+    let nearest = Infinity;
+    for (const s of state.sheep) {
+      if (s.penned) continue;
+      nearest = Math.min(nearest, dist2(d.x, d.y, s.x, s.y));
+    }
+    const workR = fieldReach(WORK_REACH * dogK.presence);
+    if (nearest < workR * workR && clusterLoose().length <= 1) d.workWhole += dt;
     updateWind(d, dspd, top, dt);
   }
 
@@ -4268,10 +4307,14 @@
       // while pressure per sheep-second falls 5x, so presence trained worse
       // and worse the further into the game you got.
       presence: d.workPress / (secs * 1.5),
-      // the share of the level spent holding a line — self-normalising, and
-      // only a dog that never fidgets reaches 1. The old 0.75 coefficient
-      // put a routine level at 0.86-1.09, i.e. always maxed.
-      patience: d.workSteady / secs,
+      // the share of the level spent on the flock with it still in one
+      // piece — self-normalising, and only a dog that never lets it come
+      // apart and never leaves it reaches 1. Measured on a mid-career level
+      // (57 sheep, three seeds, autopilot), a routine one lands at 0.36 for
+      // a dull dog and 0.53 for a clever one: mid-range, room above for a
+      // harder level, and — unlike the measure this replaced, which scored
+      // 0.8-0.9 for everyone — it can tell the two dogs apart at all.
+      intelligence: d.workWhole / secs,
     };
     for (const k of DOG_KEYS) {
       gained[k] = grow(k, DRIFT_MAX * clamp(share[k], 0, 1));
@@ -4363,26 +4406,81 @@
   // beat — AUTO_TICK — so each phase gets time to visibly play out and
   // the handling reads deliberate, not jittery.
   function autopilot(dt) {
+    const d = state.dog;
     state.demoT -= dt;
-    if (state.demoT > 0) return;
-    // One beat, read once: `tick` is both the interval to the next decision
-    // and the step every timer below advances by, so stretching it for a
-    // patient dog can't leave the two disagreeing about how much time passed.
+    state.demoSince += dt;
+    // Between beats the dog is committed to the leg it picked — with one
+    // exception, and that exception is the whole reason this rating is no
+    // longer called patience. WALK ON drives at the middle of the mob and
+    // never stops itself, so a leg that began outside the hold ring can end
+    // up well inside it: at a run the dog covers more ground in a single
+    // beat than the ring is wide, and a stand-off consulted only on the beat
+    // is a rule the drive sails straight through. That overrun IS the split
+    // — the near sheep peel off either side of a dog that has arrived among
+    // them. So reaching the ring cuts the leg short and takes the decision
+    // now. Deciding while it runs, rather than only on the beat, is most of
+    // what makes a clever dog look clever.
+    //
+    // Once per beat, and only off a drive, so it can't chatter. A dog that
+    // stands off is lying down and won't trip this again; a dog that presses
+    // on anyway (a planted sheep suspends the hold) has had its one re-think
+    // and doesn't take the same decision every frame for the rest of the
+    // beat.
+    // Measured against the lot the beat COMMITTED to, not the field. The
+    // scan is the one cut a beat gets, and a field-wide one spends it on
+    // whichever sheep happens to be nearest: a stray from another lot
+    // drifting inside the ring trips the test, the decision resumes the
+    // same drive at the same target, and the cut is gone — so when the dog
+    // reaches the ring of the lot it is actually working, nothing looks,
+    // and the overrun this is here to prevent happens anyway. It is the
+    // committed lot's ring that the drive owes, so it is the committed
+    // lot's sheep that the cut measures. parked() rather than penned: a
+    // drill has no gate, and a sheep already held inside the ring is
+    // finished work sitting exactly where the dog must keep standing.
+    let cut = false;
+    if (state.demoT > 0) {
+      if (state.demoCut || d.cmd !== 'walk' || !state.beatLot) return;
+      const r = HOLD_OFF * dogK.intelligence * dogK.presence;
+      let near = Infinity;
+      for (const s of state.beatLot) {
+        if (parked(s)) continue;
+        near = Math.min(near, dist2(d.x, d.y, s.x, s.y));
+      }
+      if (near > r * r) return;
+      cut = true;
+    }
+    // One beat, read once: `tick` is the time that has ACTUALLY passed since
+    // the last decision, and every timer below advances by it, so neither a
+    // beat stretched for a dull dog nor one cut short above can leave the
+    // clocks disagreeing with the wall about how much time went by.
     //
     // No hold below is scaled by it. Every one is a threshold in seconds
     // that these same timers count up to, so a longer beat leaves each bout
     // the same length in seconds and only changes how often the dog stops to
     // re-read the field. Scaling the holds as well (as this first did) made
-    // patience a second, blunter difficulty knob on top of that.
+    // the rating a second, blunter difficulty knob on top of that.
     //
-    // The beat is one of the two things patience does; the other is the
-    // stand-off ring further down, which is where an impatient dog gets its
+    // The beat is one of the two things intelligence does; the other is the
+    // stand-off ring further down, which is where a dull dog gets its
     // characteristic fault — crowding a driven mob until it splits. That one
     // is a distance, not a length of time, which is why it doesn't fall foul
     // of the paragraph above.
-    const tick = AUTO_TICK * dogK.patience;
-    state.demoT = tick;
-    const d = state.dog;
+    //
+    // Note the DIVISION. A clever dog re-reads the field often and works in
+    // short considered legs; a dull one puts its head down and holds a line
+    // for a full second. It used to MULTIPLY, under the name patience, and
+    // that had the sign backwards: the better the dog, the longer it ran
+    // blind at the centroid, and the further past its own stand-off ring it
+    // got before anything looked at the distance again — a top-rated dog
+    // was measured (autopilot, mid-career level, twelve seed-runs) driving
+    // INSIDE its own ring for about half of every drive, so the widest
+    // stand-off in the game was also the one least often honoured. Dividing
+    // instead, and cutting the leg short above, takes that to about a
+    // quarter. The rating now buys the behaviour its blurb promises.
+    const tick = state.demoSince;
+    state.demoSince = 0;
+    state.demoT = AUTO_TICK / dogK.intelligence;
+    state.demoCut = cut;
     const P = state.pen;
     let n = 0, panic = 0, planted = false;
     for (const s of state.sheep) {
@@ -4394,6 +4492,12 @@
     if (!n) return;
     panic /= n;
     const flock = flockInfo(true); // the autopilot IS the handler
+    // ...and this is the lot the beat is about, for the cut test above. Set
+    // here, from the one call that picks it, so the test can never be
+    // judging a different lot from the branches below — and never by
+    // calling flockInfo itself, which commits the dog (it writes workX/workY
+    // and arms workHold) and must run once a decision, not once a frame.
+    state.beatLot = flock ? flock.members : null;
     // Stand off while the funnel drains — judged against the lot the dog
     // is WORKING, not the whole field. Counted field-wide, a mob draining
     // at the mouth held the dog parked at the gate while stragglers sat
@@ -4493,7 +4597,7 @@
       // creeping only matters once the dog is actually on the sheep
       let nearM = Infinity;
       for (const m of flock.members) nearM = Math.min(nearM, dist2(d.x, d.y, m.x, m.y));
-      const reach = fieldReach(260 * dogK.presence);
+      const reach = fieldReach(WORK_REACH * dogK.presence);
       if (nearM > reach * reach) {
         state.wearSide = 0; state.wearT = Math.min(0, state.wearT);
         d.cmd = 'walk';
@@ -4506,14 +4610,14 @@
       // drive carries the dog right in among them: the near sheep peel off
       // either side of it and the lot it was working comes apart into two,
       // which is then two fetches instead of one. Knowing how far the push
-      // can go before it does that is exactly what patience is, so the drive
-      // gets a floor — press up to the hold ring, then stand and let the
-      // pressure already on them do the moving. A patient dog holds well off
-      // and the mob rolls away whole; an impatient one crowds in until it is
+      // can go before it does that is exactly what intelligence is, so the
+      // drive gets a floor — press up to the hold ring, then stand and let
+      // the pressure already on them do the moving. A clever dog holds well
+      // off and the mob rolls away whole; a dull one crowds in until it is
       // among them and splits the lot it was driving. Same fault as a young
       // dog's, same cure.
       //
-      // Presence scales the ring as well as patience, and has to: what it
+      // Presence scales the ring as well as intelligence, and has to: what it
       // means to stand a given distance off is set by how far this dog's
       // authority reaches, and FLEE_RANGE scales the same way — so the ring
       // sits at the same point in the sheep's own gradient for every dog,
@@ -4525,7 +4629,7 @@
       // shifts it is the dog going in and barking, which needs the charge.
       let plantedHere = false;
       for (const m of flock.members) if (m.planted) { plantedHere = true; break; }
-      const ring = HOLD_OFF * dogK.patience * dogK.presence;
+      const ring = HOLD_OFF * dogK.intelligence * dogK.presence;
       const nearD = Math.sqrt(nearM);
       // the hold is bounded, and a bounded hold owes a drive after it — the
       // same shape as a wear bout, and for the same reason. A mob that
@@ -4557,7 +4661,7 @@
           // cancelled: a sheep in the lot has planted, or they've drawn off
           // past the ring. Either way the hold is over THIS tick — clearing
           // only the clock and leaving the flag set costs another whole
-          // decision interval of lying down (0.96s for the most patient
+          // decision interval of lying down (a full second for the dullest
           // dog), which is a beat of the charge a planted sheep needs, or
           // of the drive the flock has just made room for. A cancelled hold
           // ends the same way a bounded one does, so it owes the same
@@ -4599,8 +4703,9 @@
       // turn every stand-off into a wear sweep. `holding` covers the hold
       // while it runs. The tick that ENDS a bounded hold needs saying
       // separately — `holding` has gone false there but the dog is still
-      // stationary from the hold, and at the top of the patience range one
-      // tick is longer than STALL_HOLD, so that single tick could trip the
+      // stationary from the hold, and at the bottom of the intelligence
+      // range one tick (1.0s) is longer than STALL_HOLD (0.9s), so that
+      // single tick could trip the
       // test on its own and put the dog into a sweep instead of the drive a
       // bounded hold owes it. Only THAT tick, though, and only if the dog
       // really was lying: the ordinary slow ticks around a hold are the
@@ -6702,6 +6807,7 @@
       state.dog.cmd = 'walk';
       state.pace = Math.max(state.pace, 0.4);
       state.demoT = 0;
+      state.demoSince = 0; state.demoCut = false; state.beatLot = null;
       state.demoStallT = 0;
       state.wearSide = 0; state.wearT = 0; state.holdT = 0; state.workHold = 0;
       state.autoWaitT = 1.5; // switched on at an interstitial: pause, then play on

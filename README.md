@@ -65,7 +65,7 @@ made of, and each drives one concrete lever in the sim:
 | 🎯 **Presence** | Every radius the dog works through — how far sheep flee from it, notice it, and feel its bark — and how far off the flock it stands to drive. |
 | ⚡ **Speed** | Top speed and acceleration, in both drive modes and at every notch of pace. The charge a bark needs scales with it, so a slow dog can still bark. |
 | 🫁 **Stamina** | How quickly it's ready to go *again*. Running is nearly free — a collie is built for that — but every **burst** costs: getting up to speed, and wrenching a hard turn at it. Spend the pool and the dog wants a breather before it can go properly again. |
-| 🧘 **Patience** | How much room the dog leaves a job before it interferes. On a drive it stands off: a patient dog presses to the edge of the flock and then holds, letting the pressure it has already put on do the moving, where an impatient one walks on into them and splits the lot it was driving. It also decides less often — long deliberate legs rather than flitting. Bout lengths are unchanged; only how finely they're steered. Command and autopilot only. |
+| 🧠 **Intelligence** | How well the dog reads the job in front of it. On a drive it knows where the push stops: a clever dog presses to the edge of the flock and then holds, letting the pressure it has already put on do the moving, where a dull one walks on into them and splits the lot it was driving. And it keeps reading while it runs — it re-thinks often, and cuts a leg short the moment the drive reaches that stand-off, where a dull dog holds a straight line at the middle of the mob for a full second whatever happens in front of it. Bout lengths are unchanged; only how finely they're steered. Command and autopilot only. |
 
 Ratings run 0–1 and **0.5 is the baseline** — the dog the game shipped with.
 The two halves of each range map separately so a rating of exactly 0.5 lands on
@@ -97,9 +97,10 @@ Two things move a rating, deliberately different in size:
 
 - **Drift** — what the level itself taught. The dog's work is measured while you
   play (bursts thrown, ground covered, pressure actually landed on sheep,
-  seconds spent holding a line) and at the gate each rating drifts by up to 0.02
-  toward whatever the dog actually *did*. A level of hard stop-start work builds
-  stamina; a level worked patiently at range builds presence and patience. The
+  seconds worked with the flock still in one lot) and at the gate each rating
+  drifts by up to 0.02 toward whatever the dog actually *did*. A level of hard
+  stop-start work builds stamina; a level worked at range without ever letting
+  the mob come apart builds presence and intelligence. The
   measures are flock-size independent, so a late level trains as well as an
   early one.
 - **Points** — one per level clear, spent where you choose in the kennel. This
