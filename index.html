@@ -1822,7 +1822,15 @@
   // writes through to the active dog like any other change — prefixed
   // because bare ?speed= is already the sim-speed toggle.
   for (const k of DOG_KEYS) {
-    const q = parseFloat(urlParams.get(DOG_PARAM + k));
+    // `dog-patience` is honoured too, for the links copied before that
+    // rating was renamed — the kennel's own "Copy dog link" wrote them, so
+    // they are out there. Dropping it wouldn't fail loudly: the parse just
+    // finds nothing and the slot keeps whatever the RECIPIENT had, so the
+    // link quietly pins a different dog from the one it names, which is the
+    // worst of the three ways this could go.
+    let v = urlParams.get(DOG_PARAM + k);
+    if (v === null && k === 'intelligence') v = urlParams.get(DOG_PARAM + 'patience');
+    const q = parseFloat(v);
     if (Number.isFinite(q)) setDogStat(k, q);
   }
 
