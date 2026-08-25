@@ -1008,12 +1008,45 @@
   // Difficulty past the cap still comes from the defiant share (which keeps
   // climbing to its third of the flock) rather than from more animals.
   //
-  // The approach RATE is deliberately still tied to the ceiling: the ease
-  // term below reuses (FLOCK_MAX - FLOCK_SOFT), so raising the cap also
-  // stretches the climb — the mob now saturates around level 570 instead of
-  // 247. If those two ever need to move apart, that subtraction is the seam
-  // to cut; nothing else reads it.
+  // How HIGH the flock climbs and how FAST it gets there are two questions,
+  // and they used to be one number. The curve read (FLOCK_MAX - FLOCK_SOFT)
+  // twice — once as the head-room it has left to cover, and once as the
+  // exponential's own scale — so raising the ceiling silently stretched the
+  // climb as well. That is why taking the cap from 260 to 400 also pushed
+  // saturation from level 247 out to 567: nobody asked for a slower ladder,
+  // it came along with the bigger mob.
+  //
+  // FLOCK_EASE is that second use, cut out and named. It is the roll's worth
+  // of head-room the curve spends per e-fold: SMALLER climbs faster and
+  // saturates sooner, larger draws the ladder out. 250 is what the old
+  // expression worked out to at this cap, so this changes the shape of
+  // nothing — it only means the next person to move the ceiling gets to
+  // decide about the climb instead of inheriting it.
+  //
+  // It is a LITERAL, deliberately, and not `FLOCK_MAX - FLOCK_SOFT`. Writing
+  // it as that subtraction reads like a tidier way to say 250 and is in fact
+  // the whole bug wearing a new name: the ease would still ride the ceiling,
+  // so moving the cap would still stretch the climb, silently, exactly as
+  // before — and now under a constant whose name promises it doesn't. The
+  // two numbers agreeing today is a coincidence of this cap, not a relation
+  // to preserve. Change either one alone.
+  //
+  // What the knob does, at FLOCK_SOFT 150 / FLOCK_MAX 400 (median flock by
+  // level, 400 seeds; "full" = the level from which every seed rolls the cap):
+  //
+  //     ease   L50   L100   L200   L500   full
+  //      110   211    360    398    400    277   <- the pre-400 climb rate
+  //      175   191    321    390    400    411
+  //      250   179    288    374    400    567   <- shipped, = MAX - SOFT
+  //      400   169    249    339    395    878
+  //
+  // Levels 1-36 are untouched by every row, and that bound is exact rather
+  // than approximate: the largest roll a level can make is 6 + 4n, which
+  // first clears FLOCK_SOFT at n = 37, and a roll at or under FLOCK_SOFT
+  // never reaches this expression at all. Measured over 400 seeds, level 37
+  // is indeed the first where the ease changes any flock at all.
   const FLOCK_SOFT = 150, FLOCK_MAX = 400;
+  const FLOCK_EASE = 250;   // a literal on purpose — see above
   // ...and the field is sized to the flock that has to be worked on it. A
   // fixed field is two wrong sizes at once: level 1's handful of sheep
   // rattle around in a pasture they never fill, while a late-game mob
@@ -3068,7 +3101,10 @@
       // ...but the roll now eases onto an asymptote instead of climbing for
       // ever. A flock at or under FLOCK_SOFT is passed through untouched, so
       // the brisk early ramp — the game's whole character — is bit-for-bit
-      // what it was up to about level 36. Past that the curve bends: the old
+      // what it was through level 36 (6 + 4n, the largest roll a level can
+      // make, first clears FLOCK_SOFT at 37). Past that the curve bends,
+      // at the rate FLOCK_EASE sets and toward the ceiling FLOCK_MAX sets —
+      // two constants now, because they are two questions. The old
       // straight line put ~800 sheep on level 200, which drew at 13fps on a
       // phone, so "no cap" did not mean the top of the game was hard, it meant
       // it was unplayable. This is continuous at the join.
@@ -3082,7 +3118,7 @@
       // worth knowing before treating the top of the ladder as unbounded.)
       count = raw <= FLOCK_SOFT ? raw
         : Math.round(FLOCK_SOFT + (FLOCK_MAX - FLOCK_SOFT) *
-            (1 - Math.exp(-(raw - FLOCK_SOFT) / (FLOCK_MAX - FLOCK_SOFT))));
+            (1 - Math.exp(-(raw - FLOCK_SOFT) / FLOCK_EASE)));
       defiantCount = n < 2 ? 0 : Math.min(1 + Math.floor((n - 2) / 2), Math.floor(count / 3));
     });
     layoutField(count, defiantCount, 3 + Math.min(n, 5), levelSeed(n));
