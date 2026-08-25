@@ -1757,6 +1757,7 @@
     demoT: 0,      // autopilot decision timer
     demoSince: 0,  // seconds actually elapsed since the last decision
     demoCut: false,// this beat was already cut short — see autopilot()
+    beatLot: null, // members of the lot this beat committed to, or null
     demoStallT: 0, // how long the funnel has been left to drain
     wearSide: 0,   // autopilot wear sweep: +1 away-side, -1 come-by side, 0 not wearing
     wearT: 0,      // seconds into a wear bout; negative = driving before the next one
@@ -2704,6 +2705,7 @@
     state.dog.workX = state.dog.workY = undefined; // fresh field, fresh group pick
     state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.holdT = 0; state.workHold = 0;
     state.demoT = 0; state.demoSince = 0; state.demoCut = false;
+    state.beatLot = null; // a fresh field: the old lot's sheep are gone
     state.pace = PACE_START;
     state.barks = [];
     state.floaties = [];
@@ -3210,7 +3212,7 @@
       // tick judges fresh against the new target instead of playing out a
       // sweep it had planned around the old one.
       state.demoT = 0;
-      state.demoSince = 0; state.demoCut = false;
+      state.demoSince = 0; state.demoCut = false; state.beatLot = null;
       state.demoStallT = 0;
       state.wearSide = 0; state.wearT = 0; state.stallT = 0; state.holdT = 0;
     } else {
@@ -4424,13 +4426,24 @@
     // on anyway (a planted sheep suspends the hold) has had its one re-think
     // and doesn't take the same decision every frame for the rest of the
     // beat.
+    // Measured against the lot the beat COMMITTED to, not the field. The
+    // scan is the one cut a beat gets, and a field-wide one spends it on
+    // whichever sheep happens to be nearest: a stray from another lot
+    // drifting inside the ring trips the test, the decision resumes the
+    // same drive at the same target, and the cut is gone — so when the dog
+    // reaches the ring of the lot it is actually working, nothing looks,
+    // and the overrun this is here to prevent happens anyway. It is the
+    // committed lot's ring that the drive owes, so it is the committed
+    // lot's sheep that the cut measures. parked() rather than penned: a
+    // drill has no gate, and a sheep already held inside the ring is
+    // finished work sitting exactly where the dog must keep standing.
     let cut = false;
     if (state.demoT > 0) {
-      if (state.demoCut || d.cmd !== 'walk') return;
+      if (state.demoCut || d.cmd !== 'walk' || !state.beatLot) return;
       const r = HOLD_OFF * dogK.intelligence * dogK.presence;
       let near = Infinity;
-      for (const s of state.sheep) {
-        if (s.penned) continue;
+      for (const s of state.beatLot) {
+        if (parked(s)) continue;
         near = Math.min(near, dist2(d.x, d.y, s.x, s.y));
       }
       if (near > r * r) return;
@@ -4479,6 +4492,12 @@
     if (!n) return;
     panic /= n;
     const flock = flockInfo(true); // the autopilot IS the handler
+    // ...and this is the lot the beat is about, for the cut test above. Set
+    // here, from the one call that picks it, so the test can never be
+    // judging a different lot from the branches below — and never by
+    // calling flockInfo itself, which commits the dog (it writes workX/workY
+    // and arms workHold) and must run once a decision, not once a frame.
+    state.beatLot = flock ? flock.members : null;
     // Stand off while the funnel drains — judged against the lot the dog
     // is WORKING, not the whole field. Counted field-wide, a mob draining
     // at the mouth held the dog parked at the gate while stragglers sat
@@ -6788,7 +6807,7 @@
       state.dog.cmd = 'walk';
       state.pace = Math.max(state.pace, 0.4);
       state.demoT = 0;
-      state.demoSince = 0; state.demoCut = false;
+      state.demoSince = 0; state.demoCut = false; state.beatLot = null;
       state.demoStallT = 0;
       state.wearSide = 0; state.wearT = 0; state.holdT = 0; state.workHold = 0;
       state.autoWaitT = 1.5; // switched on at an interstitial: pause, then play on
