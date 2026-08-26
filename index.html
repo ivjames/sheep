@@ -777,7 +777,7 @@
     },
     intelligence: {
       icon: '🧠', label: 'Intelligence', lo: 0.6, hi: 1.6,
-      blurb: 'How well the dog reads the job in front of it. It knows where the push stops \u2014 a clever dog presses to the edge of the flock and stands, and lets the pressure work, where a dull one walks on into them and splits the lot it was driving. And it keeps reading while it runs: it re-thinks often, and a leg that turns out to be wrong gets cut short, where a dull dog puts its head down and holds a straight line at the middle of the mob for a full second whatever happens in front of it. Bout lengths don\u2019t change, only how finely they\u2019re steered. Command and autopilot only.',
+      blurb: 'How well the dog reads the job in front of it. It knows where the push stops \u2014 a clever dog presses to the edge of the flock and stands, and lets the pressure work, where a dull one walks on into them and splits the lot it was driving. And it knows how to ARRIVE there: coming onto its sheep a clever dog steadies itself, easing the push a notch at a time so it settles onto that edge at a creep, where a dull one carries the pace it set off with straight into them. And it keeps reading while it runs: it re-thinks often, and a leg that turns out to be wrong gets cut short, where a dull dog puts its head down and holds a straight line at the middle of the mob for a full second whatever happens in front of it. Bout lengths don\u2019t change, only how finely they\u2019re steered. Command and autopilot only.',
     },
   };
   const DOG_KEYS = Object.keys(DOG_ATTR);
@@ -921,13 +921,64 @@
   // it takes the pressure off, in pixels from the nearest sheep of the lot
   // it's working. Sized well inside the flee range of even the boldest
   // sheep (FLEE_RANGE_DEFIANT) so a held dog is still leaning on them —
-  // standing off is easing the push, not dropping it. HOLD_CLEAR is the
+  // standing off is easing the push, not dropping it. That relationship is
+  // why it goes through fieldReach() at every reader, the way every other
+  // dog-reach distance does: FLEE_RANGE scales with the field, so a ring left
+  // in absolute units would sit at a different point in the sheep's own
+  // gradient on every field size, and a held dog would lean harder on a small
+  // paddock than on a big one. setWorldSize's note has always counted the
+  // autopilot's ring among the distances that keep their share of the ground;
+  // until this it was the one that didn't. HOLD_CLEAR is the
   // hysteresis: once the dog has eased off, the flock must draw off past
   // this multiple of the ring before it presses again, so a dog sitting on
   // the line doesn't flicker between walk on and lie down every tick.
   // HOLD_BOUT bounds the hold and HOLD_PUSH is the drive that has to follow
   // one — see the standing-off block in autopilot().
   const HOLD_OFF = 70, HOLD_CLEAR = 1.3;
+  // ...and SETTLE_BAND is how the dog ARRIVES at that ring. The ring says
+  // where the push stops; on its own it says nothing about the pace the dog
+  // is carrying when it gets there, and a drive that runs the whole approach
+  // flat out reaches the ring going too fast to stop on it — the hold lands a
+  // beat late, well inside, which is the overrun that splits the lot. So the
+  // run-in gets a ceiling: over this many ring-widths outside the ring, the
+  // pace the drive is allowed falls off to a creep, and the dog sheds a notch
+  // a beat to meet it — which is a STEADY, called by the dog on itself, the
+  // same call a handler makes walking a dog onto its sheep.
+  //
+  // A multiple of the RING, so the approach scales with the ring rather than
+  // needing its own scaling: intelligence and presence are already in there.
+  // That is most of what makes this a clever dog's habit. A clever dog holds
+  // a wide ring, so it begins easing from further out, and it re-decides
+  // often, so it fits more steadies into that longer run-in — it settles onto
+  // the edge of the flock at a creep and the mob rolls away whole. A dull dog
+  // has a narrow band and a full second between thoughts, so the band goes by
+  // inside a single beat and it arrives at the pace it set off with, straight
+  // through the middle of them.
+  //
+  // SETTLE_PACE is where the ceiling bottoms out, ON the ring — a walk, not a
+  // creep, because standing off is easing the push and not dropping it, and
+  // the drive a bounded hold owes still has to move sheep.
+  //
+  // Both numbers are tuned, and the honest version of that tuning is worth
+  // keeping. Measured with the autopilot driven headlessly (20 seeds, level
+  // 12, a baseline dog on every rating but the one under test), the share of
+  // drive frames spent inside the ring runs about 33% for a top-rated dog and
+  // about 10% for a mid one. This takes the first to about 27% over two
+  // independent batches, and leaves the second where it was — which is the
+  // shape intended: the dull end of the range is supposed to keep the fault.
+  // A first cut settled to PACE_MIN over 1.8 ring-widths and was measurably
+  // worse, because that band is wider than the working reach it sits inside
+  // and the dog crept the whole approach rather than the last of it.
+  //
+  // Two things those runs do NOT support, and neither should be claimed on
+  // this constant's behalf. Level time moves by less than the noise: the same
+  // pair of builds came out 43.3s and 36.5s on two 20-seed medians, so ±4s is
+  // the floor on what can be read here and the change sits inside it. And the
+  // flock is no more gathered for it — lots 1.30 → 1.35, spread 252 → 254px.
+  // The overrun is what this fixes. That the split downstream of the overrun
+  // follows is the argument HOLD_OFF has always made, not something these
+  // runs can see.
+  const SETTLE_BAND = 0.7, SETTLE_PACE = 0.4;
   // how close the dog has to be to the flock for what it is doing to count
   // as WORKING it — the range at which the autopilot stops covering ground
   // and starts handling, and (see updateDog) the range inside which keeping
@@ -4810,7 +4861,7 @@
     let cut = false;
     if (state.demoT > 0) {
       if (state.demoCut || d.cmd !== 'walk' || !state.beatLot) return;
-      const r = HOLD_OFF * dogK.intelligence * dogK.presence;
+      const r = fieldReach(HOLD_OFF * dogK.intelligence * dogK.presence);
       let near = Infinity;
       for (const s of state.beatLot) {
         if (parked(s)) continue;
@@ -4852,12 +4903,11 @@
     state.demoT = AUTO_TICK / dogK.intelligence;
     state.demoCut = cut;
     const P = state.pen;
-    let n = 0, panic = 0, planted = false;
+    let n = 0, panic = 0;
     for (const s of state.sheep) {
       if (s.penned) continue;
       n++;
       panic += s.panic;
-      planted = planted || s.planted;
     }
     if (!n) return;
     panic /= n;
@@ -4970,6 +5020,20 @@
       }
     }
     state.demoStallT = 0;
+    // The ceiling the run-in puts on the drive's pace — see SETTLE_BAND. It
+    // is set where the ring and the distance to it are known, and read by the
+    // drive at the bottom of the function, so it has to outlive this block. 1
+    // is "no ceiling": with no flock to work there is no ring to settle onto.
+    let paceCap = 1;
+    // ...and so does whether the lot being WORKED has a planted sheep in it,
+    // which is what both the hold and the charge below turn on. It used to be
+    // read field-wide, and that was already loose — the charge is the dog
+    // going in and barking at the sheep in front of it, which does nothing
+    // whatever for a planted sheep standing in some other lot. Left field-wide
+    // it now also lifts the settle ceiling, so one defiant sheep anywhere on
+    // the ground put the dog back to full pace at the lot it was driving and
+    // switched this whole change off.
+    let plantedHere = false;
     if (flock) {
       // repositioning is a CALLED FLANK: walk on presses straight at the
       // mob from wherever the dog stands and does no rounding of its own,
@@ -5027,10 +5091,20 @@
       // is pressure with the volume down, and a sheep that has planted has
       // already decided to face down exactly that — the only thing that
       // shifts it is the dog going in and barking, which needs the charge.
-      let plantedHere = false;
       for (const m of flock.members) if (m.planted) { plantedHere = true; break; }
-      const ring = HOLD_OFF * dogK.intelligence * dogK.presence;
+      const ring = fieldReach(HOLD_OFF * dogK.intelligence * dogK.presence);
       const nearD = Math.sqrt(nearM);
+      // SETTLING ON. The room left between the dog and its ring is what the
+      // drive may spend on pace: full push out at the far edge of the band,
+      // down to SETTLE_PACE by the time the ring is under its nose. A walk at
+      // the bottom and not a halt, because standing off is easing the push and
+      // not dropping it (see HOLD_OFF) — the halt is the hold's job, and this
+      // is the walk that hands over to it. A planted sheep in the lot lifts the
+      // ceiling outright, the same exemption the hold makes just below and
+      // for the same reason: the only thing that shifts a planted sheep is
+      // the dog going in at it, and that needs the pace.
+      paceCap = plantedHere ? 1 :
+        clamp(SETTLE_PACE + (1 - SETTLE_PACE) * (nearD - ring) / (ring * SETTLE_BAND), SETTLE_PACE, 1);
       // the hold is bounded, and a bounded hold owes a drive after it — the
       // same shape as a wear bout, and for the same reason. A mob that
       // hasn't drawn off after HOLD_BOUT seconds isn't going to on its own
@@ -5182,18 +5256,37 @@
       state.wearSide = 0;
       state.wearT = Math.min(0, state.wearT); // a rest keeps counting down while the dog drives
       // nothing to sweep and nothing to fetch: the drive is the answer, and
-      // this is where it hits the floor set above. Pace is left where it is
-      // — the dog picks the drive back up at the same push it eased off.
-      if (holding) { d.cmd = 'lie'; return; }
+      // this is where it hits the floor set above. The pace keeps easing
+      // while the dog lies there, though — a held dog is a steadied dog, and
+      // the drive a bounded hold owes has to leave the ring as a creep. Left
+      // frozen at the push that carried the dog in (as this once was), the
+      // hold ends and the dog walks on again at a run from a standing start
+      // right on the ring, which is the overrun the ring exists to prevent,
+      // just deferred by HOLD_BOUT seconds.
+      if (holding) {
+        d.cmd = 'lie';
+        if (state.pace > paceCap) state.pace = Math.max(paceCap, state.pace - PACE_STEP);
+        return;
+      }
     }
     d.cmd = 'walk';
+    // The pace is a gradient and the dog works it the way a handler does —
+    // a notch a beat, WALK ON up and STEADY down, never slammed to a number.
+    // `want` is where this beat would like it. The default is the run-in
+    // ceiling, and it is a MINIMUM with the pace the dog already carries, so
+    // a drive with room to spare is left exactly as it was: the settle only
+    // ever eases, and never talks the dog into more push than the flock's
+    // own temper (below) has asked for.
+    let want = Math.min(paceCap, state.pace), notch = PACE_STEP;
     if (panic > 0.7) {
-      state.pace = Math.max(PACE_MIN, state.pace - PACE_STEP); // easy — pushing a hot flock just scatters it
-    } else if (planted && panic < 0.5) {
-      state.pace = Math.min(1, state.pace + PACE_STEP * 2); // charge it — the bark shakes a planted sheep loose
+      want = PACE_MIN; // easy — pushing a hot flock just scatters it
+    } else if (plantedHere && panic < 0.5) {
+      want = 1; notch = PACE_STEP * 2; // charge it — the bark shakes a planted sheep loose
     } else if (panic < 0.35) {
-      state.pace = Math.min(0.7, state.pace + PACE_STEP); // calm and dawdling — lean in
+      want = Math.min(paceCap, 0.7); // calm and dawdling — lean in, as far as the room allows
     }
+    state.pace = state.pace > want ? Math.max(want, state.pace - notch)
+                                   : Math.min(want, state.pace + notch);
   }
 
   function update(dt) {
