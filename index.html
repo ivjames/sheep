@@ -956,14 +956,28 @@
   // through the middle of them.
   //
   // SETTLE_PACE is where the ceiling bottoms out, ON the ring — a walk, not a
-  // creep, because standing off is easing the push and not dropping it and
-  // the drive a bounded hold owes still has to move sheep. A first cut settled
-  // to PACE_MIN over 1.8 ring-widths and that was the whole approach spent
-  // creeping: measured (8 seeds, level 12, baseline dog) it took the overrun
-  // 36.5% of drive frames to 19.4% and the level 40.8s to 50.0s, which is a
-  // top-rated dog made the slowest on the sheet. The band has to be narrower
-  // than the working reach it sits inside, and the floor has to be a pace the
-  // flock actually answers.
+  // creep, because standing off is easing the push and not dropping it, and
+  // the drive a bounded hold owes still has to move sheep.
+  //
+  // Both numbers are tuned, and the honest version of that tuning is worth
+  // keeping. Measured with the autopilot driven headlessly (20 seeds, level
+  // 12, a baseline dog on every rating but the one under test), the share of
+  // drive frames spent inside the ring runs about 33% for a top-rated dog and
+  // about 10% for a mid one. This takes the first to about 27% over two
+  // independent batches, and leaves the second where it was — which is the
+  // shape intended: the dull end of the range is supposed to keep the fault.
+  // A first cut settled to PACE_MIN over 1.8 ring-widths and was measurably
+  // worse, because that band is wider than the working reach it sits inside
+  // and the dog crept the whole approach rather than the last of it.
+  //
+  // Two things those runs do NOT support, and neither should be claimed on
+  // this constant's behalf. Level time moves by less than the noise: the same
+  // pair of builds came out 43.3s and 36.5s on two 20-seed medians, so ±4s is
+  // the floor on what can be read here and the change sits inside it. And the
+  // flock is no more gathered for it — lots 1.30 → 1.35, spread 252 → 254px.
+  // The overrun is what this fixes. That the split downstream of the overrun
+  // follows is the argument HOLD_OFF has always made, not something these
+  // runs can see.
   const SETTLE_BAND = 0.7, SETTLE_PACE = 0.4;
   // how close the dog has to be to the flock for what it is doing to count
   // as WORKING it — the range at which the autopilot stops covering ground
