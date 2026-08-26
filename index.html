@@ -921,7 +921,14 @@
   // it takes the pressure off, in pixels from the nearest sheep of the lot
   // it's working. Sized well inside the flee range of even the boldest
   // sheep (FLEE_RANGE_DEFIANT) so a held dog is still leaning on them —
-  // standing off is easing the push, not dropping it. HOLD_CLEAR is the
+  // standing off is easing the push, not dropping it. That relationship is
+  // why it goes through fieldReach() at every reader, the way every other
+  // dog-reach distance does: FLEE_RANGE scales with the field, so a ring left
+  // in absolute units would sit at a different point in the sheep's own
+  // gradient on every field size, and a held dog would lean harder on a small
+  // paddock than on a big one. setWorldSize's note has always counted the
+  // autopilot's ring among the distances that keep their share of the ground;
+  // until this it was the one that didn't. HOLD_CLEAR is the
   // hysteresis: once the dog has eased off, the flock must draw off past
   // this multiple of the ring before it presses again, so a dog sitting on
   // the line doesn't flicker between walk on and lie down every tick.
@@ -4840,7 +4847,7 @@
     let cut = false;
     if (state.demoT > 0) {
       if (state.demoCut || d.cmd !== 'walk' || !state.beatLot) return;
-      const r = HOLD_OFF * dogK.intelligence * dogK.presence;
+      const r = fieldReach(HOLD_OFF * dogK.intelligence * dogK.presence);
       let near = Infinity;
       for (const s of state.beatLot) {
         if (parked(s)) continue;
@@ -4882,12 +4889,11 @@
     state.demoT = AUTO_TICK / dogK.intelligence;
     state.demoCut = cut;
     const P = state.pen;
-    let n = 0, panic = 0, planted = false;
+    let n = 0, panic = 0;
     for (const s of state.sheep) {
       if (s.penned) continue;
       n++;
       panic += s.panic;
-      planted = planted || s.planted;
     }
     if (!n) return;
     panic /= n;
@@ -5005,6 +5011,15 @@
     // drive at the bottom of the function, so it has to outlive this block. 1
     // is "no ceiling": with no flock to work there is no ring to settle onto.
     let paceCap = 1;
+    // ...and so does whether the lot being WORKED has a planted sheep in it,
+    // which is what both the hold and the charge below turn on. It used to be
+    // read field-wide, and that was already loose — the charge is the dog
+    // going in and barking at the sheep in front of it, which does nothing
+    // whatever for a planted sheep standing in some other lot. Left field-wide
+    // it now also lifts the settle ceiling, so one defiant sheep anywhere on
+    // the ground put the dog back to full pace at the lot it was driving and
+    // switched this whole change off.
+    let plantedHere = false;
     if (flock) {
       // repositioning is a CALLED FLANK: walk on presses straight at the
       // mob from wherever the dog stands and does no rounding of its own,
@@ -5062,9 +5077,8 @@
       // is pressure with the volume down, and a sheep that has planted has
       // already decided to face down exactly that — the only thing that
       // shifts it is the dog going in and barking, which needs the charge.
-      let plantedHere = false;
       for (const m of flock.members) if (m.planted) { plantedHere = true; break; }
-      const ring = HOLD_OFF * dogK.intelligence * dogK.presence;
+      const ring = fieldReach(HOLD_OFF * dogK.intelligence * dogK.presence);
       const nearD = Math.sqrt(nearM);
       // SETTLING ON. The room left between the dog and its ring is what the
       // drive may spend on pace: full push out at the far edge of the band,
@@ -5252,7 +5266,7 @@
     let want = Math.min(paceCap, state.pace), notch = PACE_STEP;
     if (panic > 0.7) {
       want = PACE_MIN; // easy — pushing a hot flock just scatters it
-    } else if (planted && panic < 0.5) {
+    } else if (plantedHere && panic < 0.5) {
       want = 1; notch = PACE_STEP * 2; // charge it — the bark shakes a planted sheep loose
     } else if (panic < 0.35) {
       want = Math.min(paceCap, 0.7); // calm and dawdling — lean in, as far as the room allows
