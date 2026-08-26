@@ -947,7 +947,17 @@
   // has a narrow band and a full second between thoughts, so the band goes by
   // inside a single beat and it arrives at the pace it set off with, straight
   // through the middle of them.
-  const SETTLE_BAND = 1.8;
+  //
+  // SETTLE_PACE is where the ceiling bottoms out, ON the ring — a walk, not a
+  // creep, because standing off is easing the push and not dropping it and
+  // the drive a bounded hold owes still has to move sheep. A first cut settled
+  // to PACE_MIN over 1.8 ring-widths and that was the whole approach spent
+  // creeping: measured (8 seeds, level 12, baseline dog) it took the overrun
+  // 36.5% of drive frames to 19.4% and the level 40.8s to 50.0s, which is a
+  // top-rated dog made the slowest on the sheet. The band has to be narrower
+  // than the working reach it sits inside, and the floor has to be a pace the
+  // flock actually answers.
+  const SETTLE_BAND = 1.0, SETTLE_PACE = 0.3;
   // how close the dog has to be to the flock for what it is doing to count
   // as WORKING it — the range at which the autopilot stops covering ground
   // and starts handling, and (see updateDog) the range inside which keeping
@@ -5058,15 +5068,15 @@
       const nearD = Math.sqrt(nearM);
       // SETTLING ON. The room left between the dog and its ring is what the
       // drive may spend on pace: full push out at the far edge of the band,
-      // a creep by the time the ring is under its nose. Full push and not a
-      // halt at the bottom, because standing off is easing the push and not
-      // dropping it (see HOLD_OFF) — the halt is the hold's job, and this is
-      // the walk that hands over to it. A planted sheep in the lot lifts the
+      // down to SETTLE_PACE by the time the ring is under its nose. A walk at
+      // the bottom and not a halt, because standing off is easing the push and
+      // not dropping it (see HOLD_OFF) — the halt is the hold's job, and this
+      // is the walk that hands over to it. A planted sheep in the lot lifts the
       // ceiling outright, the same exemption the hold makes just below and
       // for the same reason: the only thing that shifts a planted sheep is
       // the dog going in at it, and that needs the pace.
       paceCap = plantedHere ? 1 :
-        clamp(PACE_MIN + (1 - PACE_MIN) * (nearD - ring) / (ring * SETTLE_BAND), PACE_MIN, 1);
+        clamp(SETTLE_PACE + (1 - SETTLE_PACE) * (nearD - ring) / (ring * SETTLE_BAND), SETTLE_PACE, 1);
       // the hold is bounded, and a bounded hold owes a drive after it — the
       // same shape as a wear bout, and for the same reason. A mob that
       // hasn't drawn off after HOLD_BOUT seconds isn't going to on its own
