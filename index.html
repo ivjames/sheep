@@ -985,6 +985,26 @@
   // the lot together is credited to the dog rather than to luck. Scaled by
   // presence, like every other radius the dog works through.
   const WORK_REACH = 260;
+  // how nearly the dog has to be lined up on a planted sheep for the
+  // charge to be owed — the cosine between the planted sheep and the
+  // drive line, so 0.5 is roughly a 60-degree cone ahead of the push.
+  // The three exemptions a planted sheep buys (the lifted settle
+  // ceiling, the suspended hold, the full-pace charge) are all bought
+  // by the dog going IN AT it, so none of them is owed while it stands
+  // off the line the drive is actually taking. See autopilot().
+  const CHARGE_AIM = 0.5;
+  // ...and how hard it goes in when it is. Going in at a RUN is only one
+  // way to shift a planted sheep, and it is the dull one: the rush trips
+  // the charging bark (see updateDog, which fires it above pace 0.797 —
+  // dogSpeedK cancels, so that number is the same for every dog), and a
+  // bark is pressure spent on whatever is in front of the dog rather than
+  // on the sheep that planted. Walking in shifts it just as well: a plant
+  // breaks when the dog gets right on top of it, and breaks on its own
+  // once plantT runs out (updateSheep, 0.9-2.4s). So a dog that reads the
+  // job presses up under the bark and lets the sheep think better of it,
+  // where a dull one rushes and shouts. Intelligence is the whole
+  // difference, and CHARGE_PACE_CLEVER sits below 0.797 on purpose.
+  const CHARGE_PACE_DULL = 1, CHARGE_PACE_CLEVER = 0.75;
   const HOLD_BOUT = 2.0, HOLD_PUSH = 1.5;
   // a drive counts as stalled once the dog has been under STALL_SLOW of its
   // own pace for STALL_HOLD seconds — long enough that an ordinary slow
@@ -5089,9 +5109,28 @@
       //
       // A planted sheep in the lot suspends the hold outright. Standing off
       // is pressure with the volume down, and a sheep that has planted has
-      // already decided to face down exactly that — the only thing that
-      // shifts it is the dog going in and barking, which needs the charge.
-      for (const m of flock.members) if (m.planted) { plantedHere = true; break; }
+      // already decided to face down exactly that — what shifts it is the
+      // dog going in at it, which needs the charge. (Going in, note, and not
+      // necessarily barking: the plant breaks on contact and breaks on its
+      // own when plantT runs out. Which of those the dog gets is what
+      // CHARGE_PACE_CLEVER decides.)
+      // ...but a planted sheep being IN the lot is not yet a reason to go
+      // in at one. Walk on drives at the middle of the mob and not at the
+      // sheep that planted, so a planted member off to one side put the dog
+      // to full pace at a lot that was already moving — and the charging
+      // bark (see updateDog) then went off at whichever sheep happened to be
+      // in front of it, which was rarely the planted one. Barks spent that
+      // way buy nothing: the sheep they land on was already walking. So the
+      // planted sheep has to be one this drive is actually about to reach —
+      // inside working range, and within CHARGE_AIM of the drive line.
+      for (const m of flock.members) {
+        if (!m.planted) continue;
+        const px = m.x - d.x, py = m.y - d.y, pl = Math.hypot(px, py);
+        if (pl > reach) continue;
+        const lx = flock.cx - d.x, ly = flock.cy - d.y, ll = Math.hypot(lx, ly) || 1;
+        // a sheep the dog is standing on top of has no meaningful bearing
+        if (pl < 0.01 || (px * lx + py * ly) / (pl * ll) > CHARGE_AIM) { plantedHere = true; break; }
+      }
       const ring = fieldReach(HOLD_OFF * dogK.intelligence * dogK.presence);
       const nearD = Math.sqrt(nearM);
       // SETTLING ON. The room left between the dog and its ring is what the
@@ -5281,7 +5320,12 @@
     if (panic > 0.7) {
       want = PACE_MIN; // easy — pushing a hot flock just scatters it
     } else if (plantedHere && panic < 0.5) {
-      want = 1; notch = PACE_STEP * 2; // charge it — the bark shakes a planted sheep loose
+      // go in at it — but at the pace this dog's reading of the job earns,
+      // not flat out. See CHARGE_PACE_CLEVER: a clever dog presses up under
+      // the bark and shifts the plant by standing on it, a dull one charges
+      // through the threshold and barks.
+      want = CHARGE_PACE_DULL - (CHARGE_PACE_DULL - CHARGE_PACE_CLEVER) * dogK.intelligence;
+      notch = PACE_STEP * 2;
     } else if (panic < 0.35) {
       want = Math.min(paceCap, 0.7); // calm and dawdling — lean in, as far as the room allows
     }
