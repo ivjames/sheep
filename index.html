@@ -1045,6 +1045,9 @@
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
   const BARK_CHARGE_AIM = 0.55;   // ...and only one it is running AT
+  // ...where a plant breaks on being walked into, with no such heading gate:
+  // the dog only has to end up this close, however it was pointing.
+  const PLANT_BREAK_RANGE = 55;
   // ...from which falls out how near the dog's ROUTE a planted sheep has to
   // lie for going in at it to be worth anything. The drive runs at the
   // middle of the mob, so a planted sheep is only reachable on the way if
@@ -1061,6 +1064,13 @@
   // looking 60 degrees is 225px wide. Read unscaled, like the distances it
   // is derived from. See the planted-sheep scan in autopilot().
   const CHARGE_CORRIDOR = BARK_CHARGE_RANGE * Math.sqrt(1 - BARK_CHARGE_AIM * BARK_CHARGE_AIM);
+  // ...and the same two conditions put a floor under how far AHEAD it has to
+  // be, not just how far to the side. u only shrinks as the dog runs the
+  // line, so a sheep already inside this lead can never satisfy the aim gate
+  // however long the drive goes on. It bounds the bark only: a plant inside
+  // PLANT_BREAK_RANGE of the line breaks on contact at closest approach
+  // whatever the dog's heading, so the lead must not be asked of those.
+  const CHARGE_LEAD = BARK_CHARGE_AIM / Math.sqrt(1 - BARK_CHARGE_AIM * BARK_CHARGE_AIM);
   // flock growth: linear and untouched up to FLOCK_SOFT, then easing onto
   // FLOCK_MAX rather than climbing without bound — see startLevel. FLOCK_MAX
   // is set by what the renderer can actually carry, so it moves when the
@@ -4443,7 +4453,7 @@
             s.plantT = rand(0.9, 2.4);
             sfx.stomp();
           }
-          if (s.planted && dd < 55) unplant(s, ddx / dd, ddy / dd); // dog right on top of it
+          if (s.planted && dd < PLANT_BREAK_RANGE) unplant(s, ddx / dd, ddy / dd); // dog right on top of it
           if (!s.planted) {
             // panic RAMPS with how close the dog presses: the mere
             // edge of the range is a wary trot, half-way in is a run,
@@ -5150,7 +5160,12 @@
           const along = (px * lx + py * ly) / ll;   // how far down the drive line it lies
           if (along < 0 || along > reach) continue;  // behind the dog, or past its working range
           const off = Math.abs(px * ly - py * lx) / ll; // ...and how far off that line
-          if (off <= corridor) { plantedHere = true; break; }
+          if (off > corridor) continue;
+          // inside contact width the drive breaks the plant simply by passing
+          // it; outside it only the bark can, and the bark wants the sheep
+          // still far enough ahead to come inside its aim gate — see CHARGE_LEAD
+          if (off > PLANT_BREAK_RANGE && along < off * CHARGE_LEAD) continue;
+          plantedHere = true; break;
         }
       }
       const ring = fieldReach(HOLD_OFF * dogK.intelligence * dogK.presence);
