@@ -1052,7 +1052,8 @@
   // angle: a cone is a corridor that widens with range, and at the far
   // edge of WORK_REACH even a narrow-looking 60 degrees is 225px wide —
   // three times this, and four times the distance at which a plant breaks
-  // on contact. See the planted-sheep scan in autopilot().
+  // on contact. Read unscaled, like the two distances it stands for.
+  // See the planted-sheep scan in autopilot().
   const CHARGE_CORRIDOR = BARK_CHARGE_RANGE;
   // flock growth: linear and untouched up to FLOCK_SOFT, then easing onto
   // FLOCK_MAX rather than climbing without bound — see startLevel. FLOCK_MAX
@@ -5128,7 +5129,15 @@
       // of the line the drive will take.
       {
         const lx = flock.cx - d.x, ly = flock.cy - d.y, ll = Math.hypot(lx, ly) || 1;
-        const corridor = fieldReach(CHARGE_CORRIDOR);
+        // NOT through fieldReach, which every other dog-reach distance here
+        // takes: this one is not a reach the dog works through, it is a
+        // stand-in for the bark and contact footprint, and updateDog tests
+        // BARK_CHARGE_RANGE and the 55px contact raw. Scaled, the corridor
+        // parts company with the thing it is standing for in both directions
+        // — 88px against an 80px bark on a late-game field at reachK 1.10,
+        // where a sheep 80-88px off the line qualifies the charge that then
+        // cannot touch it, and narrower than the bark at reachK 0.81.
+        const corridor = CHARGE_CORRIDOR;
         for (const m of flock.members) {
           if (!m.planted) continue;
           const px = m.x - d.x, py = m.y - d.y;
