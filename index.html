@@ -833,7 +833,13 @@
   // half was played on a dog that could no longer be improved. Cut to a
   // third, a dog now runs out of room around level 100-150, which is the
   // deep game rather than the middle of it.
-  const DRIFT_MAX = 0.007;        // most a rating can drift in one level
+  // ...halved again. At 0.021 a dog was finished around level 40-60; 0.007
+  // moved that to about 100-150, and that is still short — a career reaches
+  // level 93 with every rating parked on its ceiling and nothing left to
+  // train, which is the same complaint one tier further out. The
+  // relationship is roughly inverse, so half the drift is roughly twice the
+  // runway: 200-300, past where a flock stops growing.
+  const DRIFT_MAX = 0.0035;       // most a rating can drift in one level
   const POINT_STEP = 0.02;        // ...and what one spent point is worth
   const POINT_PER_LEVEL = 1;
   // what a drill pays. The floor is deliberately above nothing: a scored run
@@ -893,7 +899,26 @@
   // sweep carries before it turns back, with a floor so a fast orbit still
   // covers real ground instead of dithering right on the line.
   const WEAR_SPREAD = 45, WEAR_ARC = 0.95;
+  // A lot at most this fraction of the biggest OTHER lot is a stray rather
+  // than a delivery. What the dog does with it differs in kind: a mob gets
+  // driven at the gate, a stray gets put back with the others. Driving a
+  // stray at the gate on its own account is the fault a handler would call
+  // chasing — it is a second fetch that has to be walked the whole length of
+  // the field, and the flock stays in two lots the entire time it takes.
+  // Driven at the mob instead, the two link up, clusterLoose hands the dog
+  // one lot again, and the delivery that follows is single.
+  const STRAY_SHARE = 0.5;
   const WEAR_BOUT = 4.5, WEAR_REST = 3.0; // seconds of wearing, then of driving
+  // How much sooner a dog that reads the job reaches for a sweep. The bark
+  // is this sim's gathering force — measured across 24 runs a level, taking
+  // the autopilot from 3.79 barks to 0.04 took the share of samples with the
+  // mob in two lots from 12% to 21% — so a dog asked to work quietly has to
+  // gather some other way, and wearing IS the other way: it is what a
+  // handler calls instead of more walk on when a drive is squeezing the
+  // flock wide. So the spread a clever dog tolerates before it sweeps comes
+  // down, and the drive it owes between sweeps comes down with it. A dull
+  // dog is unchanged and goes on shouting.
+  const WEAR_KEEN = 0.45;
   // ...but the arc floor alone still chatters: on a fast orbit dAng swings
   // back across the (now-tiny) turn threshold within a tick or two of the
   // last flip, so a bout that should read as one wide carry-and-return
@@ -5098,7 +5123,23 @@
       // pace. Flank the shorter way, come off it once roughly behind the
       // flock (hysteresis so the two commands don't chatter at the
       // boundary)
-      let ux = flock.cx - P.gx, uy = flock.cy - P.gy;
+      // WHERE THIS LOT IS BEING TAKEN, which is not always the gate — see
+      // STRAY_SHARE. The balance line runs from the destination through the
+      // lot, and the dog works the far side of it, so retargeting this one
+      // point is the whole of "push it back to the others" rather than
+      // "fetch it to the pen": every flank, stand-off and drive below is
+      // already measured against this line. The funnel logic above keeps
+      // reading the real gate, because that IS about the gate.
+      let tox = P.gx, toy = P.gy;
+      {
+        let main = null;
+        for (const c of clusterLoose()) {
+          if (c === flock) continue;
+          if (!main || c.n > main.n) main = c;
+        }
+        if (main && flock.n <= main.n * STRAY_SHARE) { tox = main.cx; toy = main.cy; }
+      }
+      let ux = flock.cx - tox, uy = flock.cy - toy;
       const ul = Math.hypot(ux, uy) || 1;
       const aDog = Math.atan2(d.y - flock.cy, d.x - flock.cx);
       const dAng = ((Math.atan2(uy / ul, ux / ul) - aDog + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
@@ -5292,10 +5333,15 @@
       // pass" — so a stand-off must not pay it off while the dog lies there,
       // or a hold could spend most of the rest and let the next sweep start
       // having driven for almost none of it.
+      // a clever dog reaches for the sweep sooner and owes less drive between
+      // sweeps — see WEAR_KEEN. Declared up here because the rest just below
+      // is the first thing to read it, and it only fires when a bout ends, so
+      // getting this order wrong throws nowhere a short run would find it.
+      const keen = 1 - WEAR_KEEN * dogStats.intelligence;
       if (!holding) state.wearT += tick;
       if (state.wearSide && state.wearT > WEAR_BOUT) {
         state.wearSide = 0;
-        state.wearT = -WEAR_REST; // drive at least this long before the next bout
+        state.wearT = -WEAR_REST * keen; // drive at least this long before the next bout
       }
       // spread-or-stalled only decides whether to START a bout — once one is
       // under way it runs on its own account to WEAR_BOUT (that's the bound,
@@ -5307,7 +5353,7 @@
       // place was never going to clear the spread half either — so a bout
       // that was supposed to run for WEAR_BOUT seconds had nothing left
       // holding it open past tick one
-      const gathered = WEAR_SPREAD * Math.sqrt(flock.n);
+      const gathered = WEAR_SPREAD * Math.sqrt(flock.n) * keen;
       const enter = state.wearSide || flock.r > gathered || stalled;
       if (state.wearT >= 0 && flock.n > 1 && enter && panic < 0.7) {
         // come by carries the dog clockwise round the mob and away runs it
