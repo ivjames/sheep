@@ -1044,17 +1044,23 @@
   const FLANK_MIN = 70;           // ...around at least this much flock
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
-  // ...which is also how near the dog's ROUTE a planted sheep has to lie
-  // for going in at it to be worth anything: the drive runs at the middle
-  // of the mob, so a planted sheep is only reachable on the way if the
-  // line passes within the range at which the dog's arrival does something
-  // to it. Measured as perpendicular distance to that line and not as an
-  // angle: a cone is a corridor that widens with range, and at the far
-  // edge of WORK_REACH even a narrow-looking 60 degrees is 225px wide —
-  // three times this, and four times the distance at which a plant breaks
-  // on contact. Read unscaled, like the two distances it stands for.
-  // See the planted-sheep scan in autopilot().
-  const CHARGE_CORRIDOR = BARK_CHARGE_RANGE;
+  const BARK_CHARGE_AIM = 0.55;   // ...and only one it is running AT
+  // ...from which falls out how near the dog's ROUTE a planted sheep has to
+  // lie for going in at it to be worth anything. The drive runs at the
+  // middle of the mob, so a planted sheep is only reachable on the way if
+  // the line passes near enough for the dog's arrival to do something to
+  // it — and the bark's own two conditions say exactly how near. Running
+  // the line, the sheep is at (u, off) with u still to go; the aim gate
+  // needs u > off·sqrt(AIM²/(1−AIM²)) and the range gate u² + off² <
+  // RANGE², and together those cap off at RANGE·sqrt(1−AIM²) ≈ 66.8px.
+  // Wider than that and the corridor admits sheep this drive can neither
+  // bark at nor touch (contact is 55px, and takes no aim), which is a
+  // charge that presses the flock for nothing until the plant expires.
+  // Perpendicular distance, note, not an angle: a cone is a corridor that
+  // widens with range, and at the far edge of WORK_REACH even a narrow-
+  // looking 60 degrees is 225px wide. Read unscaled, like the distances it
+  // is derived from. See the planted-sheep scan in autopilot().
+  const CHARGE_CORRIDOR = BARK_CHARGE_RANGE * Math.sqrt(1 - BARK_CHARGE_AIM * BARK_CHARGE_AIM);
   // flock growth: linear and untouched up to FLOCK_SOFT, then easing onto
   // FLOCK_MAX rather than climbing without bound — see startLevel. FLOCK_MAX
   // is set by what the renderer can actually carry, so it moves when the
@@ -3999,7 +4005,7 @@
         const dx = s.x - d.x, dy = s.y - d.y;
         const dd = Math.hypot(dx, dy);
         if (dd < BARK_CHARGE_RANGE && dd > 0.01 &&
-            (d.vx * dx + d.vy * dy) / (dspd * dd) > 0.55) {
+            (d.vx * dx + d.vy * dy) / (dspd * dd) > BARK_CHARGE_AIM) {
           tryBark();
           break;
         }
