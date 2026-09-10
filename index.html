@@ -5361,7 +5361,14 @@
       // not flat out. See CHARGE_PACE_CLEVER: a clever dog presses up under
       // the bark and shifts the plant by standing on it, a dull one charges
       // through the threshold and barks.
-      want = CHARGE_PACE_DULL - (CHARGE_PACE_DULL - CHARGE_PACE_CLEVER) * dogK.intelligence;
+      // the RATING and not dogK: this is an interpolation fraction, and dogK
+      // is the multiplier statK maps that rating onto (0.6..1.6 for
+      // intelligence). Fed the multiplier the ends both miss — the dullest
+      // dog lands at 0.85 and never gets CHARGE_PACE_DULL, while the
+      // cleverest extrapolates past CHARGE_PACE_CLEVER to 0.60, below even
+      // the ordinary calm-drive target, which is a creep at a plant rather
+      // than a quiet press at one.
+      want = CHARGE_PACE_DULL - (CHARGE_PACE_DULL - CHARGE_PACE_CLEVER) * dogStats.intelligence;
       notch = PACE_STEP * 2;
     } else if (panic < 0.35) {
       want = Math.min(paceCap, 0.7); // calm and dawdling — lean in, as far as the room allows
