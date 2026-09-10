@@ -5072,7 +5072,25 @@
     // it now also lifts the settle ceiling, so one defiant sheep anywhere on
     // the ground put the dog back to full pace at the lot it was driving and
     // switched this whole change off.
-    let plantedHere = false;
+    // TWO questions, and they were one flag until a planted sheep in the lot
+    // stopped meaning the dog should charge. `plantedInLot` is the old broad
+    // one — is there a planted sheep in the lot at all — and it is what the
+    // settle ceiling and the hold turn on, because BOTH of those are about
+    // whether this lot will move under standing pressure, and a lot with a
+    // sheep dug into it will not, wherever that sheep is standing.
+    // `plantedAhead` is the narrow one: is there a planted sheep this drive
+    // can actually reach and go in at. Only the charge asks that.
+    //
+    // Collapsing them cost a flock split. Narrowing the flag to aim the
+    // charge also switched the settle cap and the hold on almost always —
+    // on a big late-game flock SOMETHING is planted nearly all the time, so
+    // the broad test was lifting both exemptions nearly all the time, and
+    // the dog had been driving. Left narrow, it crept at the mob for thirty
+    // seconds moving twelve sheep out of 269, and an unpressed flock that
+    // size spreads until clusterLoose calls it two lots. Measured on seed
+    // ycj9xx7 level 93: one sample in nineteen showed a second real lot
+    // before, seven in twenty-six after.
+    let plantedInLot = false, plantedAhead = false;
     if (flock) {
       // repositioning is a CALLED FLANK: walk on presses straight at the
       // mob from wherever the dog stands and does no rounding of its own,
@@ -5165,8 +5183,9 @@
           // it; outside it only the bark can, and the bark wants the sheep
           // still far enough ahead to come inside its aim gate — see CHARGE_LEAD
           if (off > PLANT_BREAK_RANGE && along < off * CHARGE_LEAD) continue;
-          plantedHere = true; break;
+          plantedAhead = true; break;
         }
+        for (const m of flock.members) if (m.planted) { plantedInLot = true; break; }
       }
       const ring = fieldReach(HOLD_OFF * dogK.intelligence * dogK.presence);
       const nearD = Math.sqrt(nearM);
@@ -5179,7 +5198,7 @@
       // ceiling outright, the same exemption the hold makes just below and
       // for the same reason: the only thing that shifts a planted sheep is
       // the dog going in at it, and that needs the pace.
-      paceCap = plantedHere ? 1 :
+      paceCap = plantedInLot ? 1 :
         clamp(SETTLE_PACE + (1 - SETTLE_PACE) * (nearD - ring) / (ring * SETTLE_BAND), SETTLE_PACE, 1);
       // the hold is bounded, and a bounded hold owes a drive after it — the
       // same shape as a wear bout, and for the same reason. A mob that
@@ -5203,7 +5222,7 @@
         if (state.holdT < 0) {
           state.holdT = Math.min(0, state.holdT + tick); // owed drive, counting up to 0
           holding = false;
-        } else if (!plantedHere && nearD < ring * (holding ? HOLD_CLEAR : 1)) {
+        } else if (!plantedInLot && nearD < ring * (holding ? HOLD_CLEAR : 1)) {
           state.holdT += tick;
           holding = state.holdT <= HOLD_BOUT;
           if (!holding) { state.holdT = -HOLD_PUSH; released = true; }
@@ -5356,7 +5375,7 @@
     let want = Math.min(paceCap, state.pace), notch = PACE_STEP;
     if (panic > 0.7) {
       want = PACE_MIN; // easy — pushing a hot flock just scatters it
-    } else if (plantedHere && panic < 0.5) {
+    } else if (plantedAhead && panic < 0.5) {
       // go in at it — but at the pace this dog's reading of the job earns,
       // not flat out. See CHARGE_PACE_CLEVER: a clever dog presses up under
       // the bark and shifts the plant by standing on it, a dull one charges
