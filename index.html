@@ -1056,6 +1056,24 @@
   // 0.14s, where a green one gains 1.44s. This is not what makes a clever
   // dog clever — it is what stops a dull one crowding the gate.
   //
+  // What the berth is WORTH is capped, and the cap is not this constant.
+  // The drive doesn't begin until something is inside WORK_REACH — before
+  // that the dog is covering ground at a run — so the berth a dog can
+  // actually be held at is min(MOUTH_ROOM * ring, WORK_REACH). Presence and
+  // fieldReach cancel on both sides, leaving 280 * intelligence against
+  // 260: clipped for any rating over about 0.43, which is to say for most
+  // dogs, and hardest for the best of them (448px asked, 260px given).
+  // That, and not this constant finding its own ceiling, is why the gain
+  // stops growing past 4.0 and why a top-rated dog gains least.
+  //
+  // Lifting the cap — letting the berth hold the run-in off too — was
+  // tried and is a wash: 94 of 3888 trials move at all, by +/-0.02s in
+  // both directions, net inside the CI. It should be, because the two
+  // rules are about different moments. The run-in fires only when NOTHING
+  // is within working reach, which is exactly when the dog cannot be
+  // crowding anything; a dog that stopped 448px short because one sheep
+  // stood at the mouth would simply not be fetching the rest of its lot.
+  //
   // The funnel branch at the top of autopilot() is the same manners for the
   // case where a whole lot is at the mouth and the answer is to stand off
   // entirely; this is what is left of them for a lot that STRADDLES it,
@@ -4967,12 +4985,22 @@
     if (state.demoT > 0) {
       if (state.demoCut || d.cmd !== 'walk' || !state.beatLot) return;
       const r = fieldReach(HOLD_OFF * dogK.intelligence * dogK.presence);
-      let near = Infinity;
+      // ...and the mouth berth is a ring as well — a wider one, owed to a
+      // sheep the gate already has (MOUTH_ROOM). Watching for the ordinary
+      // ring alone made this comment's own complaint true one ring further
+      // out: the drive sailed straight through the berth between beats, and
+      // a dull dog's beat is a second long, which at working pace is more
+      // ground than the berth is wide. So the cut measures whichever ring
+      // the dog reaches first.
+      let near = Infinity, draw = Infinity;
       for (const s of state.beatLot) {
         if (parked(s)) continue;
-        near = Math.min(near, dist2(d.x, d.y, s.x, s.y));
+        const dd = dist2(d.x, d.y, s.x, s.y);
+        near = Math.min(near, dd);
+        const gs = gateSuction(s);
+        if (gs && gs.d >= MOUTH_DEEP) draw = Math.min(draw, dd);
       }
-      if (near > r * r) return;
+      if (Math.min(Math.sqrt(near), Math.sqrt(draw) / MOUTH_ROOM) > r) return;
       cut = true;
     }
     // One beat, read once: `tick` is the time that has ACTUALLY passed since
