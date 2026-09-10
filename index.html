@@ -985,14 +985,6 @@
   // the lot together is credited to the dog rather than to luck. Scaled by
   // presence, like every other radius the dog works through.
   const WORK_REACH = 260;
-  // how nearly the dog has to be lined up on a planted sheep for the
-  // charge to be owed — the cosine between the planted sheep and the
-  // drive line, so 0.5 is roughly a 60-degree cone ahead of the push.
-  // The three exemptions a planted sheep buys (the lifted settle
-  // ceiling, the suspended hold, the full-pace charge) are all bought
-  // by the dog going IN AT it, so none of them is owed while it stands
-  // off the line the drive is actually taking. See autopilot().
-  const CHARGE_AIM = 0.5;
   // ...and how hard it goes in when it is. Going in at a RUN is only one
   // way to shift a planted sheep, and it is the dull one: the rush trips
   // the charging bark (see updateDog, which fires it above pace 0.797 —
@@ -1052,6 +1044,16 @@
   const FLANK_MIN = 70;           // ...around at least this much flock
   const BARK_CHARGE_SPEED = 250;  // the dog barks on its own when charging...
   const BARK_CHARGE_RANGE = 80;   // ...within this range of a sheep
+  // ...which is also how near the dog's ROUTE a planted sheep has to lie
+  // for going in at it to be worth anything: the drive runs at the middle
+  // of the mob, so a planted sheep is only reachable on the way if the
+  // line passes within the range at which the dog's arrival does something
+  // to it. Measured as perpendicular distance to that line and not as an
+  // angle: a cone is a corridor that widens with range, and at the far
+  // edge of WORK_REACH even a narrow-looking 60 degrees is 225px wide —
+  // three times this, and four times the distance at which a plant breaks
+  // on contact. See the planted-sheep scan in autopilot().
+  const CHARGE_CORRIDOR = BARK_CHARGE_RANGE;
   // flock growth: linear and untouched up to FLOCK_SOFT, then easing onto
   // FLOCK_MAX rather than climbing without bound — see startLevel. FLOCK_MAX
   // is set by what the renderer can actually carry, so it moves when the
@@ -5122,14 +5124,19 @@
       // in front of it, which was rarely the planted one. Barks spent that
       // way buy nothing: the sheep they land on was already walking. So the
       // planted sheep has to be one this drive is actually about to reach —
-      // inside working range, and within CHARGE_AIM of the drive line.
-      for (const m of flock.members) {
-        if (!m.planted) continue;
-        const px = m.x - d.x, py = m.y - d.y, pl = Math.hypot(px, py);
-        if (pl > reach) continue;
+      // ahead of the dog, inside working range, and within CHARGE_CORRIDOR
+      // of the line the drive will take.
+      {
         const lx = flock.cx - d.x, ly = flock.cy - d.y, ll = Math.hypot(lx, ly) || 1;
-        // a sheep the dog is standing on top of has no meaningful bearing
-        if (pl < 0.01 || (px * lx + py * ly) / (pl * ll) > CHARGE_AIM) { plantedHere = true; break; }
+        const corridor = fieldReach(CHARGE_CORRIDOR);
+        for (const m of flock.members) {
+          if (!m.planted) continue;
+          const px = m.x - d.x, py = m.y - d.y;
+          const along = (px * lx + py * ly) / ll;   // how far down the drive line it lies
+          if (along < 0 || along > reach) continue;  // behind the dog, or past its working range
+          const off = Math.abs(px * ly - py * lx) / ll; // ...and how far off that line
+          if (off <= corridor) { plantedHere = true; break; }
+        }
       }
       const ring = fieldReach(HOLD_OFF * dogK.intelligence * dogK.presence);
       const nearD = Math.sqrt(nearM);
