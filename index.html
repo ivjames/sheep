@@ -1022,6 +1022,28 @@
   // where a dull one rushes and shouts. Intelligence is the whole
   // difference, and CHARGE_PACE_CLEVER sits below 0.797 on purpose.
   const CHARGE_PACE_DULL = 1, CHARGE_PACE_CLEVER = 0.75;
+  // ...and the pace of the run-in that gets the dog TO its sheep, which is
+  // a different thing and had been sitting on the wrong side of the same
+  // line. Covering ground is not charging: the branch that sets it says so
+  // ("nobody inside pressure range yet"), and the charging bark is for a
+  // dog rushing AT a sheep. But the bark fires above pace 0.797 and this
+  // was 0.8, three thousandths over, so a run-in that happened to pass
+  // within BARK_CHARGE_RANGE of any sheep — that scan reads state.sheep,
+  // not the working lot, so it need not even be one the dog was fetching —
+  // let one off on the way past.
+  //
+  // Measured by attributing every bark to the pace it fired at, over 240
+  // openings (12 seeds, five levels, four ratings): 26 of 49 barks came
+  // from this branch, and for a TRAINED dog it was all of them — 10 of 10
+  // at ratings 0.8 and 1.0, not one from the charge. That is the case the
+  // fault was reported from, and it is the one the charge cannot explain:
+  // CHARGE_PACE_CLEVER is 0.75 and sits below the bark line on purpose, so
+  // a clever dog is not supposed to bark at its sheep at all. Under the
+  // line, the same 10 become 2.
+  //
+  // The speed given up is under 1% and the run-in is not a timed thing; the
+  // bark it was spending is the whole of the cost.
+  const RUNIN_PACE = 0.79;
   // ...and the room that same drive owes a sheep THE GATE HAS ALREADY GOT.
   // MOUTH_DEEP is how far into the funnel counts as "already got", read off
   // gateSuction's own depth ramp (1 at the mouth, 0 at the edge of the
@@ -5232,7 +5254,7 @@
       if (nearM > reach * reach) {
         state.wearSide = 0; state.wearT = Math.min(0, state.wearT);
         d.cmd = 'walk';
-        state.pace = Math.max(state.pace, 0.8);
+        state.pace = Math.max(state.pace, RUNIN_PACE); // ...and under the bark
         return;
       }
       // STANDING OFF. Walk on drives at the middle of the mob and never
